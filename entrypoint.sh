@@ -3,10 +3,9 @@ set -e
 
 cd /app
 
-echo "=== /app contents at startup ==="
-ls -la /app
-echo "=== /app/db_app ==="
-ls -la /app/db_app || echo "WARNING: db_app directory missing"
+# Ensure persistent volume subdirectories exist
+mkdir -p /app/db_app/data
+mkdir -p /app/main_app/data
 
 # Init DB on first run (idempotent — skips if users already exist)
 python /app/db_app/init_db.py
