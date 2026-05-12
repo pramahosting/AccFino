@@ -72,15 +72,42 @@ try:
 except Exception:
     OB_AVAILABLE = False
 
-app = FastAPI(title="Accfino API", version="2.0")
-app.add_middleware(CORSMiddleware,
+# ── api_app carries all routes, mounted at /api on the root app ──────────────
+# Dev:  Vite proxy rewrites /api → :8001 (strips prefix)
+# Prod: built React SPA is served by this same process; all XHR goes to /api/…
+api_app = FastAPI(title="Accfino API", version="2.0")
+
+_extra_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+api_app.add_middleware(CORSMiddleware,
     allow_origins=["http://localhost:3000","http://127.0.0.1:3000",
-                   "http://localhost:5173","http://127.0.0.1:5173"],
+                   "http://localhost:5173","http://127.0.0.1:5173"] + _extra_origins,
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-app.include_router(db_auth.router,         prefix="/auth",        tags=["auth"])
-app.include_router(db_transactions.router, prefix="/transactions", tags=["transactions"])
-app.include_router(db_invoice.router,      prefix="/invoice",      tags=["invoice"])
+api_app.include_router(db_auth.router,         prefix="/auth",        tags=["auth"])
+api_app.include_router(db_transactions.router, prefix="/transactions", tags=["transactions"])
+api_app.include_router(db_invoice.router,      prefix="/invoice",      tags=["invoice"])
+
+# Root app: mounts the API sub-app and serves the React SPA
+app = FastAPI(title="Accfino", docs_url=None, redoc_url=None)
+app.mount("/api", api_app)
+
+# ── Serve built React SPA in production ──────────────────────────────────────
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse as _FileResponse
+
+_DIST = ROOT.parent / "react_frontend" / "dist"
+if _DIST.exists():
+    if (_DIST / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/{spa_path:path}", include_in_schema=False)
+    def spa_fallback(spa_path: str = ""):
+        """Return index.html for all non-API paths so React Router works."""
+        index = _DIST / "index.html"
+        if index.exists():
+            return _FileResponse(str(index))
+        return {"error": "Frontend not built — run: cd react_frontend && npm run build"}
 
 _cf_cache: dict = {}
 
@@ -221,16 +248,16 @@ def _build_monthly_summary(df: pd.DataFrame) -> list:
 # ══════════════════════════════════════════════════════════════════════════════
 # BANKS / GST
 # ══════════════════════════════════════════════════════════════════════════════
-@app.get("/banks")
+@api_app.get("/banks")
 def get_banks(): return sorted(BANK_PRESETS.keys())
 
-@app.get("/gst/categories")
+@api_app.get("/gst/categories")
 def get_gst_cats(): return GST_CATEGORY_OPTIONS
 
-@app.get("/gl/accounts")
+@api_app.get("/gl/accounts")
 def get_gl_accounts(): return CATEGORY_ENUM + [""]
 
-@app.get("/gst/calculate")
+@api_app.get("/gst/calculate")
 def calc_gst(debit: float=0, credit: float=0, category: str="Unknown"):
     return {"gst": calculate_gst_value(debit, credit, category)}
 
@@ -281,7 +308,7 @@ class SaveSessReq(BaseModel):
     session_id: str; username: str; transactions: list
     pending_changes: dict = {}; page_number: int = 1
 
-@app.get("/sessions")
+@api_app.get("/sessions")
 def list_sessions(username: str):
     username = norm_username(username)
     ss = session_manager.get_all_sessions(username)
@@ -339,11 +366,11 @@ def list_sessions(username: str):
             s["accounts_meta"] = []; s["account_count"] = 0; s["file_count"] = 0
     return ss
 
-@app.delete("/sessions/{username}/{sid}")
+@api_app.delete("/sessions/{username}/{sid}")
 def del_session(username: str, sid: str):
     return {"ok": session_manager.delete_session(norm_username(username), sid)}
 
-@app.get("/sessions/{username}/{sid}")
+@api_app.get("/sessions/{username}/{sid}")
 def get_session(username: str, sid: str):
     username = norm_username(username)
     d = session_manager.load_session_data(username, sid)
@@ -371,7 +398,7 @@ def get_session(username: str, sid: str):
         "pending_changes": {str(k): v for k, v in d.get("pending_changes", {}).items()},
     }
 
-@app.post("/sessions/save")
+@api_app.post("/sessions/save")
 def save_session(body: SaveSessReq):
     username = norm_username(body.username)
     df = pd.DataFrame(body.transactions) if body.transactions else pd.DataFrame()
@@ -386,7 +413,7 @@ def save_session(body: SaveSessReq):
 # ══════════════════════════════════════════════════════════════════════════════
 # RECONCILIATION
 # ══════════════════════════════════════════════════════════════════════════════
-@app.post("/reconcile/process")
+@api_app.post("/reconcile/process")
 async def reconcile_process(
     files: List[UploadFile]=File(...),
     bank_names: List[str]=Form(...),
@@ -540,7 +567,7 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
 class ClassifyReq(BaseModel):
     session_id: str; username: str
 
-@app.post("/reconcile/classify")
+@api_app.post("/reconcile/classify")
 def reconcile_classify(body: ClassifyReq):
     username = norm_username(body.username)
     d = session_manager.load_session_data(username, body.session_id)
@@ -557,7 +584,7 @@ def reconcile_classify(body: ClassifyReq):
 class ExportReq(BaseModel):
     transactions: list
 
-@app.post("/reconcile/export")
+@api_app.post("/reconcile/export")
 def reconcile_export(body: ExportReq):
     df = pd.DataFrame(body.transactions)
     # Rename lowercase keys to Title Case for exporter
@@ -574,7 +601,7 @@ def reconcile_export(body: ExportReq):
 # ══════════════════════════════════════════════════════════════════════════════
 # DASHBOARD STATS  — aggregates from ALL session pickles (no Save-to-DB needed)
 # ══════════════════════════════════════════════════════════════════════════════
-@app.get("/dashboard/stats")
+@api_app.get("/dashboard/stats")
 def dashboard_stats(username: str):
     """
     Aggregate totals across ALL reconciliation sessions for this user.
@@ -628,7 +655,7 @@ def dashboard_stats(username: str):
 # ══════════════════════════════════════════════════════════════════════════════
 # TRADING
 # ══════════════════════════════════════════════════════════════════════════════
-@app.post("/trading/analyze")
+@api_app.post("/trading/analyze")
 async def trading_analyze(file: UploadFile=File(...)):
     import tempfile, os as _os
     raw = await file.read()
@@ -658,7 +685,7 @@ async def trading_analyze(file: UploadFile=File(...)):
     return {"trades": sdf(trades_df), "tax": sdf(tax_df),
             "per_symbol": sdf(per_symbol_df), "count": len(trades_df)}
 
-@app.post("/trading/export")
+@api_app.post("/trading/export")
 async def trading_export(file: UploadFile=File(...)):
     import tempfile, os as _os
     raw = await file.read()
@@ -676,7 +703,7 @@ async def trading_export(file: UploadFile=File(...)):
 # ══════════════════════════════════════════════════════════════════════════════
 # CASH FLOW
 # ══════════════════════════════════════════════════════════════════════════════
-@app.post("/cashflow/detect")
+@api_app.post("/cashflow/detect")
 async def cf_detect(file: UploadFile=File(...)):
     df = pd.read_csv(io.BytesIO(await file.read()))
     detected = auto_detect_columns(df)
@@ -688,7 +715,7 @@ async def cf_detect(file: UploadFile=File(...)):
 class CfRunReq(BaseModel):
     rows: list; col_map: dict
 
-@app.post("/cashflow/run")
+@api_app.post("/cashflow/run")
 def cf_run(body: CfRunReq):
     if not body.rows: raise HTTPException(400, "No data")
     df_raw  = pd.DataFrame(body.rows)
@@ -712,7 +739,7 @@ def cf_run(body: CfRunReq):
             "leaderboard": lb.to_dict(orient="records"),
             "leaderboard_plot_b64": lb_img}
 
-@app.post("/cashflow/predict/{run_id}")
+@api_app.post("/cashflow/predict/{run_id}")
 def cf_predict(run_id: str, model_name: str=Body(..., embed=True)):
     cache = _cf_cache.get(run_id)
     if not cache: raise HTTPException(404, "Run expired — please re-run pipeline")
@@ -731,19 +758,19 @@ def cf_predict(run_id: str, model_name: str=Body(..., embed=True)):
 # ══════════════════════════════════════════════════════════════════════════════
 SAMPLE_CSV = "date,description,amount,category,gst_category\n15/09/2025,BUNNINGS,65.38,Expense,GST on Expenses\n16/08/2025,CLIENT PAYMENT ABC PTY,339.55,Revenue,GST on Income\n19/08/2025,AMAZON,97.98,Expense,GST on Expenses\n1/10/2025,SUPPLIER DIRECT COST,566.31,Direct Costs,GST on Expenses\n"
 
-@app.get("/ml/status")
+@api_app.get("/ml/status")
 def ml_status():
     return {
         "category_model": (DEFAULT_MODEL_DIR / "category_classifier.pkl").exists(),
         "gst_model": (DEFAULT_MODEL_DIR / "gst_category_classifier.pkl").exists(),
     }
 
-@app.get("/ml/sample-csv")
+@api_app.get("/ml/sample-csv")
 def ml_sample():
     return Response(content=SAMPLE_CSV, media_type="text/csv",
                     headers={"Content-Disposition": "attachment; filename=sample_training_data.csv"})
 
-@app.post("/ml/train")
+@api_app.post("/ml/train")
 async def ml_train(file: UploadFile=File(...)):
     try: df = pd.read_csv(io.BytesIO(await file.read()))
     except Exception as e: raise HTTPException(400, f"Cannot read CSV: {e}")
@@ -772,10 +799,10 @@ def _load_rdr():
 def _save_rdr(rules):
     RDR_PATH.write_text(json.dumps(rules, indent=2, ensure_ascii=False), "utf-8")
 
-@app.get("/rdr/rules")
+@api_app.get("/rdr/rules")
 def rdr_list(): return _load_rdr()
 
-@app.post("/rdr/rules")
+@api_app.post("/rdr/rules")
 def rdr_create(rule: dict=Body(...)):
     rules = _load_rdr()
     rule.setdefault("id", f"rule_{int(datetime.now().timestamp()*1000)}")
@@ -786,7 +813,7 @@ def rdr_create(rule: dict=Body(...)):
     load_rdr_rules(force_reload=True)
     return rule
 
-@app.put("/rdr/rules/{rule_id}")
+@api_app.put("/rdr/rules/{rule_id}")
 def rdr_update(rule_id: str, rule: dict=Body(...)):
     rules = _load_rdr()
     for i, r in enumerate(rules):
@@ -796,13 +823,13 @@ def rdr_update(rule_id: str, rule: dict=Body(...)):
             return rules[i]
     raise HTTPException(404, "Rule not found")
 
-@app.delete("/rdr/rules/{rule_id}")
+@api_app.delete("/rdr/rules/{rule_id}")
 def rdr_delete(rule_id: str):
     rules = [r for r in _load_rdr() if r.get("id") != rule_id]
     _save_rdr(rules); load_rdr_rules(force_reload=True)
     return {"ok": True}
 
-@app.post("/rdr/test")
+@api_app.post("/rdr/test")
 def rdr_test(body: dict=Body(...)):
     import re
     desc   = str(body.get("description", ""))
@@ -822,13 +849,13 @@ def rdr_test(body: dict=Body(...)):
 # ══════════════════════════════════════════════════════════════════════════════
 # INVOICE EXTRACTOR
 # ══════════════════════════════════════════════════════════════════════════════
-@app.get("/invoice-extractor/status")
+@api_app.get("/invoice-extractor/status")
 def ie_status():
     if not IE_AVAILABLE: return {"available": False, "reason": "Module not installed"}
     try: return {"available": True, **get_dependency_status()}
     except Exception as e: return {"available": False, "reason": str(e)}
 
-@app.post("/invoice-extractor/process")
+@api_app.post("/invoice-extractor/process")
 async def ie_process(
     files: List[UploadFile]=File(...),
     tesseract_cmd: str=Form(""), poppler_bin: str=Form(""),
@@ -865,12 +892,12 @@ async def ie_process(
 # ══════════════════════════════════════════════════════════════════════════════
 # OPEN BANKING
 # ══════════════════════════════════════════════════════════════════════════════
-@app.get("/openbanking/status")
+@api_app.get("/openbanking/status")
 def ob_status():
     configured = bool(os.getenv("BASIQ_API_KEY"))
     return {"available": OB_AVAILABLE, "configured": configured}
 
-@app.post("/openbanking/create-user")
+@api_app.post("/openbanking/create-user")
 def ob_create_user(body: dict=Body(...)):
     if not OB_AVAILABLE: raise HTTPException(503, "Open Banking not available")
     try:
@@ -880,7 +907,7 @@ def ob_create_user(body: dict=Body(...)):
             body.get("first_name",""), body.get("last_name",""))
     except Exception as e: raise HTTPException(500, str(e))
 
-@app.get("/openbanking/accounts/{user_id}")
+@api_app.get("/openbanking/accounts/{user_id}")
 def ob_accounts(user_id: str):
     if not OB_AVAILABLE: raise HTTPException(503, "Open Banking not available")
     try:
@@ -888,7 +915,7 @@ def ob_accounts(user_id: str):
         return ob_job.get_accounts(token, user_id)
     except Exception as e: raise HTTPException(500, str(e))
 
-@app.get("/openbanking/transactions/{user_id}")
+@api_app.get("/openbanking/transactions/{user_id}")
 def ob_transactions(user_id: str):
     if not OB_AVAILABLE: raise HTTPException(503, "Open Banking not available")
     try:
@@ -931,7 +958,7 @@ def _stocks_clean(df) -> list:
     return d.to_dict(orient="records")
 
 
-@app.get("/stocks/status")
+@api_app.get("/stocks/status")
 def stocks_status():
     return {
         "available":   _trading_module_ok,
@@ -940,7 +967,7 @@ def stocks_status():
     }
 
 
-@app.post("/stocks/analyze")
+@api_app.post("/stocks/analyze")
 async def stocks_analyze(
     files:          List[UploadFile] = File(...),
     financial_year: str              = Form("2024-25"),
@@ -1004,7 +1031,7 @@ async def stocks_analyze(
         _shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-@app.post("/stocks/export")
+@api_app.post("/stocks/export")
 async def stocks_export(
     files:          List[UploadFile] = File(...),
     financial_year: str              = Form("2024-25"),
@@ -1054,7 +1081,7 @@ async def stocks_export(
 # ══════════════════════════════════════════════════════════════════════════════
 # OPEN BANKING → CSV (normalised, ready for reconciliation)
 # ══════════════════════════════════════════════════════════════════════════════
-@app.post("/openbanking/fetch-and-normalise")
+@api_app.post("/openbanking/fetch-and-normalise")
 def ob_fetch_normalise(body: dict = Body(...)):
     """
     Fetch transactions from Open Banking, save as normalised CSV,
