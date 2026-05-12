@@ -15,8 +15,6 @@ RUN npm run build
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: Python runtime
-# react_api (port 8001) serves the API + the built React SPA
-# api_call  (port 8000) is the internal DB/auth layer
 # ─────────────────────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
@@ -39,7 +37,7 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
 
-# Drop any Windows node_modules that snuck in via zip
+# Drop any Windows node_modules that may have been committed
 RUN rm -rf react_frontend/node_modules
 
 # Copy the Vite production build from Stage 1
@@ -52,11 +50,10 @@ RUN mkdir -p \
         main_app/classifier_model \
         main_app/backend/cash_flow/outputs/plots
 
-# Initialise DB at build time so first cold-start is instant
-RUN python db_app/init_db.py
+RUN chmod +x entrypoint.sh
 
 EXPOSE 8001
 
-CMD ["sh", "-c", \
-     "python -m uvicorn main_app.api_call:app --host 0.0.0.0 --port 8000 & \
-      python -m uvicorn main_app.react_api:app --host 0.0.0.0 --port 8001"]
+# DB init runs at container startup (not build time) so SQLite file
+# can be written to a persistent volume mounted at /app/db_app
+ENTRYPOINT ["./entrypoint.sh"]
