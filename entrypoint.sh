@@ -7,8 +7,8 @@ cd /app
 mkdir -p /app/db_app/data
 mkdir -p /app/main_app/data
 
-# Init DB on first run (idempotent — skips if users already exist)
-python /app/db_app/init_db.py
+# Init DB — run as a module so db_app package imports resolve correctly
+PYTHONPATH=/app python -m db_app.init_db
 
 # Start internal DB/auth API on port 8000 (background)
 python -m uvicorn main_app.api_call:app --host 0.0.0.0 --port 8000 &
