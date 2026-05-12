@@ -43,8 +43,8 @@ export default function ReconciliationPage() {
         restored:      true,
       }))
       setAccounts(restored)
-      setMainTab('output')
-      toast.success('Session loaded — showing output. Re-upload CSVs to re-run Agent.')
+      setMainTab('input')
+      toast.success('Session loaded — accounts shown below. Switch to Output to view results.')
     } catch (e) {
       toast.error('Failed to load session')
     }
@@ -62,7 +62,7 @@ export default function ReconciliationPage() {
       restored:      true,
     }))
     setAccounts(restored)
-    setMainTab('output')
+    setMainTab('input')
   }
 
   const handleProcess = useCallback(async () => {
@@ -186,7 +186,7 @@ export default function ReconciliationPage() {
               )}
             </div>
 
-            <AccountsReady accounts={accounts} setAccounts={setAccounts}/>
+            <AccountsReady accounts={accounts} setAccounts={setAccounts} onViewResults={()=>setMainTab('output')}/>
 
             <PastSessions username={username} onLoadSession={handleLoadSession}/>
           </div>
@@ -279,10 +279,11 @@ function CSVAddAccount({ accounts, setAccounts }) {
 }
 
 // ── Accounts Ready (NO Run Agent button here) ────────────────────────────────
-function AccountsReady({ accounts, setAccounts }) {
+function AccountsReady({ accounts, setAccounts, onViewResults }) {
   const removeAccount = i => setAccounts(a=>a.filter((_,j)=>j!==i))
   const bankInitials  = n => n ? n.slice(0,3).toUpperCase() : '??'
   const activeCount   = accounts.filter(a=>a.files.length>0||(a.restored&&a.fileNames.length>0)).length
+  const hasRestored   = accounts.some(a => a.restored)
 
   return (
     <div>
@@ -330,6 +331,14 @@ function AccountsReady({ accounts, setAccounts }) {
             </div>
           ))}
         </div>
+      )}
+      {hasRestored && onViewResults && (
+        <button
+          className="btn btn-primary btn-full"
+          onClick={onViewResults}
+          style={{marginTop:12}}>
+          📊 View Results →
+        </button>
       )}
     </div>
   )
