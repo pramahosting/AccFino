@@ -7,6 +7,31 @@ from db_app.models.permission import Permission
 from db_app.models.invoice import BusinessDetail, Customer, Invoice, InvoiceItem
 from db_app.models import association
 
+# ── Permissions ───────────────────────────────────────────────────────────────
+PERMISSIONS = [
+    ("view_dashboard",    "View dashboard"),
+    ("view_reports",      "View reports"),
+    ("manage_users",      "Create, edit and delete users"),
+    ("manage_roles",      "Create, edit and delete roles"),
+    ("reconcile",         "Run bank reconciliation"),
+    ("export_data",       "Export data to Excel/CSV"),
+    ("invoice",           "Create and manage invoices"),
+    ("admin",             "Full administrative access"),
+]
+
+# ── Role → Permission mapping ─────────────────────────────────────────────────
+ROLE_PERMISSIONS = {
+    "admin": [p[0] for p in PERMISSIONS],   # admin gets everything
+    "user":  [
+        "view_dashboard",
+        "view_reports",
+        "reconcile",
+        "export_data",
+        "invoice",
+    ],
+}
+
+
 def init_db():
     print("Initializing database...")
     Base.metadata.create_all(bind=engine)
@@ -47,7 +72,7 @@ def init_db():
         db.flush()
 
         hashed_password = bcrypt.hashpw(
-            "1".encode(),
+            "Admin@1".encode(),
             bcrypt.gensalt()
         )
 
@@ -64,6 +89,7 @@ def init_db():
         db.commit()
 
         print("Admin user created successfully.")
+        print("  Login: admin@ex.com  /  Admin@1")
 
     except Exception as e:
         db.rollback()
