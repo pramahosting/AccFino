@@ -1,3 +1,8 @@
+import sys, os
+# Ensure project root is on sys.path so 'db_app' package resolves
+# whether this file is run directly or as a module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import bcrypt
 from db_app.database import engine, SessionLocal
 from db_app.models.base import Base
