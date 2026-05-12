@@ -10,7 +10,6 @@ RUN npm ci --silent
 
 COPY react_frontend/ ./
 RUN npm run build
-# Output: /build/dist/
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -22,7 +21,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# System libs required by opencv, pdf2image, pytesseract
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1 \
         libglib2.0-0 \
@@ -37,23 +35,22 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
 
-# Drop any Windows node_modules that may have been committed
+# Debug: show exactly what was copied — remove once deployment is stable
+RUN echo "=== /app contents ===" && ls -la /app && \
+    echo "=== /app/db_app ===" && ls -la /app/db_app || echo "db_app missing!"
+
 RUN rm -rf react_frontend/node_modules
 
-# Copy the Vite production build from Stage 1
 COPY --from=frontend-build /build/dist ./react_frontend/dist
 
-# Ensure writable runtime directories exist
 RUN mkdir -p \
         db_app \
         main_app/data \
         main_app/classifier_model \
         main_app/backend/cash_flow/outputs/plots
 
-RUN chmod +x entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8001
 
-# DB init runs at container startup (not build time) so SQLite file
-# can be written to a persistent volume mounted at /app/db_app
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["/app/entrypoint.sh"]
