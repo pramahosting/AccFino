@@ -10,8 +10,8 @@ import TradingPage           from './pages/TradingPage.jsx'
 import CashFlowPage          from './pages/CashFlowPage.jsx'
 import InvoicePage           from './pages/InvoicePage.jsx'
 import AdminPage             from './pages/AdminPage.jsx'
-import ForgotPasswordPage    from './pages/ForgotPasswordPage.jsx'
 import ResetPasswordPage     from './pages/ResetPasswordPage.jsx'
+
 
 function Guard({ children, adminOnly }) {
   const { user } = useAuth()
@@ -25,7 +25,6 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login"           element={user ? <Navigate to="/" replace /> : <LoginPage />} />
-      <Route path="/forgot-password" element={user ? <Navigate to="/" replace /> : <ForgotPasswordPage />} />
       <Route path="/reset-password"  element={user ? <Navigate to="/" replace /> : <ResetPasswordPage />} />
       <Route path="/" element={<Guard><Layout /></Guard>}>
         <Route index                    element={<DashboardPage />} />
