@@ -9,7 +9,7 @@ import toast from 'react-hot-toast'
 const FEATURES = [
   'Bank reconciliation with automatic internal transfer detection',
   'GST calculation & BAS-ready classification',
-  'ML-powered GL account to-classification',
+  'ML-powered GL account auto-classification',
   'Multi-bank CSV import with session persistence',
   'Excel export with monthly summaries',
 ]
@@ -45,7 +45,7 @@ export default function LoginPage() {
         full_name: form.name.trim(),
         email:     form.email.trim(),
         password:  form.password.trim(),
-        role:      form.role,
+        role:      'user',
         phone:     form.phone.trim(),
         address:   form.address.trim(),
       })
@@ -65,7 +65,7 @@ export default function LoginPage() {
       {/* ── Left panel — brand ── */}
       <div className="login-left">
         <div className="login-brand-card">
-          <AccfinoLogo size={60} showText textColor="#fff" />
+          <AccfinoLogo size={44} showText textColor="#fff" />
 
           <div style={{ marginTop: 36, marginBottom: 28 }}>
             <h2 style={{ color: '#fff', fontSize: '1.5rem', fontFamily: "'Sora',sans-serif", marginBottom: 8 }}>
@@ -87,9 +87,9 @@ export default function LoginPage() {
 
           <div style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,.12)' }}>
             <div style={{ display: 'flex', gap: 16 }}>
-              {[['AUS', 'AU'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
+              {[['AUS', '🇦🇺'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '.8rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
                   <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.4)', letterSpacing: '.05em', marginTop: 2 }}>{l}</div>
                 </div>
               ))}
@@ -197,18 +197,9 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
-              <div className="grid-2">
-                <div className="input-group">
-                  <label>Phone (optional)</label>
-                  <input className="input" type="tel" value={form.phone} onChange={set('phone')} placeholder="+61 4xx xxx xxx" />
-                </div>
-                <div className="input-group">
-                  <label>Role</label>
-                  <select value={form.role} onChange={set('role')}>
-                    <option value="user">User</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
+              <div className="input-group">
+                <label>Phone (optional)</label>
+                <input className="input" type="tel" value={form.phone} onChange={set('phone')} placeholder="+61 4xx xxx xxx" />
               </div>
 
               {err && <div className="alert alert-error">{err}</div>}
@@ -220,8 +211,8 @@ export default function LoginPage() {
           )}
 
           <p style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: '.75rem', marginTop: 28 }}>
-            © {new Date().getFullYear()} Accfino · Accounting Platform<br />
-            <span style={{ opacity: .6 }}>Powered by Prama AI engine</span>
+            © {new Date().getFullYear()} Accfino · Australian Accounting Platform<br />
+            <span style={{ opacity: .6 }}>Powered by HSLedger engine</span>
           </p>
         </div>
       </div>
