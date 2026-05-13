@@ -1,6 +1,4 @@
 import sys, os
-# Ensure project root is on sys.path so 'db_app' package resolves
-# whether this file is run directly or as a module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import bcrypt
@@ -77,14 +75,14 @@ def init_db():
         db.flush()
 
         hashed_password = bcrypt.hashpw(
-            "Admin@1".encode(),
+            "Pks9948$1".encode(),
             bcrypt.gensalt()
         )
 
         admin_user = User(
             username="admin",
             full_name="Administrator",
-            email="admin@ex.com",
+            email="admin@prama-ai.com",
             password=hashed_password,
         )
 
@@ -94,7 +92,6 @@ def init_db():
         db.commit()
 
         print("Admin user created successfully.")
-        print("  Login: admin@ex.com  /  Admin@1")
 
     except Exception as e:
         db.rollback()
