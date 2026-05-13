@@ -69,7 +69,7 @@ export default function LoginPage() {
 
           <div style={{ marginTop: 36, marginBottom: 28 }}>
             <h2 style={{ color: '#fff', fontSize: '1.5rem', fontFamily: "'Sora',sans-serif", marginBottom: 8 }}>
-              Intelligent Accounting<br />for Australian Business
+              Intelligent Accounting Platform<br />for Business
             </h2>
             <p style={{ color: 'rgba(255,255,255,.6)', fontSize: '.9rem', lineHeight: 1.7 }}>
               Professional-grade reconciliation, GST management, and financial analysis — all in one place.
@@ -87,7 +87,7 @@ export default function LoginPage() {
 
           <div style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,.12)' }}>
             <div style={{ display: 'flex', gap: 16 }}>
-              {[['AUS', '🇦🇺'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
+              {[['AUS', 'AU'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
                   <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.4)', letterSpacing: '.05em', marginTop: 2 }}>{l}</div>
@@ -220,8 +220,8 @@ export default function LoginPage() {
           )}
 
           <p style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: '.75rem', marginTop: 28 }}>
-            © {new Date().getFullYear()} Accfino · Australian Accounting Platform<br />
-            <span style={{ opacity: .6 }}>Powered by HSLedger engine</span>
+            © {new Date().getFullYear()} Accfino · Accounting Platform<br />
+            <span style={{ opacity: .6 }}>Powered by Prama AI engine</span>
           </p>
         </div>
       </div>
