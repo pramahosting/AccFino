@@ -69,10 +69,10 @@ export default function LoginPage() {
 
           <div style={{ marginTop: 36, marginBottom: 28 }}>
             <h2 style={{ color: '#fff', fontSize: '1.5rem', fontFamily: "'Sora',sans-serif", marginBottom: 8 }}>
-              Intelligent Accounting Platform<br />for Business
+              Intelligent Accounting Platform<br />for Australian Business
             </h2>
             <p style={{ color: 'rgba(255,255,255,.6)', fontSize: '.9rem', lineHeight: 1.7 }}>
-              Professional-grade reconciliation, GST management, and financial analysis — all in one place.
+              Account reconciliation, GST management, and financial analysis — all in one place.
             </p>
           </div>
 
@@ -89,7 +89,7 @@ export default function LoginPage() {
             <div style={{ display: 'flex', gap: 16 }}>
               {[['AUS', 'AU'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '.7rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
+                  <div style={{ fontSize: '.6rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
                   <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.4)', letterSpacing: '.05em', marginTop: 2 }}>{l}</div>
                 </div>
               ))}
