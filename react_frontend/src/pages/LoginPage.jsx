@@ -65,7 +65,7 @@ export default function LoginPage() {
       {/* ── Left panel — brand ── */}
       <div className="login-left">
         <div className="login-brand-card">
-          <AccfinoLogo size={44} showText textColor="#fff" />
+          <AccfinoLogo size={60} showText textColor="#fff" />
 
           <div style={{ marginTop: 36, marginBottom: 28 }}>
             <h2 style={{ color: '#fff', fontSize: '1.5rem', fontFamily: "'Sora',sans-serif", marginBottom: 8 }}>
