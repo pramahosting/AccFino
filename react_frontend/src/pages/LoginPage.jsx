@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { register } from '../lib/api.js'
 import AccfinoLogo from '../components/ui/AccfinoLogo.jsx'
@@ -166,6 +166,24 @@ export default function LoginPage() {
                 {loading ? <><span className="spinner spinner-sm" /> Signing in…</> : <>Sign In <ArrowRight size={16}/></>}
               </button>
 
+              <div style={{ textAlign: 'center', marginTop: 4 }}>
+                <Link to="/forgot-password" style={{
+                  fontSize: '.82rem', color: 'var(--text-3)',
+                  textDecoration: 'none',
+                }}>
+                  Forgot your password?
+                </Link>
+              </div>
+
+              <div style={{
+                marginTop: 14, padding: '10px 14px', borderRadius: 'var(--r-md)',
+                background: 'var(--surface-3)', border: '1px solid var(--border)',
+                fontSize: '.78rem', color: 'var(--text-3)', lineHeight: 1.6,
+              }}>
+                <strong style={{ color: 'var(--text-2)' }}>Default credentials</strong><br />
+                Email: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand)' }}>admin@ex.com</code>
+                &nbsp;&nbsp; Password: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand)' }}>Admin@1</code>
+              </div>
             </form>
 
           ) : (
@@ -228,4 +246,3 @@ export default function LoginPage() {
     </div>
   )
 }
-
