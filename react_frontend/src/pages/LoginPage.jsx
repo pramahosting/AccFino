@@ -72,7 +72,7 @@ export default function LoginPage() {
               Intelligent Accounting<br />for Australian Business
             </h2>
             <p style={{ color: 'rgba(255,255,255,.6)', fontSize: '.9rem', lineHeight: 1.7 }}>
-              Bank account reconciliation, GST management, and financial analysis — all in one place.
+              Professional-grade reconciliation, GST management, and financial analysis — all in one place.
             </p>
           </div>
 
