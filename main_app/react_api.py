@@ -25,6 +25,8 @@ logger = logging.getLogger("accfino")
 from db_app.api import auth as db_auth
 from db_app.api import transactions as db_transactions
 from db_app.api import invoice as db_invoice
+from db_app.api import password_reset as db_password_reset
+from db_app.models.password_reset_token import PasswordResetToken
 
 from backend.reconciliation.bank_normalizer import normalize_transactions, BANK_PRESETS
 from backend.reconciliation import classifier as rec_classifier
@@ -83,9 +85,10 @@ api_app.add_middleware(CORSMiddleware,
                    "http://localhost:5173","http://127.0.0.1:5173"] + _extra_origins,
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-api_app.include_router(db_auth.router,         prefix="/auth",        tags=["auth"])
-api_app.include_router(db_transactions.router, prefix="/transactions", tags=["transactions"])
-api_app.include_router(db_invoice.router,      prefix="/invoice",      tags=["invoice"])
+api_app.include_router(db_auth.router,           prefix="/auth",        tags=["auth"])
+api_app.include_router(db_transactions.router,   prefix="/transactions", tags=["transactions"])
+api_app.include_router(db_invoice.router,        prefix="/invoice",      tags=["invoice"])
+api_app.include_router(db_password_reset.router, prefix="/auth",        tags=["auth"])
 
 # Root app: mounts the API sub-app and serves the React SPA
 app = FastAPI(title="Accfino", docs_url=None, redoc_url=None)
@@ -1119,3 +1122,4 @@ def ob_fetch_normalise(body: dict = Body(...)):
         return {"rows": rows, "count": len(rows), "csv_saved": csv_path}
     except Exception as e:
         raise HTTPException(500, str(e))
+
