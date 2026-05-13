@@ -74,9 +74,10 @@ def init_db():
 
         db.flush()
 
-        hashed_password = bcrypt.hashpw(
-            "Pks9948$1".encode(),
-            bcrypt.gensalt()).decode()
+hashed_password = bcrypt.hashpw(
+    "Pks9948$1".encode(),
+    bcrypt.gensalt()
+).decode()
 
         admin_user = User(
             username="admin",
