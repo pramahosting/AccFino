@@ -5,6 +5,9 @@ FROM node:20-slim AS frontend-build
 
 WORKDIR /build
 
+# Limit Node memory during build to avoid OOM on small build containers
+ENV NODE_OPTIONS=--max-old-space-size=512
+
 COPY react_frontend/package.json react_frontend/package-lock.json ./
 RUN npm ci --silent
 
