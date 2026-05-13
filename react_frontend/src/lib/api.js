@@ -5,10 +5,7 @@ const http = axios.create({ baseURL: '/api' })
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const login          = (email, pw)    => http.post('/auth/login', { email, password: pw })
 export const register       = (data)         => http.post('/auth/register', data)
-export const changePassword   = (data)         => http.post('/auth/change-password', data)
-export const forgotPassword   = (email)        => http.post('/auth/forgot-password', { email })
-export const resetPassword    = (token, pw)    => http.post('/auth/reset-password', { token, new_password: pw })
-export const verifyResetToken = (token)        => http.get('/auth/verify-reset-token', { params: { token } })
+export const changePassword = (data)         => http.post('/auth/change-password', data)
 export const getAllUsers     = ()             => http.get('/auth/users')
 export const deleteUser     = (id)           => http.delete(`/auth/users/${id}`)
 
@@ -83,4 +80,3 @@ export const stocksExport  = (fd)          => http.post('/stocks/export',  fd, {
 export const obFetchNormalise = (body)     => http.post('/openbanking/fetch-and-normalise', body)
 
 export const getDashboardStats = (username) => http.get('/dashboard/stats', { params: { username } })
-
