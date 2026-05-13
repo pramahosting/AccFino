@@ -166,15 +166,6 @@ export default function LoginPage() {
                 {loading ? <><span className="spinner spinner-sm" /> Signing in…</> : <>Sign In <ArrowRight size={16}/></>}
               </button>
 
-              <div style={{
-                marginTop: 14, padding: '10px 14px', borderRadius: 'var(--r-md)',
-                background: 'var(--surface-3)', border: '1px solid var(--border)',
-                fontSize: '.78rem', color: 'var(--text-3)', lineHeight: 1.6,
-              }}>
-                <strong style={{ color: 'var(--text-2)' }}>Default credentials</strong><br />
-                Email: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand)' }}>admin@ex.com</code>
-                &nbsp;&nbsp; Password: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand)' }}>Admin@1</code>
-              </div>
             </form>
 
           ) : (
@@ -237,3 +228,4 @@ export default function LoginPage() {
     </div>
   )
 }
+
