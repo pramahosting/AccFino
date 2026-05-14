@@ -137,20 +137,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses   import FileResponse as _FileResponse
 
 _DIST = Path(__file__).parent.parent / "react_frontend" / "dist"
-if _DIST.exists():
-    if (_DIST / "assets").exists():
-        app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
-
-    @app.get("/", include_in_schema=False)
-    @app.get("/{spa_path:path}", include_in_schema=False)
-    def spa_fallback(spa_path: str = ""):
-        """Serve index.html for all non-API paths so React Router works.
-        API routes are registered before this catch-all so they take priority.
-        """
-        index = _DIST / "index.html"
-        if index.exists():
-            return _FileResponse(str(index))
-        return {"error": "Frontend not built — run: cd react_frontend && npm run build"}
 
 _cf_cache: dict = {}
 
@@ -1716,3 +1702,19 @@ def licence_update_user(user_id: int, body: dict = Body(...)):
         raise HTTPException(500, str(e))
     finally:
         db.close()
+
+# ── Serve React SPA — registered LAST so all API routes take priority ─────────
+if _DIST.exists():
+    if (_DIST / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/{spa_path:path}", include_in_schema=False)
+    def spa_fallback(spa_path: str = ""):
+        """Catch-all: serve index.html so React Router handles client-side routes.
+        Registered last so every API endpoint takes priority over this fallback.
+        """
+        index = _DIST / "index.html"
+        if index.exists():
+            return _FileResponse(str(index))
+        return {"error": "Frontend not built"}
