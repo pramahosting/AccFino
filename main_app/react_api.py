@@ -25,6 +25,9 @@ logger = logging.getLogger("accfino")
 from db_app.api import auth as db_auth
 from db_app.api import transactions as db_transactions
 from db_app.api import invoice as db_invoice
+from db_app.api import password_reset as db_password_reset
+from db_app.models.licence import LicenceRecord
+from db_app.models.password_reset_token import PasswordResetToken
 
 from backend.reconciliation.bank_normalizer import normalize_transactions, BANK_PRESETS
 from backend.reconciliation import classifier as rec_classifier
@@ -72,42 +75,37 @@ try:
 except Exception:
     OB_AVAILABLE = False
 
-# ── api_app carries all routes, mounted at /api on the root app ──────────────
-# Dev:  Vite proxy rewrites /api → :8001 (strips prefix)
-# Prod: built React SPA is served by this same process; all XHR goes to /api/…
-api_app = FastAPI(title="Accfino API", version="2.0")
-
-_extra_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
-api_app.add_middleware(CORSMiddleware,
+app = FastAPI(title="Accfino API", version="2.0")
+app.add_middleware(CORSMiddleware,
     allow_origins=["http://localhost:3000","http://127.0.0.1:3000",
-                   "http://localhost:5173","http://127.0.0.1:5173"] + _extra_origins,
+                   "http://localhost:5173","http://127.0.0.1:5173"],
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-api_app.include_router(db_auth.router,         prefix="/auth",        tags=["auth"])
-api_app.include_router(db_transactions.router, prefix="/transactions", tags=["transactions"])
-api_app.include_router(db_invoice.router,      prefix="/invoice",      tags=["invoice"])
+from fastapi.responses import JSONResponse
+from fastapi.requests  import Request as _Request
 
-# Root app: mounts the API sub-app and serves the React SPA
-app = FastAPI(title="Accfino", docs_url=None, redoc_url=None)
-app.mount("/api", api_app)
+@app.exception_handler(Exception)
+async def global_exception_handler(request: _Request, exc: Exception):
+    """Catch any unhandled exception and return JSON instead of crashing."""
+    import traceback, logging
+    logging.getLogger("accfino").error(f"Unhandled: {exc}\n{traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Server error: {type(exc).__name__}: {str(exc)[:500]}"}
+    )
 
-# ── Serve built React SPA in production ──────────────────────────────────────
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse as _FileResponse
+app.include_router(db_auth.router,           prefix="/auth",        tags=["auth"])
+app.include_router(db_transactions.router,   prefix="/transactions", tags=["transactions"])
+app.include_router(db_invoice.router,        prefix="/invoice",      tags=["invoice"])
+app.include_router(db_password_reset.router, prefix="/auth",         tags=["auth"])
 
-_DIST = ROOT.parent / "react_frontend" / "dist"
-if _DIST.exists():
-    if (_DIST / "assets").exists():
-        app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
-
-    @app.get("/", include_in_schema=False)
-    @app.get("/{spa_path:path}", include_in_schema=False)
-    def spa_fallback(spa_path: str = ""):
-        """Return index.html for all non-API paths so React Router works."""
-        index = _DIST / "index.html"
-        if index.exists():
-            return _FileResponse(str(index))
-        return {"error": "Frontend not built — run: cd react_frontend && npm run build"}
+# Ensure new tables exist (safe on existing DBs)
+from db_app.database import engine as _db_engine
+try:
+    LicenceRecord.__table__.create(bind=_db_engine, checkfirst=True)
+    PasswordResetToken.__table__.create(bind=_db_engine, checkfirst=True)
+except Exception:
+    pass
 
 _cf_cache: dict = {}
 
@@ -248,16 +246,16 @@ def _build_monthly_summary(df: pd.DataFrame) -> list:
 # ══════════════════════════════════════════════════════════════════════════════
 # BANKS / GST
 # ══════════════════════════════════════════════════════════════════════════════
-@api_app.get("/banks")
+@app.get("/banks")
 def get_banks(): return sorted(BANK_PRESETS.keys())
 
-@api_app.get("/gst/categories")
+@app.get("/gst/categories")
 def get_gst_cats(): return GST_CATEGORY_OPTIONS
 
-@api_app.get("/gl/accounts")
+@app.get("/gl/accounts")
 def get_gl_accounts(): return CATEGORY_ENUM + [""]
 
-@api_app.get("/gst/calculate")
+@app.get("/gst/calculate")
 def calc_gst(debit: float=0, credit: float=0, category: str="Unknown"):
     return {"gst": calculate_gst_value(debit, credit, category)}
 
@@ -308,7 +306,7 @@ class SaveSessReq(BaseModel):
     session_id: str; username: str; transactions: list
     pending_changes: dict = {}; page_number: int = 1
 
-@api_app.get("/sessions")
+@app.get("/sessions")
 def list_sessions(username: str):
     username = norm_username(username)
     ss = session_manager.get_all_sessions(username)
@@ -366,11 +364,11 @@ def list_sessions(username: str):
             s["accounts_meta"] = []; s["account_count"] = 0; s["file_count"] = 0
     return ss
 
-@api_app.delete("/sessions/{username}/{sid}")
+@app.delete("/sessions/{username}/{sid}")
 def del_session(username: str, sid: str):
     return {"ok": session_manager.delete_session(norm_username(username), sid)}
 
-@api_app.get("/sessions/{username}/{sid}")
+@app.get("/sessions/{username}/{sid}")
 def get_session(username: str, sid: str):
     username = norm_username(username)
     d = session_manager.load_session_data(username, sid)
@@ -398,7 +396,7 @@ def get_session(username: str, sid: str):
         "pending_changes": {str(k): v for k, v in d.get("pending_changes", {}).items()},
     }
 
-@api_app.post("/sessions/save")
+@app.post("/sessions/save")
 def save_session(body: SaveSessReq):
     username = norm_username(body.username)
     df = pd.DataFrame(body.transactions) if body.transactions else pd.DataFrame()
@@ -413,7 +411,7 @@ def save_session(body: SaveSessReq):
 # ══════════════════════════════════════════════════════════════════════════════
 # RECONCILIATION
 # ══════════════════════════════════════════════════════════════════════════════
-@api_app.post("/reconcile/process")
+@app.post("/reconcile/process")
 async def reconcile_process(
     files: List[UploadFile]=File(...),
     bank_names: List[str]=Form(...),
@@ -567,7 +565,7 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
 class ClassifyReq(BaseModel):
     session_id: str; username: str
 
-@api_app.post("/reconcile/classify")
+@app.post("/reconcile/classify")
 def reconcile_classify(body: ClassifyReq):
     username = norm_username(body.username)
     d = session_manager.load_session_data(username, body.session_id)
@@ -584,7 +582,7 @@ def reconcile_classify(body: ClassifyReq):
 class ExportReq(BaseModel):
     transactions: list
 
-@api_app.post("/reconcile/export")
+@app.post("/reconcile/export")
 def reconcile_export(body: ExportReq):
     df = pd.DataFrame(body.transactions)
     # Rename lowercase keys to Title Case for exporter
@@ -601,7 +599,7 @@ def reconcile_export(body: ExportReq):
 # ══════════════════════════════════════════════════════════════════════════════
 # DASHBOARD STATS  — aggregates from ALL session pickles (no Save-to-DB needed)
 # ══════════════════════════════════════════════════════════════════════════════
-@api_app.get("/dashboard/stats")
+@app.get("/dashboard/stats")
 def dashboard_stats(username: str):
     """
     Aggregate totals across ALL reconciliation sessions for this user.
@@ -655,7 +653,7 @@ def dashboard_stats(username: str):
 # ══════════════════════════════════════════════════════════════════════════════
 # TRADING
 # ══════════════════════════════════════════════════════════════════════════════
-@api_app.post("/trading/analyze")
+@app.post("/trading/analyze")
 async def trading_analyze(file: UploadFile=File(...)):
     import tempfile, os as _os
     raw = await file.read()
@@ -685,7 +683,7 @@ async def trading_analyze(file: UploadFile=File(...)):
     return {"trades": sdf(trades_df), "tax": sdf(tax_df),
             "per_symbol": sdf(per_symbol_df), "count": len(trades_df)}
 
-@api_app.post("/trading/export")
+@app.post("/trading/export")
 async def trading_export(file: UploadFile=File(...)):
     import tempfile, os as _os
     raw = await file.read()
@@ -703,7 +701,7 @@ async def trading_export(file: UploadFile=File(...)):
 # ══════════════════════════════════════════════════════════════════════════════
 # CASH FLOW
 # ══════════════════════════════════════════════════════════════════════════════
-@api_app.post("/cashflow/detect")
+@app.post("/cashflow/detect")
 async def cf_detect(file: UploadFile=File(...)):
     df = pd.read_csv(io.BytesIO(await file.read()))
     detected = auto_detect_columns(df)
@@ -715,7 +713,7 @@ async def cf_detect(file: UploadFile=File(...)):
 class CfRunReq(BaseModel):
     rows: list; col_map: dict
 
-@api_app.post("/cashflow/run")
+@app.post("/cashflow/run")
 def cf_run(body: CfRunReq):
     if not body.rows: raise HTTPException(400, "No data")
     df_raw  = pd.DataFrame(body.rows)
@@ -739,7 +737,7 @@ def cf_run(body: CfRunReq):
             "leaderboard": lb.to_dict(orient="records"),
             "leaderboard_plot_b64": lb_img}
 
-@api_app.post("/cashflow/predict/{run_id}")
+@app.post("/cashflow/predict/{run_id}")
 def cf_predict(run_id: str, model_name: str=Body(..., embed=True)):
     cache = _cf_cache.get(run_id)
     if not cache: raise HTTPException(404, "Run expired — please re-run pipeline")
@@ -758,19 +756,19 @@ def cf_predict(run_id: str, model_name: str=Body(..., embed=True)):
 # ══════════════════════════════════════════════════════════════════════════════
 SAMPLE_CSV = "date,description,amount,category,gst_category\n15/09/2025,BUNNINGS,65.38,Expense,GST on Expenses\n16/08/2025,CLIENT PAYMENT ABC PTY,339.55,Revenue,GST on Income\n19/08/2025,AMAZON,97.98,Expense,GST on Expenses\n1/10/2025,SUPPLIER DIRECT COST,566.31,Direct Costs,GST on Expenses\n"
 
-@api_app.get("/ml/status")
+@app.get("/ml/status")
 def ml_status():
     return {
         "category_model": (DEFAULT_MODEL_DIR / "category_classifier.pkl").exists(),
         "gst_model": (DEFAULT_MODEL_DIR / "gst_category_classifier.pkl").exists(),
     }
 
-@api_app.get("/ml/sample-csv")
+@app.get("/ml/sample-csv")
 def ml_sample():
     return Response(content=SAMPLE_CSV, media_type="text/csv",
                     headers={"Content-Disposition": "attachment; filename=sample_training_data.csv"})
 
-@api_app.post("/ml/train")
+@app.post("/ml/train")
 async def ml_train(file: UploadFile=File(...)):
     try: df = pd.read_csv(io.BytesIO(await file.read()))
     except Exception as e: raise HTTPException(400, f"Cannot read CSV: {e}")
@@ -799,10 +797,10 @@ def _load_rdr():
 def _save_rdr(rules):
     RDR_PATH.write_text(json.dumps(rules, indent=2, ensure_ascii=False), "utf-8")
 
-@api_app.get("/rdr/rules")
+@app.get("/rdr/rules")
 def rdr_list(): return _load_rdr()
 
-@api_app.post("/rdr/rules")
+@app.post("/rdr/rules")
 def rdr_create(rule: dict=Body(...)):
     rules = _load_rdr()
     rule.setdefault("id", f"rule_{int(datetime.now().timestamp()*1000)}")
@@ -813,7 +811,7 @@ def rdr_create(rule: dict=Body(...)):
     load_rdr_rules(force_reload=True)
     return rule
 
-@api_app.put("/rdr/rules/{rule_id}")
+@app.put("/rdr/rules/{rule_id}")
 def rdr_update(rule_id: str, rule: dict=Body(...)):
     rules = _load_rdr()
     for i, r in enumerate(rules):
@@ -823,13 +821,13 @@ def rdr_update(rule_id: str, rule: dict=Body(...)):
             return rules[i]
     raise HTTPException(404, "Rule not found")
 
-@api_app.delete("/rdr/rules/{rule_id}")
+@app.delete("/rdr/rules/{rule_id}")
 def rdr_delete(rule_id: str):
     rules = [r for r in _load_rdr() if r.get("id") != rule_id]
     _save_rdr(rules); load_rdr_rules(force_reload=True)
     return {"ok": True}
 
-@api_app.post("/rdr/test")
+@app.post("/rdr/test")
 def rdr_test(body: dict=Body(...)):
     import re
     desc   = str(body.get("description", ""))
@@ -849,13 +847,13 @@ def rdr_test(body: dict=Body(...)):
 # ══════════════════════════════════════════════════════════════════════════════
 # INVOICE EXTRACTOR
 # ══════════════════════════════════════════════════════════════════════════════
-@api_app.get("/invoice-extractor/status")
+@app.get("/invoice-extractor/status")
 def ie_status():
     if not IE_AVAILABLE: return {"available": False, "reason": "Module not installed"}
     try: return {"available": True, **get_dependency_status()}
     except Exception as e: return {"available": False, "reason": str(e)}
 
-@api_app.post("/invoice-extractor/process")
+@app.post("/invoice-extractor/process")
 async def ie_process(
     files: List[UploadFile]=File(...),
     tesseract_cmd: str=Form(""), poppler_bin: str=Form(""),
@@ -892,12 +890,12 @@ async def ie_process(
 # ══════════════════════════════════════════════════════════════════════════════
 # OPEN BANKING
 # ══════════════════════════════════════════════════════════════════════════════
-@api_app.get("/openbanking/status")
+@app.get("/openbanking/status")
 def ob_status():
     configured = bool(os.getenv("BASIQ_API_KEY"))
     return {"available": OB_AVAILABLE, "configured": configured}
 
-@api_app.post("/openbanking/create-user")
+@app.post("/openbanking/create-user")
 def ob_create_user(body: dict=Body(...)):
     if not OB_AVAILABLE: raise HTTPException(503, "Open Banking not available")
     try:
@@ -907,7 +905,7 @@ def ob_create_user(body: dict=Body(...)):
             body.get("first_name",""), body.get("last_name",""))
     except Exception as e: raise HTTPException(500, str(e))
 
-@api_app.get("/openbanking/accounts/{user_id}")
+@app.get("/openbanking/accounts/{user_id}")
 def ob_accounts(user_id: str):
     if not OB_AVAILABLE: raise HTTPException(503, "Open Banking not available")
     try:
@@ -915,7 +913,7 @@ def ob_accounts(user_id: str):
         return ob_job.get_accounts(token, user_id)
     except Exception as e: raise HTTPException(500, str(e))
 
-@api_app.get("/openbanking/transactions/{user_id}")
+@app.get("/openbanking/transactions/{user_id}")
 def ob_transactions(user_id: str):
     if not OB_AVAILABLE: raise HTTPException(503, "Open Banking not available")
     try:
@@ -958,7 +956,7 @@ def _stocks_clean(df) -> list:
     return d.to_dict(orient="records")
 
 
-@api_app.get("/stocks/status")
+@app.get("/stocks/status")
 def stocks_status():
     return {
         "available":   _trading_module_ok,
@@ -967,7 +965,7 @@ def stocks_status():
     }
 
 
-@api_app.post("/stocks/analyze")
+@app.post("/stocks/analyze")
 async def stocks_analyze(
     files:          List[UploadFile] = File(...),
     financial_year: str              = Form("2024-25"),
@@ -1031,7 +1029,7 @@ async def stocks_analyze(
         _shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-@api_app.post("/stocks/export")
+@app.post("/stocks/export")
 async def stocks_export(
     files:          List[UploadFile] = File(...),
     financial_year: str              = Form("2024-25"),
@@ -1081,7 +1079,7 @@ async def stocks_export(
 # ══════════════════════════════════════════════════════════════════════════════
 # OPEN BANKING → CSV (normalised, ready for reconciliation)
 # ══════════════════════════════════════════════════════════════════════════════
-@api_app.post("/openbanking/fetch-and-normalise")
+@app.post("/openbanking/fetch-and-normalise")
 def ob_fetch_normalise(body: dict = Body(...)):
     """
     Fetch transactions from Open Banking, save as normalised CSV,
@@ -1120,3 +1118,556 @@ def ob_fetch_normalise(body: dict = Body(...)):
     except Exception as e:
         raise HTTPException(500, str(e))
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FILE MANAGER — browse main_app/data, read/write files & SQLite tables
+# ══════════════════════════════════════════════════════════════════════════════
+import csv        as _csv
+import math       as _math
+import pickle     as _pickle
+import sqlite3    as _sqlite3
+from urllib.parse import unquote as _unquote
+import pandas     as _pd_fm
+
+# _DATA_ROOT is resolved once at import time — absolute, immune to cwd changes
+_DATA_ROOT = Path(__file__).parent.joinpath("data").resolve()
+
+
+def _node_type(p: Path) -> str:
+    if p.is_dir():                              return "folder"
+    if p.suffix.lower() in (".db", ".sqlite"): return "database"
+    return "file"
+
+
+def _safe_val(v) -> str:
+    """Convert any Python value to a clean, JSON-safe string."""
+    try:
+        if v is None:
+            return ""
+        if isinstance(v, float) and (_math.isnan(v) or _math.isinf(v)):
+            return ""
+        s = str(v)
+        # Strip null bytes and non-printable control chars (keep newlines as space)
+        s = "".join(c if c >= " " or c in "\t" else " " for c in s)
+        return s[:500]
+    except Exception:
+        return ""
+
+
+def _safe_rows(raw: list, cols: list) -> list:
+    """Return list of {col: safe_str} dicts — every value is JSON-safe."""
+    str_cols = [str(c) for c in cols]
+    result   = []
+    for row in raw:
+        if isinstance(row, dict):
+            result.append({c: _safe_val(row.get(orig)) for c, orig in zip(str_cols, cols)})
+        else:
+            result.append({c: _safe_val(getattr(row, str(orig), "")) for c, orig in zip(str_cols, cols)})
+    return result
+
+
+def _resolve_path(raw: str) -> Path:
+    """
+    Decode a URL-encoded relative path, normalise separators,
+    resolve to an absolute path inside _DATA_ROOT.
+    Raises HTTPException 403 if path escapes DATA_ROOT.
+    Raises HTTPException 404 if path does not exist.
+    """
+    # 1. URL-decode (%20 → space, %2F → /, etc.)
+    decoded = _unquote(raw or "")
+    # 2. Normalise: forward slashes only, no leading slash
+    clean   = decoded.replace("\\", "/").replace("\\\\", "/").strip("/")
+    if not clean:
+        raise HTTPException(400, "Empty path")
+    # 3. Resolve to absolute
+    target  = (_DATA_ROOT / clean).resolve()
+    # 4. Security: must stay inside DATA_ROOT
+    try:
+        target.relative_to(_DATA_ROOT)
+    except ValueError:
+        raise HTTPException(403, f"Access denied: {clean}")
+    return target
+
+
+# ── Tree ──────────────────────────────────────────────────────────────────────
+
+@app.get("/filemanager/tree")
+def fm_tree():
+    """Return full recursive tree of DATA_ROOT for the file manager."""
+    def _walk(base: Path, rel: str) -> list:
+        items = []
+        try:
+            for child in sorted(base.iterdir()):
+                rel_path = f"{rel}/{child.name}" if rel else child.name
+                node = {
+                    "name": child.name,
+                    "path": rel_path,          # forward-slash relative path
+                    "type": _node_type(child),
+                }
+                if child.is_dir():
+                    node["children"] = _walk(child, rel_path)
+                elif child.suffix.lower() in (".db", ".sqlite"):
+                    try:
+                        cx = _sqlite3.connect(str(child))
+                        node["tables"] = [
+                            r[0] for r in cx.execute(
+                                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+                            ).fetchall()
+                        ]
+                        cx.close()
+                    except Exception:
+                        node["tables"] = []
+                items.append(node)
+        except PermissionError:
+            pass
+        return items
+
+    if not _DATA_ROOT.exists():
+        return {"tree": [], "data_root": str(_DATA_ROOT), "error": "DATA_ROOT does not exist"}
+
+    return {"tree": _walk(_DATA_ROOT, ""), "data_root": str(_DATA_ROOT)}
+
+
+# ── Read ──────────────────────────────────────────────────────────────────────
+
+@app.get("/filemanager/read/{file_path:path}")
+def fm_read(file_path: str, table: str = ""):
+    """
+    Read a file or SQLite table and return {columns, rows, source}.
+    file_path is a URL-encoded, forward-slash relative path from DATA_ROOT.
+    All returned values are plain JSON-safe strings.
+    """
+    target = _resolve_path(file_path)
+
+    if not target.exists():
+        raise HTTPException(404, f"File not found: {file_path!r} → {target}")
+
+    ext = target.suffix.lower()
+
+    # ── SQLite table ──────────────────────────────────────────────────────────
+    if table and ext in (".db", ".sqlite"):
+        try:
+            cx   = _sqlite3.connect(str(target))
+            cols = [r[1] for r in cx.execute(f"PRAGMA table_info('{table}')").fetchall()]
+            if not cols:
+                cx.close()
+                raise HTTPException(404, f"Table {table!r} not found in {target.name}")
+            raw  = [dict(zip(cols, row)) for row in
+                    cx.execute(f'SELECT * FROM "{table}" LIMIT 1000').fetchall()]
+            cx.close()
+            return {"columns": cols, "rows": _safe_rows(raw, cols),
+                    "source": f"sqlite · {len(raw)} rows"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(500, f"SQLite error: {e}")
+
+    # ── CSV — return raw lines preserving original format ───────────────────
+    if ext == ".csv":
+        try:
+            # Read as binary then decode — handles BOM, CRLF, encoding issues
+            raw_bytes = target.read_bytes()
+            # Strip BOM if present
+            if raw_bytes.startswith(b"\xef\xbb\xbf"):
+                raw_bytes = raw_bytes[3:]
+            text = raw_bytes.decode("utf-8", errors="replace")
+            # Normalise line endings — remove \r to prevent HTTP response corruption
+            text = text.replace("\r\n", "\n").replace("\r", "\n")
+            lines = text.splitlines()
+            # Strip trailing empty lines
+            while lines and not lines[-1].strip():
+                lines.pop()
+            safe_lines = [_safe_val(ln) for ln in lines[:2000]]
+            return {
+                "columns": ["line"],
+                "rows":    [{"line": ln} for ln in safe_lines],
+                "source":  f"csv · {len(safe_lines)} lines",
+                "display": "raw",
+            }
+        except Exception as e:
+            raise HTTPException(500, f"CSV read error: {e}")
+
+    # ── JSON — always tabular ─────────────────────────────────────────────────
+    if ext in (".json", ".jsonl"):
+        try:
+            import json as _j
+            raw_bytes = target.read_bytes()
+            if raw_bytes.startswith(b"\xef\xbb\xbf"):
+                raw_bytes = raw_bytes[3:]
+            text = raw_bytes.decode("utf-8", errors="replace")
+            if ext == ".jsonl":
+                items = [_j.loads(ln) for ln in text.splitlines() if ln.strip()]
+            else:
+                items = _j.loads(text)
+            if isinstance(items, list) and items and isinstance(items[0], dict):
+                # Collect all keys across all rows (some rows may have extra keys)
+                all_keys = list(dict.fromkeys(k for row in items[:500] for k in row))
+                cols = [str(c) for c in all_keys]
+                return {"columns": cols, "rows": _safe_rows(items[:500], all_keys),
+                        "source": f"json · {len(items)} rows"}
+            elif isinstance(items, dict):
+                rows = [{"key": _safe_val(k), "value": _safe_val(v)}
+                        for k, v in list(items.items())[:500]]
+                return {"columns": ["key", "value"], "rows": rows,
+                        "source": f"json · {len(rows)} entries"}
+            elif isinstance(items, list):
+                rows = [{"#": str(i+1), "value": _safe_val(v)}
+                        for i, v in enumerate(items[:500])]
+                return {"columns": ["#", "value"], "rows": rows,
+                        "source": f"json · {len(items)} items"}
+            else:
+                return {"columns": ["value"], "rows": [{"value": _safe_val(items)}],
+                        "source": "json"}
+        except Exception as e:
+            raise HTTPException(500, f"JSON read error: {e}")
+
+    # ── Pickle ────────────────────────────────────────────────────────────────
+    if ext in (".pkl", ".pickle"):
+        try:
+            obj = _pd_fm.read_pickle(str(target))
+            if isinstance(obj, _pd_fm.DataFrame):
+                df   = obj.head(500)
+                cols = [str(c) for c in df.columns]
+                rows = []
+                for _, row in df.iterrows():
+                    rows.append({c: _safe_val(v) for c, v in zip(cols, row)})
+                return {"columns": cols, "rows": rows,
+                        "source": f"pickle · DataFrame {len(df)}r × {len(cols)}c"}
+            elif isinstance(obj, dict):
+                rows = [{"key": _safe_val(k), "value": _safe_val(v)}
+                        for k, v in list(obj.items())[:500]]
+                return {"columns": ["key", "value"], "rows": rows, "source": "pickle · dict"}
+            elif isinstance(obj, list):
+                if obj and isinstance(obj[0], dict):
+                    cols = [str(k) for k in obj[0].keys()]
+                    return {"columns": cols, "rows": _safe_rows(obj[:500], cols), "source": "pickle · list"}
+                rows = [{"#": str(i), "value": _safe_val(v)} for i, v in enumerate(obj[:500])]
+                return {"columns": ["#", "value"], "rows": rows, "source": "pickle · list"}
+            else:
+                return {"columns": ["type", "repr"],
+                        "rows": [{"type": type(obj).__name__, "repr": _safe_val(obj)[:2000]}],
+                        "source": "pickle"}
+        except Exception as e:
+            return {"columns": ["error"], "rows": [{"error": f"Cannot read pickle: {e}"}],
+                    "source": "pickle · error"}
+
+    # ── PDF ───────────────────────────────────────────────────────────────────
+    # Run PDF extraction in a separate subprocess so any crash cannot
+    # kill the uvicorn worker process.
+    if ext == ".pdf":
+        import subprocess, sys, json as _json_pdf
+        script = f"""
+import sys, json, traceback
+try:
+    import pdfplumber
+    rows = []
+    n_pages = 0
+    with pdfplumber.open({str(target)!r}) as pdf:
+        n_pages = len(pdf.pages)
+        for pnum, page in enumerate(pdf.pages[:50], start=1):
+            try:
+                txt = page.extract_text() or ""
+            except Exception:
+                txt = ""
+            for line in txt.splitlines():
+                line = line.strip()
+                if line:
+                    rows.append({{"page": str(pnum), "text": line[:400]}})
+    if not rows:
+        rows = [{{"page": "-", "text": "(No extractable text — may be scanned PDF)"}}]
+    print(json.dumps({{"ok": True, "rows": rows[:500], "n_pages": n_pages}}))
+except Exception as e:
+    print(json.dumps({{"ok": False, "error": str(e)[:300]}}))
+"""
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True, text=True, timeout=30
+            )
+            out = result.stdout.strip()
+            if out:
+                data = _json_pdf.loads(out)
+                if data.get("ok"):
+                    return {
+                        "columns": ["page", "text"],
+                        "rows":    data["rows"],
+                        "source":  f"pdf · {data['n_pages']} page(s) · {target.stat().st_size // 1024} KB",
+                        "display": "raw",
+                    }
+                else:
+                    return {
+                        "columns": ["error"],
+                        "rows":    [{"error": data.get("error", "Unknown PDF error")}],
+                        "source":  "pdf · error",
+                    }
+        except subprocess.TimeoutExpired:
+            return {"columns": ["error"], "rows": [{"error": "PDF processing timed out (30s)"}], "source": "pdf"}
+        except Exception as e:
+            pass
+
+        # Fallback: just show file info
+        size_kb = target.stat().st_size // 1024
+        return {
+            "columns": ["property", "value"],
+            "rows": [
+                {"property": "filename", "value": target.name},
+                {"property": "size",     "value": f"{size_kb} KB"},
+                {"property": "note",     "value": "PDF text extraction unavailable"},
+            ],
+            "source": "pdf · info only",
+        }
+
+    # ── Plain text fallback ───────────────────────────────────────────────────
+    try:
+        raw_bytes = target.read_bytes()
+        if raw_bytes.startswith(b"\xef\xbb\xbf"):
+            raw_bytes = raw_bytes[3:]
+        text  = raw_bytes.decode("utf-8", errors="replace")
+        text  = text.replace("\r\n", "\n").replace("\r", "\n")
+        lines = text.splitlines()[:1000]
+        rows  = [{"#": str(i + 1), "line": _safe_val(ln)} for i, ln in enumerate(lines)]
+        return {"columns": ["#", "line"], "rows": rows,
+                "source": f"text · {len(rows)} lines"}
+    except Exception as e:
+        raise HTTPException(500, f"Cannot read file: {e}")
+
+
+# ── Save ──────────────────────────────────────────────────────────────────────
+
+@app.post("/filemanager/save")
+def fm_save(body: dict = Body(...)):
+    """Save edited rows back to a CSV file or SQLite table."""
+    path   = body.get("path",   "")
+    table  = body.get("table",  "")
+    rows   = body.get("rows",   [])
+    source = body.get("source", "")
+
+    target = _resolve_path(path)
+
+    if "sqlite" in source and table:
+        try:
+            cx   = _sqlite3.connect(str(target))
+            cols = [r[1] for r in cx.execute(f"PRAGMA table_info('{table}')").fetchall()]
+            cx.execute(f'DELETE FROM "{table}"')
+            for row in rows:
+                vals = [row.get(c) for c in cols]
+                cx.execute(
+                    f'INSERT INTO "{table}" ({",".join(cols)}) VALUES ({",".join(["?"]*len(cols))})',
+                    vals
+                )
+            cx.commit(); cx.close()
+            return {"ok": True, "saved": len(rows)}
+        except Exception as e:
+            raise HTTPException(500, f"SQLite save error: {e}")
+
+    if "csv" in source or target.suffix.lower() == ".csv":
+        if not rows:
+            return {"ok": True, "saved": 0}
+        cols = list(rows[0].keys())
+        with open(target, "w", newline="", encoding="utf-8") as f:
+            w = _csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
+            w.writeheader(); w.writerows(rows)
+        return {"ok": True, "saved": len(rows)}
+
+    raise HTTPException(400, f"Save not supported for: {source or target.suffix}")
+
+
+# ── Delete row ────────────────────────────────────────────────────────────────
+
+@app.delete("/filemanager/delete-row")
+def fm_delete_row(body: dict = Body(...)):
+    """Delete a single row from a SQLite table by primary key."""
+    path   = body.get("path",   "")
+    table  = body.get("table",  "")
+    row_id = body.get("row_id")
+    pk_col = body.get("pk_col", "id")
+
+    target = _resolve_path(path)
+
+    if not table:
+        raise HTTPException(400, "table is required for row delete")
+    try:
+        cx = _sqlite3.connect(str(target))
+        cx.execute(f'DELETE FROM "{table}" WHERE "{pk_col}" = ?', (row_id,))
+        cx.commit(); cx.close()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(500, f"Delete error: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LICENCE MANAGEMENT
+# ══════════════════════════════════════════════════════════════════════════════
+from db_app.database import SessionLocal as _SL
+from db_app.models.user import User as _User
+
+
+def _get_db_session():
+    db = _SL()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# All module keys available for licence assignment
+ALL_MODULES = [
+    "dashboard", "reconciliation", "trading",
+    "cash-flow", "invoice", "admin", "file-manager", "licence"
+]
+
+@app.get("/licence/list")
+def licence_list():
+    """All users with their licence data including module permissions."""
+    import json as _json
+    db = _SL()
+    try:
+        # Ensure modules column exists (migration for existing DBs)
+        try:
+            import sqlite3 as _s3
+            from db_app.database import _DB_FILE as _dbf
+            _dbf_str = str(_dbf)
+            cx = _s3.connect(_dbf_str)
+            cols = [r[1] for r in cx.execute("PRAGMA table_info(licence_records)").fetchall()]
+            if "modules" not in cols:
+                cx.execute("ALTER TABLE licence_records ADD COLUMN modules VARCHAR(1000) DEFAULT ''")
+                cx.commit()
+            cx.close()
+        except Exception as _me:
+            print(f"[licence] migration warning: {_me}")
+
+        users = db.query(_User).all()
+        result = []
+        for u in users:
+            lic = db.query(LicenceRecord).filter(LicenceRecord.user_id == u.id).first()
+            # Parse modules — default: all modules enabled
+            raw_mods = (lic.modules if lic and lic.modules else "")
+            try:
+                mods = _json.loads(raw_mods) if raw_mods else ALL_MODULES[:]
+            except Exception:
+                mods = ALL_MODULES[:]
+            result.append({
+                "user_id":      u.id,
+                "username":     u.username,
+                "full_name":    u.full_name or "",
+                "email":        u.email,
+                "roles":        [r.name for r in u.roles],
+                "licence_id":   lic.id           if lic else None,
+                "licence_type": lic.licence_type if lic else "demo",
+                "payment_mode": lic.payment_mode if lic else "",
+                "start_date":   lic.start_date   if lic else "",
+                "end_date":     lic.end_date     if lic else "",
+                "notes":        lic.notes        if lic else "",
+                "modules":      mods,
+            })
+        return result
+    finally:
+        db.close()
+
+
+@app.get("/licence/my-modules")
+def my_modules(user_id: int):
+    """Return list of module keys the user is allowed to access."""
+    import json as _json
+    db = _SL()
+    try:
+        user = db.query(_User).filter(_User.id == user_id).first()
+        if not user:
+            return {"modules": ALL_MODULES}
+        # Admins always get all modules
+        if any(r.name == "admin" for r in user.roles):
+            return {"modules": ALL_MODULES}
+        lic = db.query(LicenceRecord).filter(LicenceRecord.user_id == user_id).first()
+        if not lic or not lic.modules:
+            return {"modules": ALL_MODULES}
+        try:
+            mods = _json.loads(lic.modules)
+        except Exception:
+            mods = ALL_MODULES[:]
+        return {"modules": mods}
+    finally:
+        db.close()
+
+
+@app.post("/licence/save")
+def licence_save(body: dict = Body(...)):
+    """Create or update a licence record for a user including module permissions."""
+    import json as _json
+    db = _SL()
+    try:
+        user_id = body.get("user_id")
+        if not user_id:
+            raise HTTPException(400, "user_id required")
+        lic = db.query(LicenceRecord).filter(LicenceRecord.user_id == user_id).first()
+        if not lic:
+            lic = LicenceRecord(user_id=user_id)
+            db.add(lic)
+        lic.licence_type = body.get("licence_type", "demo")
+        lic.payment_mode = body.get("payment_mode", "")
+        lic.start_date   = body.get("start_date",   "")
+        lic.end_date     = body.get("end_date",     "")
+        lic.notes        = body.get("notes",        "")
+        mods = body.get("modules", ALL_MODULES)
+        lic.modules      = _json.dumps(mods)
+        db.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        db.close()
+
+
+@app.delete("/licence/user/{user_id}")
+def licence_delete_user(user_id: int):
+    """Delete a user and their licence record.
+    SQLite does not enforce FK cascades unless PRAGMA foreign_keys=ON,
+    so we manually delete related rows first.
+    """
+    import sqlite3 as _s3
+    from db_app.database import _DB_FILE as _dbf
+    try:
+        cx = _s3.connect(str(_dbf))
+        cx.execute("PRAGMA foreign_keys = ON")
+        # Check user exists
+        row = cx.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
+        if not row:
+            cx.close()
+            raise HTTPException(404, "User not found")
+        # Delete related rows in correct order
+        cx.execute("DELETE FROM user_roles WHERE user_id=?",        (user_id,))
+        cx.execute("DELETE FROM licence_records WHERE user_id=?",   (user_id,))
+        cx.execute("DELETE FROM password_reset_tokens WHERE user_id=?", (user_id,))
+        cx.execute("DELETE FROM transactions WHERE user_id=?",      (user_id,))
+        cx.execute("DELETE FROM users WHERE id=?",                   (user_id,))
+        cx.commit()
+        cx.close()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Delete failed: {e}")
+
+
+@app.patch("/licence/user/{user_id}")
+def licence_update_user(user_id: int, body: dict = Body(...)):
+    """Update user details (username, email, full_name)."""
+    db = _SL()
+    try:
+        user = db.query(_User).filter(_User.id == user_id).first()
+        if not user:
+            raise HTTPException(404, "User not found")
+        if "username"  in body: user.username  = body["username"]
+        if "email"     in body: user.email     = body["email"]
+        if "full_name" in body: user.full_name = body["full_name"]
+        db.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        db.close()
