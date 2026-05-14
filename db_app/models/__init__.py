@@ -1,4 +1,6 @@
 from .permission import Permission
+from .licence import LicenceRecord
+from .password_reset_token import PasswordResetToken
 from .role import Role
 from .transaction import Transaction
 from .user import User
@@ -13,5 +15,6 @@ __all__ = [
 	"Customer",
 	"Invoice",
 	"InvoiceItem",
+	"LicenceRecord",
+	"PasswordResetToken",
 ]
-
