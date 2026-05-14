@@ -94,10 +94,35 @@ async def global_exception_handler(request: _Request, exc: Exception):
         content={"detail": f"Server error: {type(exc).__name__}: {str(exc)[:500]}"}
     )
 
+# Register routes both with and without /api prefix
+# Without /api: for local dev (Vite proxy strips /api before hitting backend)
+# With /api:    for production (React calls /api/... directly)
 app.include_router(db_auth.router,           prefix="/auth",        tags=["auth"])
 app.include_router(db_transactions.router,   prefix="/transactions", tags=["transactions"])
 app.include_router(db_invoice.router,        prefix="/invoice",      tags=["invoice"])
 app.include_router(db_password_reset.router, prefix="/auth",         tags=["auth"])
+
+# ── Strip /api prefix middleware ─────────────────────────────────────────────
+# In production the React frontend calls /api/banks, /api/sessions etc.
+# This middleware strips the /api prefix before FastAPI processes the request,
+# so all routes work with or without the /api prefix.
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as _SReq
+from starlette.responses import Response as _SResp
+
+class StripApiPrefix(BaseHTTPMiddleware):
+    async def dispatch(self, request: _SReq, call_next):
+        scope = request.scope
+        path  = scope.get("path", "")
+        if path.startswith("/api/"):
+            scope["path"]        = path[4:]   # /api/banks → /banks
+            scope["raw_path"]    = scope["path"].encode()
+        elif path == "/api":
+            scope["path"]        = "/"
+            scope["raw_path"]    = b"/"
+        return await call_next(request)
+
+app.add_middleware(StripApiPrefix)
 
 # Ensure new tables exist (safe on existing DBs)
 from db_app.database import engine as _db_engine
@@ -106,6 +131,26 @@ try:
     PasswordResetToken.__table__.create(bind=_db_engine, checkfirst=True)
 except Exception:
     pass
+
+# ── Serve built React SPA in production ──────────────────────────────────────
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses   import FileResponse as _FileResponse
+
+_DIST = Path(__file__).parent.parent / "react_frontend" / "dist"
+if _DIST.exists():
+    if (_DIST / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/{spa_path:path}", include_in_schema=False)
+    def spa_fallback(spa_path: str = ""):
+        """Serve index.html for all non-API paths so React Router works.
+        API routes are registered before this catch-all so they take priority.
+        """
+        index = _DIST / "index.html"
+        if index.exists():
+            return _FileResponse(str(index))
+        return {"error": "Frontend not built — run: cd react_frontend && npm run build"}
 
 _cf_cache: dict = {}
 
