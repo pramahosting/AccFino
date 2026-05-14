@@ -1,22 +1,52 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.jsx'
 import AccfinoLogo from '../ui/AccfinoLogo.jsx'
-import { LayoutDashboard, ArrowLeftRight, TrendingUp, BarChart2, FileText, ScanLine, Landmark, ShieldCheck, LogOut, ChevronLeft, ChevronRight, Bell, HelpCircle } from 'lucide-react'
+import { licenceMyModules } from '../../lib/api.js'
+import { LayoutDashboard, ArrowLeftRight, TrendingUp, BarChart2, FileText, ScanLine, Landmark, ShieldCheck, LogOut, ChevronLeft, ChevronRight, Bell, HelpCircle, FolderOpen, BadgeCheck } from 'lucide-react'
 
 const NAV = [
-  { to:'/',               icon:LayoutDashboard, label:'Dashboard',       sub:'Overview' },
-  { to:'/reconciliation', icon:ArrowLeftRight,  label:'Reconciliation',  sub:'CSV & Open Banking' },
-  { to:'/trading',        icon:TrendingUp,      label:'Trading',         sub:'Crypto & Equity CGT' },
-  { to:'/cash-flow',      icon:BarChart2,       label:'Cash Flow',       sub:'ML forecast' },
-  { to:'/invoice',        icon:FileText,        label:'Invoice',         sub:'Generate & extract' },
+  { to:'/',               icon:LayoutDashboard, label:'Dashboard',       sub:'Overview',            key:'dashboard',      adminOnly:false },
+  { to:'/reconciliation', icon:ArrowLeftRight,  label:'Reconciliation',  sub:'CSV & Open Banking',  key:'reconciliation', adminOnly:false },
+  { to:'/trading',        icon:TrendingUp,      label:'Trading',         sub:'Crypto & Equity CGT', key:'trading',        adminOnly:false },
+  { to:'/cash-flow',      icon:BarChart2,       label:'Cash Flow',       sub:'ML forecast',         key:'cash-flow',      adminOnly:false },
+  { to:'/invoice',        icon:FileText,        label:'Invoice',         sub:'Generate & extract',  key:'invoice',        adminOnly:false },
+  { to:'/admin',          icon:ShieldCheck,     label:'ML Classifier',   sub:'Training & RDR rules',key:'admin',          adminOnly:true  },
+  { to:'/file-manager',   icon:FolderOpen,      label:'File Manager',    sub:'Files, tables, data', key:'file-manager',   adminOnly:true  },
+  { to:'/licence',        icon:BadgeCheck,      label:'Admin & Licence', sub:'Users, roles & licences', key:'licence',    adminOnly:true  },
 ]
 
 export default function Layout() {
   const { user, logout } = useAuth()
   const nav = useNavigate()
   const loc = useLocation()
-  const [col, setCol] = useState(false)
+  const [col,            setCol]           = useState(false)
+  const [allowedModules, setAllowedModules] = useState(null)  // null = loading, [] = fetched
+
+  const fetchModules = () => {
+    if (!user) return
+    const isAdmin = Array.isArray(user.roles) && user.roles.includes('admin')
+    if (isAdmin || !user.id) { setAllowedModules('all'); return }
+    licenceMyModules(user.id)
+      .then(r => setAllowedModules(r.data.modules || 'all'))
+      .catch(() => setAllowedModules('all'))
+  }
+
+  useEffect(() => {
+    fetchModules()
+    // Re-fetch when admin saves licence changes
+    window.addEventListener('accfino:modules-changed', fetchModules)
+    return () => window.removeEventListener('accfino:modules-changed', fetchModules)
+  }, [user?.id])
+
+  const isAdmin = Array.isArray(user?.roles) && user.roles.includes('admin')
+
+  const canAccess = (moduleKey) => {
+    if (isAdmin) return true
+    if (allowedModules === null) return false   // still loading
+    if (allowedModules === 'all') return true
+    return allowedModules.includes(moduleKey)
+  }
   const initials = (user?.name||user?.email||'U').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
   const pageName = loc.pathname==='/'?'Dashboard':loc.pathname.slice(1).replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase())
 
@@ -38,30 +68,31 @@ export default function Layout() {
           gap:2,overflowY:'auto',overflowX:'hidden',position:'relative',zIndex:1}}>
           {!col&&<div style={{fontSize:'.62rem',fontWeight:700,color:'rgba(255,255,255,.35)',
             letterSpacing:'.1em',textTransform:'uppercase',padding:'4px 12px 8px',marginTop:4}}>Modules</div>}
-          {NAV.map(({to,icon:Icon,label,sub})=>(
-            <NavLink key={to} to={to} end={to==='/'} title={col?label:undefined}
-              className={({isActive})=>`nav-item${isActive?' active':''}`}>
-              <Icon size={17} strokeWidth={1.8} style={{flexShrink:0}}/>
-              {!col&&<div style={{minWidth:0}}>
-                <div style={{fontSize:'.875rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
-                <div style={{fontSize:'.68rem',opacity:.55,lineHeight:1.3,marginTop:1}}>{sub}</div>
-              </div>}
-            </NavLink>
-          ))}
-          {user?.is_admin&&(
-            <>
-              {!col&&<div style={{fontSize:'.62rem',fontWeight:700,color:'rgba(255,255,255,.35)',
-                letterSpacing:'.1em',textTransform:'uppercase',padding:'12px 12px 6px'}}>Admin</div>}
-              <NavLink to="/admin" title={col?'Admin':undefined}
+          {NAV.map(({to,icon:Icon,label,sub,key,adminOnly})=>{
+            // adminOnly items only visible to admins; for others hide completely
+            if (adminOnly && !isAdmin) return null
+            const allowed = canAccess(key)
+            return allowed ? (
+              <NavLink key={to} to={to} end={to==='/'} title={col?label:undefined}
                 className={({isActive})=>`nav-item${isActive?' active':''}`}>
-                <ShieldCheck size={17} strokeWidth={1.8} style={{flexShrink:0}}/>
+                <Icon size={17} strokeWidth={1.8} style={{flexShrink:0}}/>
                 {!col&&<div style={{minWidth:0}}>
-                  <div style={{fontSize:'.875rem',fontWeight:600,lineHeight:1.2}}>Admin & ML</div>
-                  <div style={{fontSize:'.68rem',opacity:.55}}>Users, classifier, RDR</div>
+                  <div style={{fontSize:'.875rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
+                  <div style={{fontSize:'.68rem',opacity:.55,lineHeight:1.3,marginTop:1}}>{sub}</div>
                 </div>}
               </NavLink>
-            </>
-          )}
+            ) : (
+              <div key={to} title={col?label:undefined}
+                className="nav-item"
+                style={{opacity:.35,cursor:'not-allowed',pointerEvents:'none',userSelect:'none'}}>
+                <Icon size={17} strokeWidth={1.8} style={{flexShrink:0}}/>
+                {!col&&<div style={{minWidth:0}}>
+                  <div style={{fontSize:'.875rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
+                  <div style={{fontSize:'.68rem',opacity:.55,lineHeight:1.3,marginTop:1}}>🔒 No access</div>
+                </div>}
+              </div>
+            )
+          })}
         </nav>
         <div style={{padding:col?'12px 6px':'12px 10px',borderTop:'1px solid rgba(255,255,255,.08)',position:'relative',zIndex:1}}>
           {!col&&<div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
