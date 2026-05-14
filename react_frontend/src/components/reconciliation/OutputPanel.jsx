@@ -242,22 +242,12 @@ export default function OutputPanel({
         </div>
       )}
 
-      {/* Toolbar */}
-      <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
+      {/* Toolbar — search + action buttons */}
+      <div style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap',alignItems:'center'}}>
         <div className="search-wrap" style={{flex:'none'}}>
           <svg className="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input className="input input-sm" style={{width:220,paddingLeft:34}} placeholder="Search description, bank, who…"
             value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/>
-        </div>
-        <div style={{display:'flex',gap:4}}>
-          {[['internal','🟢','badge-cls-int'],['incoming','🔵','badge-cls-in'],
-            ['outgoing','🟡','badge-cls-out'],['unclassified','⚪','badge-neutral']].map(([k,emoji,cls])=>(
-            <button key={k} onClick={()=>toggleF(k)}
-              className={`chip${filters[k]?` ${k==='internal'?'active-int':k==='incoming'?'active-in':k==='outgoing'?'active-out':''}`:''}`}
-              style={{opacity:filters[k]?1:.4,transition:'opacity .15s',fontSize:'.75rem',padding:'4px 10px'}}>
-              {emoji} {k.charAt(0).toUpperCase()+k.slice(1)}
-            </button>
-          ))}
         </div>
         <div style={{flex:1}}/>
         <button className="btn btn-outline btn-sm" onClick={()=>setShowAdd(s=>!s)}><Plus size={13}/> Add Row</button>
@@ -272,6 +262,19 @@ export default function OutputPanel({
         {selected.size>0 && (
           <button className="btn btn-danger btn-sm" onClick={deleteSelected}><Trash2 size={13}/> Delete ({selected.size})</button>
         )}
+      </div>
+
+      {/* Filter row — second line, right-aligned above data table */}
+      <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:10,justifyContent:'flex-end'}}>
+        <span style={{fontSize:'.72rem',color:'var(--text-3)',marginRight:4}}>Show:</span>
+        {[['internal','🟢','badge-cls-int'],['incoming','🔵','badge-cls-in'],
+          ['outgoing','🟡','badge-cls-out'],['unclassified','⚪','badge-neutral']].map(([k,emoji,cls])=>(
+          <button key={k} onClick={()=>toggleF(k)}
+            className={`chip${filters[k]?` ${k==='internal'?'active-int':k==='incoming'?'active-in':k==='outgoing'?'active-out':''}`:''}`}
+            style={{opacity:filters[k]?1:.4,transition:'opacity .15s',fontSize:'.75rem',padding:'4px 10px'}}>
+            {emoji} {k.charAt(0).toUpperCase()+k.slice(1)}
+          </button>
+        ))}
       </div>
 
       {/* Add Row */}
