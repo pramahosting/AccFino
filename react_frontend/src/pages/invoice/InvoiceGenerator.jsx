@@ -19,12 +19,16 @@ export default function InvoiceGenerator() {
   const [loading,    setLoading]    = useState(false)
 
   useEffect(() => {
-    invoiceGetBusinesses().then(r=>setBusinesses(r.data||[])).catch(()=>{})
+    invoiceGetBusinesses()
+      .then(r => setBusinesses(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setBusinesses([]))
   }, [])
 
   useEffect(() => {
     if (!selBiz) return
-    invoiceGetAll(selBiz.id).then(r=>setInvoices(r.data||[])).catch(()=>{})
+    invoiceGetAll(selBiz.id)
+      .then(r => setInvoices(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setInvoices([]))
   }, [selBiz])
 
   const createBiz = async () => {
