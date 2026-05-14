@@ -2,12 +2,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# DB file lives in a subdirectory so a persistent volume mounted at
-# /app/db_app/data does not overlay the Python source files in /app/db_app/
-_DB_DIR  = Path(__file__).parent / "data"
-_DB_DIR.mkdir(parents=True, exist_ok=True)
-_DB_FILE = _DB_DIR / "hsledger.db"
-
+_DB_FILE = Path(__file__).parent / "hsledger.db"
 DATABASE_URL = f"sqlite:///{_DB_FILE}"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
