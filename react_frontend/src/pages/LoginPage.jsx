@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { register } from '../lib/api.js'
+import { register, forgotPassword } from '../lib/api.js'
 import AccfinoLogo from '../components/ui/AccfinoLogo.jsx'
 import { Eye, EyeOff, ArrowRight, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -20,7 +20,11 @@ export default function LoginPage() {
   const [tab,    setTab]    = useState('login')
   const [showPw, setShowPw] = useState(false)
   const [err,    setErr]    = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const [submitting,   setSubmitting]   = useState(false)
+  const [showForgot,   setShowForgot]   = useState(false)
+  const [forgotEmail,  setForgotEmail]  = useState('')
+  const [forgotStatus, setForgotStatus] = useState('idle')
+  const [forgotErr,    setForgotErr]    = useState('')
   const [form,   setForm]   = useState({
     email: '', password: '', name: '', username: '', role: 'user', phone: '', address: ''
   })
@@ -59,7 +63,20 @@ export default function LoginPage() {
     }
   }
 
+  const handleForgot = async e => {
+    e.preventDefault(); setForgotErr('')
+    setForgotStatus('loading')
+    try {
+      await forgotPassword(forgotEmail.trim())
+      setForgotStatus('sent')
+      setTimeout(() => { setShowForgot(false); setForgotStatus('idle'); setForgotEmail('') }, 30000)
+    } catch { setForgotStatus('error'); setForgotErr('Something went wrong. Please try again.') }
+  }
+
+  const closeForgot = () => { setShowForgot(false); setForgotStatus('idle'); setForgotEmail(''); setForgotErr('') }
+
   return (
+    <>
     <div className="login-page">
 
       {/* ── Left panel — brand ── */}
@@ -89,7 +106,7 @@ export default function LoginPage() {
             <div style={{ display: 'flex', gap: 16 }}>
               {[['AUS', 'AU'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '.8rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
+                  <div style={{ fontSize: '.9rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
                   <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.4)', letterSpacing: '.05em', marginTop: 2 }}>{l}</div>
                 </div>
               ))}
@@ -165,7 +182,12 @@ export default function LoginPage() {
               <button className="btn btn-primary btn-xl btn-full" type="submit" disabled={loading} style={{ marginTop: 4 }}>
                 {loading ? <><span className="spinner spinner-sm" /> Signing in…</> : <>Sign In <ArrowRight size={16}/></>}
               </button>
-
+              <div style={{ textAlign: 'center', marginTop: 4 }}>
+                <button type="button" onClick={() => setShowForgot(true)} style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: '.82rem', color: 'var(--text-3)', textDecoration: 'underline', fontFamily: 'inherit', padding: 0,
+                }}>Forgot your password?</button>
+              </div>
             </form>
 
           ) : (
@@ -217,5 +239,56 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+
+      {showForgot && (
+        <div style={{
+          position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,.55)',backdropFilter:'blur(4px)',
+          display:'flex',alignItems:'center',justifyContent:'center',padding:16,
+        }} onClick={closeForgot}>
+          <div style={{
+            background:'var(--surface)',borderRadius:'var(--r-lg)',padding:'32px 28px',
+            width:'100%',maxWidth:400,boxShadow:'0 24px 64px rgba(0,0,0,.25)',position:'relative',
+          }} onClick={e=>e.stopPropagation()}>
+            <button onClick={closeForgot} style={{
+              position:'absolute',top:14,right:14,background:'none',border:'none',cursor:'pointer',
+              color:'var(--text-3)',fontSize:'1.2rem',lineHeight:1,padding:4,
+            }}>✕</button>
+            {forgotStatus==='sent' ? (
+              <div style={{textAlign:'center',padding:'8px 0'}}>
+                <div style={{fontSize:'2.5rem',marginBottom:12}}>📧</div>
+                <h3 style={{marginBottom:8}}>Check your email</h3>
+                <p style={{color:'var(--text-3)',fontSize:'.875rem',lineHeight:1.7}}>
+                  If <strong>{forgotEmail}</strong> is registered, a password reset link has been sent.
+                  Check your inbox and spam folder.
+                </p>
+                <p style={{color:'var(--text-3)',fontSize:'.78rem',marginTop:16,opacity:.7}}>
+                  This message will close automatically in 30 seconds.
+                </p>
+                <button className="btn btn-primary btn-full" onClick={closeForgot} style={{marginTop:20}}>Close</button>
+              </div>
+            ) : (
+              <>
+                <h3 style={{marginBottom:6}}>Reset your password</h3>
+                <p style={{color:'var(--text-3)',fontSize:'.875rem',marginBottom:20}}>
+                  Enter your email and we'll send you a reset link.
+                </p>
+                <form onSubmit={handleForgot} style={{display:'flex',flexDirection:'column',gap:14}}>
+                  <div className="input-group">
+                    <label>Email address</label>
+                    <input className="input" type="email" value={forgotEmail}
+                      onChange={e=>{setForgotEmail(e.target.value);setForgotErr('')}}
+                      required placeholder="you@company.com.au" autoFocus/>
+                  </div>
+                  {forgotErr && <div className="alert alert-error">{forgotErr}</div>}
+                  <button className="btn btn-primary btn-full" type="submit" disabled={forgotStatus==='loading'}>
+                    {forgotStatus==='loading' ? <><span className="spinner spinner-sm"/> Sending…</> : 'Send Reset Link'}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   )
 }

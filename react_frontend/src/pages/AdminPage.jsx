@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { getAllUsers, deleteUser, changePassword, mlStatus, mlTrain, mlSampleCsv, rdrList, rdrCreate, rdrUpdate, rdrDelete, rdrTest } from '../lib/api.js'
+import { changePassword, mlStatus, mlTrain, mlSampleCsv, rdrList, rdrCreate, rdrUpdate, rdrDelete, rdrTest } from '../lib/api.js'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { Trash2, Key, Users, Brain, Plus, Check, X, Play } from 'lucide-react'
+import { Trash2, Key, Brain, Plus, Check, X, Play } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const ALLOWED_GL  = ['Inventory','Fixed_Asset','Transfer','Revenue','Expense','Other']
@@ -9,9 +9,7 @@ const ALLOWED_GST = ['','GST on Expenses','GST on Capital','GST on Income','GST 
 
 export default function AdminPage() {
   const { user } = useAuth()
-  const [tab,    setTab]    = useState('users')
-  const [users,  setUsers]  = useState([])
-  const [ulding, setUlding] = useState(true)
+  const [tab,    setTab]    = useState('ml')
   const [pwForm, setPwForm] = useState({old_password:'',new_password:''})
   const [mlStat, setMlStat] = useState(null)
   const [training,setTraining] = useState(false)
@@ -25,16 +23,9 @@ export default function AdminPage() {
   const fileRef = React.useRef()
 
   useEffect(()=>{
-    getAllUsers().then(r=>setUsers(r.data||[])).catch(()=>{}).finally(()=>setUlding(false))
     mlStatus().then(r=>setMlStat(r.data)).catch(()=>{})
     rdrList().then(r=>setRules(r.data||[])).catch(()=>{})
   },[])
-
-  const delUser = async id => {
-    if (!confirm('Delete user?')) return
-    try { await deleteUser(id); setUsers(u=>u.filter(x=>x.id!==id)); toast.success('Deleted') }
-    catch { toast.error('Delete failed') }
-  }
 
   const changePw = async e => {
     e.preventDefault()
@@ -105,46 +96,15 @@ export default function AdminPage() {
   return (
     <div className="fade-in">
       <div style={{marginBottom:22}}>
-        <h1>⚙️ Admin & ML Classifier</h1>
-        <p style={{color:'var(--text-3)',marginTop:4,fontSize:'.9rem'}}>Manage users, train classification models, and configure RDR rules</p>
+        <h1>🧠 ML Classifier & RDR</h1>
+        <p style={{color:'var(--text-3)',marginTop:4,fontSize:'.9rem'}}>Train classification models and configure RDR rules</p>
       </div>
 
       <div className="tabs-bar" style={{marginBottom:20}}>
-        {[['users','👥 Users'],['ml','🧠 ML Training'],['rdr','📋 RDR Rules'],['password','🔑 Password']].map(([k,label])=>(
+        {[['ml','🧠 ML Training'],['rdr','📋 RDR Rules'],['password','🔑 Password']].map(([k,label])=>(
           <button key={k} className={`tab-btn${tab===k?' active':''}`} onClick={()=>setTab(k)}>{label}</button>
         ))}
       </div>
-
-      {/* ── Users ── */}
-      {tab==='users' && (
-        <div className="card" style={{padding:0,overflow:'hidden'}}>
-          <div style={{padding:'14px 20px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:10}}>
-            <Users size={17} color="var(--brand)"/><h3>All Users</h3>
-            <span style={{marginLeft:'auto',background:'var(--surface-3)',borderRadius:100,padding:'1px 8px',fontSize:'.72rem',fontWeight:700}}>{users.length}</span>
-          </div>
-          {ulding?<div style={{padding:40,textAlign:'center'}}><span className="spinner spinner-lg"/></div>:(
-            <table className="data-table">
-              <thead><tr><th>User</th><th>Email</th><th>Username</th><th>Role</th><th></th></tr></thead>
-              <tbody>
-                {users.map(u=>(
-                  <tr key={u.id}>
-                    <td>
-                      <div style={{display:'flex',alignItems:'center',gap:10}}>
-                        <div style={{width:30,height:30,borderRadius:'50%',background:'linear-gradient(135deg,var(--brand-mid),var(--brand))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.7rem',fontWeight:700,color:'#fff',flexShrink:0}}>{initials(u.name)}</div>
-                        <span style={{fontWeight:600,fontSize:'.875rem'}}>{u.name}</span>
-                      </div>
-                    </td>
-                    <td className="mono" style={{fontSize:'.8rem'}}>{u.email}</td>
-                    <td className="mono" style={{fontSize:'.8rem'}}>{u.username}</td>
-                    <td>{(u.roles||[]).map(r=><span key={r} className={`badge ${r==='admin'?'badge-brand':'badge-neutral'}`} style={{marginRight:3}}>{r}</span>)}</td>
-                    <td>{u.email!==user?.email&&<button className="btn btn-ghost btn-icon btn-sm" onClick={()=>delUser(u.id)} style={{color:'var(--text-3)'}} onMouseEnter={e=>e.currentTarget.style.color='var(--danger)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text-3)'}><Trash2 size={14}/></button>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
 
       {/* ── ML Training ── */}
       {tab==='ml' && (

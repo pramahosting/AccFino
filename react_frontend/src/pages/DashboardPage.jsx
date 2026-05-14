@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { getSessions, getDashboardStats } from '../lib/api.js'
+import { getSessions, getDashboardStats, licenceMyModules } from '../lib/api.js'
 import { ArrowLeftRight, TrendingUp, TrendingDown, RefreshCw, Activity,
          BarChart3, ArrowRight, Calendar, Folder, Trash2 } from 'lucide-react'
 import { deleteSession as apiDeleteSession } from '../lib/api.js'
@@ -10,11 +10,11 @@ const fmtAUD  = n => new Intl.NumberFormat('en-AU',{style:'currency',currency:'A
 const fmtFull = n => new Intl.NumberFormat('en-AU',{style:'currency',currency:'AUD',minimumFractionDigits:2}).format(n||0)
 
 const QUICK = [
-  {to:'/reconciliation', icon:'🏦', label:'Bank Reconciliation',  desc:'Upload statements or pull from Open Banking'},
-  {to:'/trading',        icon:'📈', label:'Trading Analysis',      desc:'Crypto & equity CGT tax reports'},
-  {to:'/cash-flow',      icon:'💰', label:'Cash Flow Forecast',    desc:'ML-powered next-month prediction'},
-  {to:'/invoice',        icon:'📄', label:'Invoice Manager',       desc:'Create GST invoices & extract from PDFs'},
-  {to:'/admin',          icon:'🧠', label:'Admin & ML Classifier', desc:'Train models, RDR rules, manage users'},
+  {to:'/reconciliation', icon:'🏦', label:'Bank Reconciliation',  desc:'Upload statements or pull from Open Banking', key:'reconciliation'},
+  {to:'/trading',        icon:'📈', label:'Trading Analysis',      desc:'Crypto & equity CGT tax reports',            key:'trading'},
+  {to:'/cash-flow',      icon:'💰', label:'Cash Flow Forecast',    desc:'ML-powered next-month prediction',           key:'cash-flow'},
+  {to:'/invoice',        icon:'📄', label:'Invoice Manager',       desc:'Create GST invoices & extract from PDFs',    key:'invoice'},
+  {to:'/admin',          icon:'🧠', label:'Admin & ML Classifier', desc:'Train models, RDR rules, manage users',      key:'admin', adminOnly:true},
 ]
 
 function StatCard({label,value,sub,colorVar,iconColor,icon:Icon}) {
@@ -31,6 +31,26 @@ function StatCard({label,value,sub,colorVar,iconColor,icon:Icon}) {
 export default function DashboardPage() {
   const { user }  = useAuth()
   const nav       = useNavigate()
+  const [allowedModules, setAllowedModules] = useState(null)
+
+  useEffect(() => {
+    if (!user) return
+    const _isAdmin = Array.isArray(user.roles) && user.roles.includes('admin')
+    if (_isAdmin || !user.id) { setAllowedModules('all'); return }
+    const fetch = () => licenceMyModules(user.id)
+      .then(r => setAllowedModules(r.data.modules || 'all'))
+      .catch(() => setAllowedModules('all'))
+    fetch()
+    window.addEventListener('accfino:modules-changed', fetch)
+    return () => window.removeEventListener('accfino:modules-changed', fetch)
+  }, [user?.id])
+
+  const isAdmin   = Array.isArray(user?.roles) && user.roles.includes('admin')
+  const canAccess = key => {
+    if (isAdmin) return true
+    if (!allowedModules || allowedModules === 'all') return true
+    return allowedModules.includes(key)
+  }
 
   const [stats,    setStats]    = useState(null)
   const [sessions, setSessions] = useState([])
@@ -143,23 +163,33 @@ export default function DashboardPage() {
       {/* Modules */}
       <h2 style={{marginBottom:14}}>Modules</h2>
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:28}}>
-        {QUICK.map(({to,icon,label,desc}) => (
-          <button key={to} onClick={() => nav(to)} style={{
-            display:'flex',alignItems:'center',gap:14,padding:'16px 18px',
-            borderRadius:'var(--r-lg)',background:'var(--surface)',border:'1.5px solid var(--border)',
-            cursor:'pointer',textAlign:'left',transition:'all .18s',boxShadow:'var(--sh-sm)',fontFamily:'inherit',
-          }}
-            onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--brand)';e.currentTarget.style.boxShadow='var(--sh-md)';e.currentTarget.style.transform='translateY(-2px)'}}
-            onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.boxShadow='var(--sh-sm)';e.currentTarget.style.transform='none'}}
-          >
-            <div style={{fontSize:'1.75rem',lineHeight:1,flexShrink:0}}>{icon}</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:'.9rem',color:'var(--text-1)',marginBottom:2}}>{label}</div>
-              <div style={{fontSize:'.78rem',color:'var(--text-3)',lineHeight:1.4}}>{desc}</div>
-            </div>
-            <ArrowRight size={16} color="var(--text-3)" style={{flexShrink:0}}/>
-          </button>
-        ))}
+        {QUICK.map(({to,icon,label,desc,key,adminOnly}) => {
+          if (adminOnly && !isAdmin) return null
+          const ok = canAccess(key)
+          return (
+            <button key={to} onClick={() => ok && nav(to)}
+              style={{
+                display:'flex',alignItems:'center',gap:14,padding:'16px 18px',
+                borderRadius:'var(--r-lg)',
+                background: ok ? 'var(--surface)' : 'var(--surface-2)',
+                border:'1.5px solid var(--border)',
+                cursor: ok ? 'pointer' : 'not-allowed',
+                textAlign:'left',transition:'all .18s',
+                boxShadow:'var(--sh-sm)',fontFamily:'inherit',
+                opacity: ok ? 1 : 0.45,
+              }}
+              onMouseEnter={e=>{ if(ok){e.currentTarget.style.borderColor='var(--brand)';e.currentTarget.style.boxShadow='var(--sh-md)';e.currentTarget.style.transform='translateY(-2px)'}}}
+              onMouseLeave={e=>{ if(ok){e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.boxShadow='var(--sh-sm)';e.currentTarget.style.transform='none'}}}
+            >
+              <div style={{fontSize:'1.75rem',lineHeight:1,flexShrink:0,filter:ok?'none':'grayscale(1)'}}>{icon}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:'.9rem',color:ok?'var(--text-1)':'var(--text-3)',marginBottom:2}}>{label}</div>
+                <div style={{fontSize:'.78rem',color:'var(--text-3)',lineHeight:1.4}}>{desc}</div>
+              </div>
+              <ArrowRight size={16} color="var(--text-3)" style={{flexShrink:0,opacity:ok?1:0.3}}/>
+            </button>
+          )
+        })}
       </div>
 
       {/* Reconciliation Sessions */}
