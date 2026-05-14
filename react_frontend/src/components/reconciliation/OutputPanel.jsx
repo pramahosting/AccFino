@@ -66,6 +66,7 @@ export default function OutputPanel({
   const [newRow,      setNewRow]      = useState({...BLANK})
   const [saving,      setSaving]      = useState(false)
   const [showSummary, setShowSummary] = useState(true)
+  const [showTxn,     setShowTxn]     = useState(true)
 
   // ── derived ───────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -242,6 +243,19 @@ export default function OutputPanel({
         </div>
       )}
 
+      {/* Transaction Details — collapsible */}
+      <div style={{border:'1px solid var(--border)',borderRadius:'var(--r-lg)',overflow:'hidden',marginBottom:8}}>
+        <button onClick={()=>setShowTxn(s=>!s)} style={{
+          width:'100%',display:'flex',alignItems:'center',gap:8,padding:'11px 18px',
+          background:'var(--surface-2)',border:'none',cursor:'pointer',fontFamily:'inherit',justifyContent:'space-between',
+        }}>
+          <div style={{display:'flex',alignItems:'center',gap:8,fontWeight:600,fontSize:'.875rem',color:'var(--text-1)'}}>
+            📋 Transaction Details
+            <span style={{fontWeight:400,fontSize:'.78rem',color:'var(--text-3)'}}>{filtered.length} rows</span>
+          </div>
+          {showTxn ? <ChevronUp size={15} color="var(--text-3)"/> : <ChevronDown size={15} color="var(--text-3)"/>}
+        </button>
+      {showTxn && <div style={{padding:'8px'}}>
       {/* Toolbar — search + action buttons */}
       <div style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap',alignItems:'center'}}>
         <div className="search-wrap" style={{flex:'none'}}>
@@ -278,6 +292,9 @@ export default function OutputPanel({
       </div>
 
       {/* Add Row */}
+      </div>}
+      </div>
+
       {showAdd && (
         <div className="card card-flat" style={{marginBottom:12,background:'var(--surface-2)'}}>
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
