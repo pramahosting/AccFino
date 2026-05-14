@@ -3,19 +3,20 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  // Dev server only — not used in production Docker build
   server: {
     port: 3000,
+    hmr: {
+      // Prevent HMR from dying when backend is slow
+      timeout: 60000,
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8001',
         changeOrigin: true,
-        rewrite: path => path.replace(/^\/api/, '')
+        rewrite: path => path.replace(/^\/api/, ''),
+        timeout: 60000,        // 60s — allows slow PDF/CSV processing
+        proxyTimeout: 60000,   // 60s — proxy connection timeout
       }
     }
-  },
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true,
   }
 })
