@@ -80,3 +80,21 @@ export const stocksExport  = (fd)          => http.post('/stocks/export',  fd, {
 export const obFetchNormalise = (body)     => http.post('/openbanking/fetch-and-normalise', body)
 
 export const getDashboardStats = (username) => http.get('/dashboard/stats', { params: { username } })
+
+// ── File Manager ──────────────────────────────────────────────────────────────
+export const fmTree      = ()           => http.get('/filemanager/tree')
+export const fmRead      = (path, tbl)  => http.get(`/filemanager/read/${encodeURIComponent(path)}`, { params: { table: tbl||'' } })
+export const fmSave      = (body)       => http.post('/filemanager/save', body)
+export const fmDeleteRow = (body)       => http.delete('/filemanager/delete-row', { data: body })
+
+// ── Licence Management ────────────────────────────────────────────────────────
+export const licenceList       = ()          => http.get('/licence/list')
+export const licenceSave       = (body)      => http.post('/licence/save', body)
+export const licenceDeleteUser = (uid)       => http.delete(`/licence/user/${uid}`)
+export const licenceMyModules  = (uid)       => http.get('/licence/my-modules', { params: { user_id: uid } })
+export const licenceUpdateUser = (uid, body) => http.patch(`/licence/user/${uid}`, body)
+
+// ── Password Reset ────────────────────────────────────────────────────────────
+export const forgotPassword   = (email)     => http.post('/auth/forgot-password', { email })
+export const resetPassword    = (token, pw) => http.post('/auth/reset-password', { token, new_password: pw })
+export const verifyResetToken = (token)     => http.get('/auth/verify-reset-token', { params: { token } })
