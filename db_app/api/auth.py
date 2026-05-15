@@ -3,6 +3,7 @@ from sqlalchemy import or_
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from db_app.models import Role, User
+from db_app.models.licence import LicenceRecord
 import bcrypt
 from pydantic import BaseModel
 from db_app.database import get_db
@@ -157,4 +158,24 @@ def register(
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    # Auto-create demo licence with 6-month trial period
+    try:
+        from datetime import datetime, timedelta
+        today    = datetime.utcnow().date()
+        end_date = today + timedelta(days=183)  # ~6 months
+        lic = LicenceRecord(
+            user_id      = new_user.id,
+            licence_type = "demo",
+            payment_mode = "",
+            start_date   = str(today),
+            end_date     = str(end_date),
+            notes        = "Auto-created on registration",
+            modules      = "",   # empty = all modules enabled by default
+        )
+        db.add(lic)
+        db.commit()
+    except Exception:
+        pass  # Don't fail registration if licence creation fails
+
     return build_user_response(new_user)
