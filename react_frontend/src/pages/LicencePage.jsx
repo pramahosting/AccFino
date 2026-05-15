@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { licenceList, licenceSave, licenceDeleteUser, licenceUpdateUser } from '../lib/api'
+import { licenceList, licenceSave, licenceDeleteUser, licenceUpdateUser, register } from '../lib/api'
 import { Edit2, Trash2, Check, X, Plus, RefreshCw, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -24,7 +24,10 @@ const EMPTY_LIC = {
 export default function LicencePage() {
   const [records,  setRecords]  = useState([])
   const [loading,  setLoading]  = useState(true)
-  const [editId,   setEditId]   = useState(null)   // user_id being edited
+  const [editId,      setEditId]      = useState(null)
+  const [showAddUser, setShowAddUser] = useState(false)
+  const [newUser,     setNewUser]     = useState({ username:'', full_name:'', email:'', password:'', role:'user' })
+  const [addingUser,  setAddingUser]  = useState(false)
   const [editData, setEditData] = useState({})
   const [saving,   setSaving]   = useState(false)
 
@@ -52,6 +55,29 @@ export default function LicencePage() {
       notes:        rec.notes        || '',
       modules:      rec.modules      || ALL_MODULES.map(m => m.key),
     })
+  }
+
+  const handleAddUser = async () => {
+    if (!newUser.username || !newUser.email || !newUser.password) {
+      toast.error('Username, email and password are required'); return
+    }
+    setAddingUser(true)
+    try {
+      await register({
+        username:  newUser.username.trim(),
+        full_name: newUser.full_name.trim(),
+        email:     newUser.email.trim(),
+        password:  newUser.password,
+        role:      newUser.role || 'user',
+        phone: '', address: '',
+      })
+      toast.success('User added')
+      setShowAddUser(false)
+      setNewUser({ username:'', full_name:'', email:'', password:'', role:'user' })
+      await load()
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Failed to add user')
+    } finally { setAddingUser(false) }
   }
 
   const cancelEdit = () => { setEditId(null); setEditData({}) }
@@ -119,10 +145,46 @@ export default function LicencePage() {
         <span style={{ fontSize: '.82rem', color: 'var(--text-3)' }}>
           {records.length} user{records.length !== 1 ? 's' : ''}
         </span>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowAddUser(s => !s)}>
+          <Plus size={13} /> {showAddUser ? 'Cancel' : 'Add User'}
+        </button>
         <button className="btn btn-outline btn-sm" onClick={load}>
           <RefreshCw size={13} /> Refresh
         </button>
       </div>
+
+      {showAddUser && (
+        <div className="card card-flat" style={{marginBottom:16,padding:20}}>
+          <h4 style={{margin:'0 0 14px'}}>Add New User</h4>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:10}}>
+            {[['username','Username *','text'],['full_name','Full Name','text'],
+              ['email','Email *','email'],['password','Password *','password']].map(([k,label,type]) => (
+              <div key={k} className="input-group">
+                <label style={{fontSize:'.78rem'}}>{label}</label>
+                <input className="input input-sm" type={type} value={newUser[k]}
+                  placeholder={label}
+                  onChange={e => setNewUser(u => ({...u,[k]:e.target.value}))}/>
+              </div>
+            ))}
+            <div className="input-group">
+              <label style={{fontSize:'.78rem'}}>Role</label>
+              <select className="input input-sm" value={newUser.role}
+                onChange={e => setNewUser(u => ({...u,role:e.target.value}))}>
+                <option value="user">user</option>
+                <option value="admin">admin</option>
+              </select>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8,marginTop:14}}>
+            <button className="btn btn-primary btn-sm" onClick={handleAddUser} disabled={addingUser}>
+              <Check size={13}/> {addingUser ? 'Adding…' : 'Add User'}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowAddUser(false)}>
+              <X size={13}/> Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)' }}>
