@@ -2,6 +2,27 @@ import axios from 'axios'
 
 const http = axios.create({ baseURL: '/api' })
 
+// Attach JWT token to every request automatically
+http.interceptors.request.use(cfg => {
+  try {
+    const u = JSON.parse(localStorage.getItem('af_user') || '{}')
+    if (u?.token) cfg.headers['Authorization'] = `Bearer ${u.token}`
+  } catch {}
+  return cfg
+})
+
+// Redirect to login on 401
+http.interceptors.response.use(
+  res => res,
+  err => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('af_user')
+      window.location.href = '/login'
+    }
+    return Promise.reject(err)
+  }
+)
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const login          = (email, pw)    => http.post('/auth/login', { email, password: pw })
 export const register       = (data)         => http.post('/auth/register', data)
