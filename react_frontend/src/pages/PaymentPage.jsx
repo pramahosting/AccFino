@@ -152,7 +152,7 @@ export default function PaymentPage() {
     <div className="login-page">
 
       {/* ── Left panel ── */}
-      <div className="login-left" style={{ flex: "0 0 320px", padding: "32px" }}>
+      <div className="login-left" style={{ flex: "0 0 320px", padding: "32px", alignItems: "flex-start", paddingTop: "48px" }}>
         <div className="login-brand-card">
           <AccfinoLogo size={44} showText textColor="#fff" />
           <div style={{ marginTop: 36, marginBottom: 28 }}>
@@ -188,7 +188,7 @@ export default function PaymentPage() {
       </div>
 
       {/* ── Right panel — pricing ── */}
-      <div className="login-right" style={{ width: "auto", flex: 1, padding: "32px 40px", overflowY: "auto" }}>
+      <div className="login-right" style={{ width: "auto", flex: 1, padding: "32px 40px", overflowY: "auto", alignItems: "flex-start" }}>
         <div className="login-form-wrap" style={{ maxWidth: 680, width: "100%" }}>
 
           {/* Back / nav */}
