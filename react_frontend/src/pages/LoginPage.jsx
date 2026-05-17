@@ -1,68 +1,114 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { register, forgotPassword } from '../lib/api.js'
+import { register, forgotPassword, getPlans, createCheckout } from '../lib/api.js'
 import AccfinoLogo from '../components/ui/AccfinoLogo.jsx'
-import { Eye, EyeOff, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { Eye, EyeOff, ArrowRight, CheckCircle2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const FEATURES = [
-  'Bank reconciliation with automatic internal transfer detection',
-  'GST calculation & BAS-ready classification',
-  'ML-powered GL account auto-classification',
-  'Multi-bank CSV import with session persistence',
-  'Excel export with monthly summaries',
+  { icon: '🤖', title: 'Agentic Finance Automation',         desc: 'AI agents process bills, match purchase orders and auto-classify GL accounts — eliminating manual bookkeeping entirely.' },
+  { icon: '🏦', title: 'Smart Multi-Bank Reconciliation',    desc: 'CSV + Open Banking feeds with automatic internal transfer detection, ML-powered classification and BAS-ready GST coding.' },
+  { icon: '🔍', title: 'Fraud & Anomaly Detection',          desc: 'Every transaction scanned against historical patterns in real time — duplicates and anomalies flagged before they post.' },
+  { icon: '📈', title: 'Predictive Cash Flow & Forecasting', desc: 'ML models deliver next-month cash flow predictions, liquidity insights and strategic financial forecasts on demand.' },
+{ icon: '📉', title: 'Crypto & Equity CGT',                  desc: 'Automated CGT calculations for crypto and equity trades — ATO-ready tax reports for capital gains in one click.' },
+  { icon: '📊', title: 'ATO-Compliant Reporting',            desc: 'GST calculation, BAS-ready classification and one-click Excel export with monthly summaries — audit-ready in minutes.' },
 ]
 
 export default function LoginPage() {
   const { login, loading } = useAuth()
   const navigate = useNavigate()
-  const [tab,    setTab]    = useState('login')
-  const [showPw, setShowPw] = useState(false)
-  const [err,    setErr]    = useState('')
-  const [submitting,   setSubmitting]   = useState(false)
+  const [tab,        setTab]        = useState('login')
+  const [showPw,     setShowPw]     = useState(false)
+  const [err,        setErr]        = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [plans,      setPlans]      = useState({})
+  const [selPlan,    setSelPlan]    = useState('base')
+  const [showPayModal, setShowPayModal] = useState(false)
+  const [payLoading,   setPayLoading]   = useState(false)
+  const [pendingUser,  setPendingUser]  = useState(null)  // registered user waiting for payment
+
+  // forgot password
   const [showForgot,   setShowForgot]   = useState(false)
   const [forgotEmail,  setForgotEmail]  = useState('')
   const [forgotStatus, setForgotStatus] = useState('idle')
   const [forgotErr,    setForgotErr]    = useState('')
-  const [form,   setForm]   = useState({
-    email: '', password: '', name: '', username: '', role: 'user', phone: '', address: ''
+
+  const [form, setForm] = useState({
+    email: '', password: '', name: '', username: '', phone: '', address: ''
   })
 
   const set = k => e => { setForm(f => ({ ...f, [k]: e.target.value })); setErr('') }
 
+  useEffect(() => {
+    getPlans().then(r => setPlans(r.data || {})).catch(() => {})
+  }, [])
+
+  // ── Login ──────────────────────────────────────────────────────────────────
   const handleLogin = async e => {
     e.preventDefault(); setErr('')
     const res = await login(form.email, form.password)
-    if (res.ok) {
-      navigate('/', { replace: true })
-    } else {
-      setErr(res.error)
-    }
+    if (res.ok) navigate('/', { replace: true })
+    else setErr(res.error)
   }
 
+  // ── Register ───────────────────────────────────────────────────────────────
   const handleRegister = async e => {
     e.preventDefault(); setErr(''); setSubmitting(true)
     try {
-      await register({
+      const userData = await register({
         username:  form.username.trim(),
         full_name: form.name.trim(),
         email:     form.email.trim(),
         password:  form.password.trim(),
         role:      'user',
         phone:     form.phone.trim(),
-        address:   form.address.trim(),
+        address:   '',
       })
-      toast.success('Account created — please sign in')
-      setTab('login')
-      setForm(f => ({ ...f, password: '' }))
+
+      if (selPlan === 'base') {
+        // Free plan — just log in
+        toast.success('Account created — signing you in…')
+        const res = await login(form.email.trim(), form.password.trim())
+        if (res.ok) navigate('/', { replace: true })
+        else { setTab('login'); toast.success('Account created — please sign in') }
+      } else {
+        // Paid plan — show payment modal
+        setPendingUser({ email: form.email.trim(), password: form.password.trim() })
+        setShowPayModal(true)
+      }
     } catch (ex) {
       setErr(ex.response?.data?.detail || 'Registration failed. Email or username may already exist.')
-    } finally {
-      setSubmitting(false)
+    } finally { setSubmitting(false) }
+  }
+
+  // ── Payment modal checkout ─────────────────────────────────────────────────
+  const handlePayNow = async () => {
+    setPayLoading(true)
+    try {
+      const { data } = await createCheckout({
+        plan_id:        selPlan,
+        billing_period: 'monthly',
+        user_id:        pendingUser?.id || 0,
+        user_email:     pendingUser?.email || form.email,
+      })
+      if (data.checkout_url) window.location.href = data.checkout_url
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Payment failed — try again')
+    } finally { setPayLoading(false) }
+  }
+
+  const handlePayLater = async () => {
+    // Skip payment — log in on free/demo
+    setShowPayModal(false)
+    if (pendingUser) {
+      const res = await login(pendingUser.email, pendingUser.password)
+      if (res.ok) navigate('/', { replace: true })
+      else { setTab('login'); toast.success('Account created — please sign in') }
     }
   }
 
+  // ── Forgot password ────────────────────────────────────────────────────────
   const handleForgot = async e => {
     e.preventDefault(); setForgotErr('')
     setForgotStatus('loading')
@@ -72,41 +118,46 @@ export default function LoginPage() {
       setTimeout(() => { setShowForgot(false); setForgotStatus('idle'); setForgotEmail('') }, 30000)
     } catch { setForgotStatus('error'); setForgotErr('Something went wrong. Please try again.') }
   }
-
   const closeForgot = () => { setShowForgot(false); setForgotStatus('idle'); setForgotEmail(''); setForgotErr('') }
+
+  // ── Plan helpers ───────────────────────────────────────────────────────────
+  const planList    = Object.entries(plans)
+  const selPlanData = plans[selPlan]
+  const planPrice   = selPlanData?.price_monthly || 0
 
   return (
     <>
     <div className="login-page">
 
-      {/* ── Left panel — brand ── */}
+      {/* ── Left panel ── */}
       <div className="login-left">
         <div className="login-brand-card">
           <AccfinoLogo size={60} showText textColor="#fff" />
-
           <div style={{ marginTop: 36, marginBottom: 28 }}>
-            <h2 style={{ color: '#fff', fontSize: '1.5rem', fontFamily: "'Sora',sans-serif", marginBottom: 8 }}>
-              Intelligent Accounting<br />for Australian Business
+            <h2 style={{ color: '#fff', fontSize: '1.6rem', fontFamily: "'Sora',sans-serif", marginBottom: 8, lineHeight: 1.35 }}>
+              Intelligent Accounting &amp; Finance Operations System
             </h2>
-            <p style={{ color: 'rgba(255,255,255,.6)', fontSize: '.9rem', lineHeight: 1.7 }}>
-              Professional-grade reconciliation, GST management, and financial analysis — all in one place.
+            <p style={{ color: 'rgba(255,255,255,.65)', fontSize: '1rem', lineHeight: 1.7 }}>
+              Next-generation agentic platform that speeds up month-end closes, detects anomalies,
+              and transforms routine bookkeeping into real-time strategic financial forecasting.
             </p>
           </div>
-
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {FEATURES.map((f, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                <CheckCircle2 size={16} color="#FF6B35" style={{ marginTop: 2, flexShrink: 0 }} />
-                <span style={{ fontSize: '.85rem', color: 'rgba(255,255,255,.75)', lineHeight: 1.5 }}>{f}</span>
+                <span style={{ fontSize: '.95rem', flexShrink: 0, marginTop: 1 }}>{f.icon}</span>
+                <div>
+                  <div style={{ fontSize: '.9rem', fontWeight: 700, color: '#fff', marginBottom: 2 }}>{f.title}</div>
+                  <div style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.6)', lineHeight: 1.5 }}>{f.desc}</div>
+                </div>
               </div>
             ))}
           </div>
-
           <div style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,.12)' }}>
             <div style={{ display: 'flex', gap: 16 }}>
               {[['AUS', 'AU'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '.9rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
                   <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.4)', letterSpacing: '.05em', marginTop: 2 }}>{l}</div>
                 </div>
               ))}
@@ -115,24 +166,76 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* ── Right panel — form ── */}
+      {/* ── Right panel ── */}
       <div className="login-right">
         <div className="login-form-wrap">
-          {/* Mobile logo */}
           <div style={{ display: 'none', marginBottom: 28 }} className="mobile-logo">
             <AccfinoLogo size={36} showText textColor="var(--text-1)" light />
           </div>
 
-          <div style={{ marginBottom: 28 }}>
-            <h1 style={{ fontSize: '1.5rem', marginBottom: 6 }}>
-              {tab === 'login' ? 'Welcome back' : 'Create your account'}
+          {/* Heading */}
+          <div style={{ marginBottom: 16 }}>
+            <h1 style={{ fontSize: '1.8rem', marginBottom: 6 }}>
+              {tab === 'login' ? 'Welcome to Accfino' : 'Create your account'}
             </h1>
-            <p style={{ color: 'var(--text-3)', fontSize: '.875rem' }}>
-              {tab === 'login'
-                ? 'Sign in to your Accfino account'
-                : 'Start your free account today'}
+            <p style={{ color: 'var(--text-3)', fontSize: '1rem' }}>
+              {tab === 'login' ? 'Sign in to your Accfino account' : 'Start your Accfino journey today'}
             </p>
           </div>
+
+          {/* ── Subscription plans — shown below heading ── */}
+          {planList.length > 0 && (
+            <div style={{
+              background: 'var(--surface-2)', borderRadius: 'var(--r-md)',
+              padding: '10px 14px', marginBottom: 18, border: '1px solid var(--border)',
+            }}>
+              <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--text-3)',
+                textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                Subscription Plans
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                {/* Show Base, Trading and Premium */}
+                {['base', 'trading', 'premium'].map(id => {
+                  const plan = plans[id]
+                  if (!plan) return null
+                  const price  = plan.price_monthly
+                  const active = selPlan === id && tab === 'register'
+                  return (
+                    <button key={id} type="button"
+                      onClick={() => { if (tab === 'register') setSelPlan(id) }}
+                      style={{
+                        padding: '5px 12px', borderRadius: 100, border: 'none',
+                        cursor: tab === 'register' ? 'pointer' : 'default',
+                        background: active ? 'var(--brand)' : id==='premium' ? 'var(--brand-light)' : 'var(--surface)',
+                        color: active ? '#fff' : id==='premium' ? 'var(--brand)' : 'var(--text-1)',
+                        fontSize: '.72rem', fontWeight: active ? 700 : 600,
+                        boxShadow: active ? 'var(--sh-sm)' : 'none',
+                        transition: 'all .15s',
+                        outline: active ? 'none' : '.78px solid var(--border)',
+                      }}>
+                      {plan.name}
+                      <span style={{ marginLeft: 5, opacity: .75, fontSize: '.78rem', fontWeight: 400 }}>
+                        {price === 0 ? '— Free' : `— $${price/100}/mo`}
+                      </span>
+                    </button>
+                  )
+                })}
+                <span style={{ fontSize: '.9rem', color: 'var(--text-3)', margin: '0 4px' }}>+more plans</span>
+                <span style={{ fontSize: '.9rem', color: 'var(--brand)',
+                  cursor: 'pointer', textDecoration: 'underline', fontWeight: 600 }}
+                  onClick={() => navigate('/upgrade')}>
+                  See all plans →
+                </span>
+              </div>
+              {tab === 'register' && selPlanData && (
+                <div style={{ marginTop: 8, fontSize: '1rem', color: 'var(--text-3)' }}>
+                  {planPrice === 0
+                    ? '✓ Free for 6 months — no payment required'
+                    : `✓ ${selPlanData.name} — $${planPrice/100}/mo · secure payment via Stripe after registration`}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Tab switcher */}
           <div style={{
@@ -143,7 +246,7 @@ export default function LoginPage() {
               <button key={t} onClick={() => { setTab(t); setErr('') }} style={{
                 flex: 1, padding: '8px', border: 'none', cursor: 'pointer',
                 borderRadius: 'var(--r-sm)', fontFamily: 'inherit', fontWeight: tab === t ? 700 : 500,
-                fontSize: '.875rem', transition: 'all .15s',
+                fontSize: '1rem', transition: 'all .15s',
                 background: tab === t ? 'var(--surface)' : 'transparent',
                 color: tab === t ? 'var(--brand)' : 'var(--text-3)',
                 boxShadow: tab === t ? 'var(--sh-sm)' : 'none',
@@ -153,6 +256,7 @@ export default function LoginPage() {
             ))}
           </div>
 
+          {/* ── Login form ── */}
           {tab === 'login' ? (
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="input-group">
@@ -160,7 +264,6 @@ export default function LoginPage() {
                 <input className="input" type="text" value={form.email} onChange={set('email')}
                   required placeholder="you@company.com.au" autoFocus autoComplete="username" />
               </div>
-
               <div className="input-group">
                 <label>Password</label>
                 <div style={{ position: 'relative' }}>
@@ -176,21 +279,21 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
-
               {err && <div className="alert alert-error">{err}</div>}
-
               <button className="btn btn-primary btn-xl btn-full" type="submit" disabled={loading} style={{ marginTop: 4 }}>
                 {loading ? <><span className="spinner spinner-sm" /> Signing in…</> : <>Sign In <ArrowRight size={16}/></>}
               </button>
               <div style={{ textAlign: 'center', marginTop: 4 }}>
                 <button type="button" onClick={() => setShowForgot(true)} style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: '.82rem', color: 'var(--text-3)', textDecoration: 'underline', fontFamily: 'inherit', padding: 0,
+                  fontSize: '.82rem', color: 'var(--text-3)', textDecoration: 'underline',
+                  fontFamily: 'inherit', padding: 0,
                 }}>Forgot your password?</button>
               </div>
             </form>
 
           ) : (
+            /* ── Register form ── */
             <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
               <div className="grid-2">
                 <div className="input-group">
@@ -224,71 +327,142 @@ export default function LoginPage() {
                 <input className="input" type="tel" value={form.phone} onChange={set('phone')} placeholder="+61 4xx xxx xxx" />
               </div>
 
-              {err && <div className="alert alert-error">{err}</div>}
+              {/* Plan selector dropdown */}
+              <div className="input-group">
+                <label>Subscription Plan</label>
+                <select className="input" value={selPlan} onChange={e => setSelPlan(e.target.value)}>
+                  {planList.map(([id, plan]) => (
+                    <option key={id} value={id}>
+                      {plan.name} — {plan.price_monthly === 0 ? 'Free · 6 months' : `$${plan.price_monthly/100}/mo`}
+                      {plan.badge ? ` (${plan.badge})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {selPlanData && (
+                  <div style={{ fontSize: '.75rem', color: 'var(--text-3)', marginTop: 4 }}>
+                    {selPlanData.features?.[0]}
+                    {planPrice > 0 && ' · Payment via Stripe after account creation'}
+                  </div>
+                )}
+              </div>
 
+              {err && <div className="alert alert-error">{err}</div>}
               <button className="btn btn-primary btn-xl btn-full" type="submit" disabled={submitting} style={{ marginTop: 4 }}>
-                {submitting ? <><span className="spinner spinner-sm" /> Creating account…</> : <>Create Account <ArrowRight size={16}/></>}
+                {submitting
+                  ? <><span className="spinner spinner-sm" /> Creating account…</>
+                  : planPrice > 0
+                    ? <>Register & Pay <ArrowRight size={16}/></>
+                    : <>Create Free Account <ArrowRight size={16}/></>}
               </button>
             </form>
           )}
 
           <p style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: '.75rem', marginTop: 28 }}>
-            © {new Date().getFullYear()} Accfino · Australian Accounting Platform<br />
+            © {new Date().getFullYear()} Accfino · Accounting and Finance Operations Platform<br />
             <span style={{ opacity: .6 }}>Powered by Prama AI engine</span>
           </p>
         </div>
       </div>
     </div>
 
-      {showForgot && (
+    {/* ── Forgot Password Modal ── */}
+    {showForgot && (
+      <div style={{
+        position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,.55)',backdropFilter:'blur(4px)',
+        display:'flex',alignItems:'center',justifyContent:'center',padding:16,
+      }} onClick={closeForgot}>
         <div style={{
-          position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,.55)',backdropFilter:'blur(4px)',
-          display:'flex',alignItems:'center',justifyContent:'center',padding:16,
-        }} onClick={closeForgot}>
-          <div style={{
-            background:'var(--surface)',borderRadius:'var(--r-lg)',padding:'32px 28px',
-            width:'100%',maxWidth:400,boxShadow:'0 24px 64px rgba(0,0,0,.25)',position:'relative',
-          }} onClick={e=>e.stopPropagation()}>
-            <button onClick={closeForgot} style={{
-              position:'absolute',top:14,right:14,background:'none',border:'none',cursor:'pointer',
-              color:'var(--text-3)',fontSize:'1.2rem',lineHeight:1,padding:4,
-            }}>✕</button>
-            {forgotStatus==='sent' ? (
-              <div style={{textAlign:'center',padding:'8px 0'}}>
-                <div style={{fontSize:'2.5rem',marginBottom:12}}>📧</div>
-                <h3 style={{marginBottom:8}}>Check your email</h3>
-                <p style={{color:'var(--text-3)',fontSize:'.875rem',lineHeight:1.7}}>
-                  If <strong>{forgotEmail}</strong> is registered, a password reset link has been sent.
-                  Check your inbox and spam folder.
-                </p>
-                <p style={{color:'var(--text-3)',fontSize:'.78rem',marginTop:16,opacity:.7}}>
-                  This message will close automatically in 30 seconds.
-                </p>
-                <button className="btn btn-primary btn-full" onClick={closeForgot} style={{marginTop:20}}>Close</button>
-              </div>
-            ) : (
-              <>
-                <h3 style={{marginBottom:6}}>Reset your password</h3>
-                <p style={{color:'var(--text-3)',fontSize:'.875rem',marginBottom:20}}>
-                  Enter your email and we'll send you a reset link.
-                </p>
-                <form onSubmit={handleForgot} style={{display:'flex',flexDirection:'column',gap:14}}>
-                  <div className="input-group">
-                    <label>Email address</label>
-                    <input className="input" type="email" value={forgotEmail}
-                      onChange={e=>{setForgotEmail(e.target.value);setForgotErr('')}}
-                      required placeholder="you@company.com.au" autoFocus/>
-                  </div>
-                  {forgotErr && <div className="alert alert-error">{forgotErr}</div>}
-                  <button className="btn btn-primary btn-full" type="submit" disabled={forgotStatus==='loading'}>
-                    {forgotStatus==='loading' ? <><span className="spinner spinner-sm"/> Sending…</> : 'Send Reset Link'}
-                  </button>
-                </form>
-              </>
-            )}
-          </div>
+          background:'var(--surface)',borderRadius:'var(--r-lg)',padding:'32px 28px',
+          width:'100%',maxWidth:400,boxShadow:'0 24px 64px rgba(0,0,0,.25)',position:'relative',
+        }} onClick={e=>e.stopPropagation()}>
+          <button onClick={closeForgot} style={{
+            position:'absolute',top:14,right:14,background:'none',border:'none',cursor:'pointer',
+            color:'var(--text-3)',fontSize:'1.2rem',lineHeight:1,padding:4,
+          }}>✕</button>
+          {forgotStatus==='sent' ? (
+            <div style={{textAlign:'center',padding:'8px 0'}}>
+              <div style={{fontSize:'2.5rem',marginBottom:12}}>📧</div>
+              <h3 style={{marginBottom:8}}>Check your email</h3>
+              <p style={{color:'var(--text-3)',fontSize:'.875rem',lineHeight:1.7}}>
+                A password reset link has been sent to <strong>{forgotEmail}</strong>.
+              </p>
+              <button className="btn btn-primary btn-full" onClick={closeForgot} style={{marginTop:20}}>Close</button>
+            </div>
+          ) : (
+            <>
+              <h3 style={{marginBottom:6}}>Reset your password</h3>
+              <p style={{color:'var(--text-3)',fontSize:'.875rem',marginBottom:20}}>
+                Enter your email and we'll send you a reset link.
+              </p>
+              <form onSubmit={handleForgot} style={{display:'flex',flexDirection:'column',gap:14}}>
+                <div className="input-group">
+                  <label>Email address</label>
+                  <input className="input" type="email" value={forgotEmail}
+                    onChange={e=>{setForgotEmail(e.target.value);setForgotErr('')}}
+                    required placeholder="you@company.com.au" autoFocus/>
+                </div>
+                {forgotErr && <div className="alert alert-error">{forgotErr}</div>}
+                <button className="btn btn-primary btn-full" type="submit" disabled={forgotStatus==='loading'}>
+                  {forgotStatus==='loading' ? <><span className="spinner spinner-sm"/> Sending…</> : 'Send Reset Link'}
+                </button>
+              </form>
+            </>
+          )}
         </div>
-      )}
+      </div>
+    )}
+
+    {/* ── Payment Modal ── */}
+    {showPayModal && selPlanData && (
+      <div style={{
+        position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,.6)',backdropFilter:'blur(4px)',
+        display:'flex',alignItems:'center',justifyContent:'center',padding:16,
+      }}>
+        <div style={{
+          background:'var(--surface)',borderRadius:'var(--r-lg)',padding:'32px 28px',
+          width:'100%',maxWidth:440,boxShadow:'0 24px 64px rgba(0,0,0,.3)',
+        }}>
+          <div style={{textAlign:'center',marginBottom:20}}>
+            <div style={{fontSize:'2rem',marginBottom:8}}>🎉</div>
+            <h3 style={{marginBottom:4}}>Account created!</h3>
+            <p style={{color:'var(--text-3)',fontSize:'.875rem'}}>
+              Complete your <strong>{selPlanData.name}</strong> subscription to activate all features.
+            </p>
+          </div>
+
+          <div style={{
+            background:'var(--surface-2)',borderRadius:'var(--r-md)',
+            padding:'14px 16px',marginBottom:20,
+          }}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontWeight:600}}>{selPlanData.name}</span>
+              <span style={{fontWeight:700,color:'var(--brand)',fontSize:'1.1rem'}}>
+                ${planPrice/100}/mo
+              </span>
+            </div>
+            <div style={{marginTop:8,display:'flex',flexWrap:'wrap',gap:4}}>
+              {(selPlanData.features||[]).slice(0,3).map((f,i) => (
+                <span key={i} style={{fontSize:'.72rem',color:'var(--text-3)'}}>✓ {f}</span>
+              ))}
+            </div>
+          </div>
+
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            <button className="btn btn-primary btn-xl btn-full" onClick={handlePayNow} disabled={payLoading}>
+              {payLoading
+                ? <><span className="spinner spinner-sm"/> Redirecting to Stripe…</>
+                : <>Pay $${planPrice/100}/mo with Stripe <ArrowRight size={16}/></>}
+            </button>
+            <button className="btn btn-ghost btn-full" onClick={handlePayLater}>
+              Skip for now — continue with Free plan
+            </button>
+          </div>
+          <p style={{textAlign:'center',fontSize:'.72rem',color:'var(--text-3)',marginTop:12}}>
+            🔒 Secured by Stripe · Cancel anytime
+          </p>
+        </div>
+      </div>
+    )}
     </>
   )
 }

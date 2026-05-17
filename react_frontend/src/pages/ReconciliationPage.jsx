@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
+import { licenceMyModules, getMyPlan } from '../lib/api'
 import InputPanel       from '../components/reconciliation/InputPanel.jsx'
 import OpenBankingInput from '../components/reconciliation/OpenBankingInput.jsx'
 import OutputPanel      from '../components/reconciliation/OutputPanel.jsx'
@@ -9,6 +10,20 @@ import toast from 'react-hot-toast'
 
 export default function ReconciliationPage() {
   const { user }   = useAuth()
+  const [hasOpenBanking, setHasOpenBanking] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!user?.id) return
+    const isAdmin = Array.isArray(user.roles) && user.roles.includes('admin')
+    if (isAdmin) { setHasOpenBanking(true); return }
+    // Open Banking only for paid reconciliation plans — not Base (free) plan
+    getMyPlan(user.id)
+      .then(r => {
+        const planId = r.data?.plan_id || 'base'
+        setHasOpenBanking(planId !== 'base')
+      })
+      .catch(() => setHasOpenBanking(false))
+  }, [user?.id])
   const location   = useLocation()
   const navigate   = useNavigate()
 
@@ -171,12 +186,22 @@ export default function ReconciliationPage() {
 
             <div>
               <div style={{display:'flex',gap:0,marginBottom:16,borderBottom:'2px solid var(--border)'}}>
-                {[['csv','📂 CSV Files'],['openbanking','🏛️ Open Banking']].map(([k,label])=>(
-                  <button key={k} className={`tab-btn${inputMode===k?' active':''}`}
-                    onClick={()=>setInputMode(k)} style={{fontSize:'.8rem',padding:'7px 14px'}}>
-                    {label}
-                  </button>
-                ))}
+                {[['csv','📂 CSV Files'],['openbanking','🏛️ Open Banking']].map(([k,label])=>{
+                  const locked = k==='openbanking' && !hasOpenBanking
+                  return (
+                    <button key={k}
+                      className={`tab-btn${inputMode===k && !locked?' active':''}`}
+                      onClick={() => locked ? null : setInputMode(k)}
+                      title={locked ? 'Upgrade to a paid Reconciliation plan to access Open Banking' : undefined}
+                      style={{fontSize:'.8rem', padding:'7px 14px',
+                        opacity: locked ? .45 : 1,
+                        cursor:  locked ? 'not-allowed' : 'pointer',
+                        pointerEvents: locked ? 'none' : 'auto',
+                      }}>
+                      {label}{locked ? ' 🔒' : ''}
+                    </button>
+                  )
+                })}
               </div>
               {inputMode==='csv' && (
                 <CSVAddAccount accounts={accounts} setAccounts={setAccounts} username={username}/>
