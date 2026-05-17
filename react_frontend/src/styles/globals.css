@@ -459,19 +459,19 @@ select.select-compact { padding: 4px 26px 4px 8px; font-size: .78rem; border-rad
 }
 .login-left {
   flex: 1; display: flex; align-items: center; justify-content: center; padding: 48px;
+  min-width: 0;
 }
 .login-brand-card {
-  max-width: 460px; width: 100%;
+  max-width: 100%; width: 100%;
   background: rgba(255,255,255,.04); backdrop-filter: blur(12px);
   border: 1px solid rgba(255,255,255,.12); border-radius: var(--r-2xl);
   padding: 48px 52px; color: white;
 }
 .login-right {
-  width: 480px; background: var(--surface);
+  flex: 1; min-width: 0; background: var(--surface);
   display: flex; align-items: center; justify-content: center; padding: 48px 44px;
-  flex-shrink: 0;
 }
-.login-form-wrap { width: 100%; max-width: 380px; }
+.login-form-wrap { width: 100%; max-width: 480px; }
 
 @media (max-width: 860px) {
   .login-page { flex-direction: column; }
