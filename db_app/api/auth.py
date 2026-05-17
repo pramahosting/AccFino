@@ -1,209 +1,172 @@
-"""
-db_app/api/auth.py — JWT-secured authentication
-Adds:
-  - JWT token on login (expires 8 hours)
-  - get_current_user() dependency for route protection
-  - All routes return 401 if token missing/invalid
-"""
-import os, json
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from sqlalchemy import or_
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from db_app.models import Role, User
+from db_app.models.licence import LicenceRecord
 import bcrypt
 import json as _json
-from datetime import datetime, timedelta, timezone
-
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from db_app.database import get_db
 
-from db_app.database import SessionLocal
-from db_app.models.user import User
-from db_app.models.role import Role
-from db_app.models.licence import LicenceRecord
+router = APIRouter()
 
-try:
-    import jwt as _jwt
-    JWT_AVAILABLE = True
-except ImportError:
-    JWT_AVAILABLE = False
-
-router   = APIRouter()
-_bearer  = HTTPBearer(auto_error=False)
-
-# ── JWT config ────────────────────────────────────────────────────────────────
-JWT_SECRET    = os.environ.get("JWT_SECRET", "accfino-change-this-in-production-32chars")
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRE_HRS= 8
-
-
-def _make_token(user_id: int, username: str, roles: list) -> str:
-    if not JWT_AVAILABLE:
-        return f"simple:{user_id}:{username}"
-    payload = {
-        "sub":   str(user_id),
-        "usr":   username,
-        "roles": roles,
-        "exp":   datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HRS),
-    }
-    return _jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
-def _decode_token(token: str) -> dict:
-    if not JWT_AVAILABLE:
-        # Simple fallback — not secure, only for dev without PyJWT
-        if token.startswith("simple:"):
-            parts = token.split(":")
-            return {"sub": parts[1], "usr": parts[2], "roles": []}
-        raise HTTPException(401, "Invalid token")
-    try:
-        return _jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except _jwt.ExpiredSignatureError:
-        raise HTTPException(401, "Token expired — please log in again")
-    except _jwt.InvalidTokenError:
-        raise HTTPException(401, "Invalid token")
-
-
-def get_current_user(
-    creds: HTTPAuthorizationCredentials = Depends(_bearer),
-) -> dict:
-    """FastAPI dependency — returns decoded token payload or raises 401."""
-    if not creds:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return _decode_token(creds.credentials)
-
-
-def require_admin(current: dict = Depends(get_current_user)) -> dict:
-    """FastAPI dependency — raises 403 if user is not admin."""
-    if "admin" not in current.get("roles", []):
-        raise HTTPException(403, "Admin access required")
-    return current
-
-
-# ── Pydantic models ───────────────────────────────────────────────────────────
 class LoginRequest(BaseModel):
     email: str
     password: str
 
 class RegisterRequest(BaseModel):
-    username:  str
+    username: str
     full_name: str | None = None
-    email:     str
-    password:  str
-    phone:     str | None = None
-    address:   str | None = None
-    role:      str | None = None
-    plan_id:   str | None = "base"
+    email: str
+    password: str
+    phone: str | None = None
+    address: str | None = None
+    role: str | None = None  # Optional, only honored for first user or by admin
+    plan_id: str | None = "base"  # Selected subscription plan
 
 class UserResponse(BaseModel):
-    id:          int
-    username:    str
-    name:        str
-    email:       str
-    roles:       list
-    permissions: list
-    token:       str = ""   # JWT token
-
-
-class ForgotPasswordRequest(BaseModel):
+    id: int
+    username: str | None
+    name: str
     email: str
+    roles: list[str]
+    permissions: list[str]
 
 
-def build_user_response(user: User, token: str = "") -> dict:
-    return {
-        "id":          user.id,
-        "username":    user.username,
-        "name":        user.full_name or user.username,
-        "email":       user.email,
-        "roles":       [r.name for r in user.roles],
-        "permissions": list({p.name for r in user.roles for p in r.permissions}),
-        "token":       token,
-    }
+def build_user_response(user: User) -> UserResponse:
+    roles = [role.name.strip() for role in user.roles]
+
+    # Flatten role permissions and remove duplicates.
+    permissions = sorted(
+        {
+            perm.name.strip()
+            for role in user.roles
+            for perm in role.permissions
+            if perm.name
+        }
+    )
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        name=user.full_name or user.username,
+        email=user.email,
+        roles=roles,
+        permissions=permissions,
+    )
 
 
-def _get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def ensure_users_full_name_column(db: Session):
+    # Lightweight schema backfill for existing SQLite DBs created before full_name existed.
+    engine_name = db.bind.dialect.name if db.bind else ""
+    if engine_name != "sqlite":
+        return
+
+    users_table = db.execute(
+        text("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+    ).fetchone()
+    if not users_table:
+        return
+
+    columns = db.execute(text("PRAGMA table_info(users)")).fetchall()
+    column_names = {row[1] for row in columns}
+    if "full_name" not in column_names:
+        db.execute(text("ALTER TABLE users ADD COLUMN full_name VARCHAR(200)"))
+        db.commit()
 
 
-# ── Login ─────────────────────────────────────────────────────────────────────
-def authenticate_user(email: str, password: str, db: Session) -> dict:
+# login endpoint
+def authenticate_user(email: str, password: str, db: Session) -> UserResponse:
+    ensure_users_full_name_column(db)
+
+    # Keep request schema stable but allow email or username in this field.
     login_value = email.strip()
-    user = db.query(User).filter(
-        or_(User.email == login_value, User.username == login_value)
-    ).first()
+    user = (
+        db.query(User)
+        .filter(or_(User.email == login_value, User.username == login_value))
+        .first()
+    )
 
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Invalid email or password")
-
-    stored_pw = user.password if isinstance(user.password, bytes) else user.password.encode()
-    if not bcrypt.checkpw(password.encode(), stored_pw):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Invalid email or password")
-
-    roles = [r.name for r in user.roles]
-    token = _make_token(user.id, user.username, roles)
-    return build_user_response(user, token)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    
+    if not bcrypt.checkpw(password.encode(), user.password.encode()):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    
+    return build_user_response(user)
 
 
 @router.post("/login", response_model=UserResponse)
-def login_post(request: LoginRequest, db: Session = Depends(_get_db)):
-    return authenticate_user(request.email, request.password, db)
+def login_post(
+    request: LoginRequest = Body(...),
+    db: Session = Depends(get_db),
+):
+    if request is not None:
+        return authenticate_user(request.email, request.password, db)
+
+    raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Provide email and password in JSON body or query params",
+        )
 
 
 @router.get("/login", response_model=UserResponse)
 def login_get(
     email: str = Query(...),
     password: str = Query(...),
-    db: Session = Depends(_get_db),
+    db: Session = Depends(get_db),
 ):
     return authenticate_user(email, password, db)
 
-
-# ── Register ──────────────────────────────────────────────────────────────────
 @router.post("/register", response_model=UserResponse)
-def register(request: RegisterRequest, db: Session = Depends(_get_db)):
-    existing = db.query(User).filter(
-        or_(User.email == request.email, User.username == request.username)
-    ).first()
-    if existing:
-        raise HTTPException(400, "Email or username already registered")
+def register(
+    request: RegisterRequest = Body(...),
+    db: Session = Depends(get_db),
+):
+    ensure_users_full_name_column(db)
 
-    # Only first user or admin can set role
-    user_count = db.query(User).count()
-    role_name  = "admin" if user_count == 0 else "user"
+    if db.query(User).filter(User.email == request.email).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+    if db.query(User).filter(User.username == request.username).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already taken")
 
     hashed = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
+    is_first_user = db.query(User).count() == 0
+
+    # Only allow role selection for first user or if admin is registering
+    allowed_roles = {r.name for r in db.query(Role).all()}
+    requested_role = (request.role or "user").strip().lower()
+    if is_first_user:
+        role_name = requested_role if requested_role in allowed_roles else "admin"
+    else:
+        # Check if current user is admin (future: use auth context)
+        # For now, only allow 'user' role for non-first-user signups
+        role_name = "user"
 
     role = db.query(Role).filter(Role.name == role_name).first()
     if not role:
-        role = Role(name=role_name)
-        db.add(role)
-        db.flush()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Role not found in database")
 
     new_user = User(
-        username=request.username.strip(),
-        full_name=(request.full_name or "").strip(),
-        email=request.email.strip(),
+        username=request.username,
+        full_name=(request.full_name or request.username),
+        email=request.email,
         password=hashed,
-        phone=(request.phone or "").strip(),
-        address="",
+        phone=request.phone or "",
+        address=request.address or "",
     )
     new_user.roles.append(role)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
 
-    # Auto-create licence with plan modules
+    # Auto-create demo licence with 6-month trial period
     try:
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
+        today    = datetime.utcnow().date()
+        end_date = today + timedelta(days=183)  # ~6 months
+        # Set modules based on selected plan
         PLAN_MODULES = {
             "base":    ["dashboard", "reconciliation"],
             "reconciliation": ["dashboard", "reconciliation"],
@@ -213,25 +176,22 @@ def register(request: RegisterRequest, db: Session = Depends(_get_db)):
             "basic":   ["dashboard", "reconciliation", "trading", "cash-flow", "invoice"],
             "premium": ["dashboard", "reconciliation", "trading", "cash-flow", "invoice"],
         }
-        plan_id      = request.plan_id or "base"
-        today        = datetime.now(timezone.utc).date()
-        end_date     = today + timedelta(days=183)
-        plan_modules = PLAN_MODULES.get(plan_id, PLAN_MODULES["base"])
+        selected_plan = getattr(request, 'plan_id', 'base') or 'base'
+        plan_modules  = PLAN_MODULES.get(selected_plan, PLAN_MODULES["base"])
+
         lic = LicenceRecord(
             user_id      = new_user.id,
-            licence_type = plan_id,
-            plan_id      = plan_id,
+            licence_type = selected_plan,
+            plan_id      = selected_plan,
             payment_mode = "",
             start_date   = str(today),
             end_date     = str(end_date),
-            notes        = f"Auto-created on registration — {plan_id} plan",
+            notes        = f"Auto-created on registration — {selected_plan} plan",
             modules      = _json.dumps(plan_modules),
         )
         db.add(lic)
         db.commit()
     except Exception:
-        pass
+        pass  # Don't fail registration if licence creation fails
 
-    roles  = [r.name for r in new_user.roles]
-    token  = _make_token(new_user.id, new_user.username, roles)
-    return build_user_response(new_user, token)
+    return build_user_response(new_user)

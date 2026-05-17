@@ -291,11 +291,11 @@ async def stripe_webhook(
                     LicenceRecord.stripe_customer_id == cus_id
                 ).first()
                 if lic:
-                    lic.licence_type   = "demo"
-                    lic.plan_id        = "demo"
+                    lic.licence_type   = "base"
+                    lic.plan_id        = "base"
                     lic.billing_period = ""
                     lic.stripe_sub_id  = ""
-                    lic.modules        = json.dumps(PLANS["demo"]["modules"])
+                    lic.modules        = json.dumps(PLANS["base"]["modules"])
                     db.commit()
 
     finally:
@@ -339,15 +339,15 @@ def my_plan(user_id: int):
     try:
         lic = db.query(LicenceRecord).filter(LicenceRecord.user_id == user_id).first()
         if not lic:
-            return {"plan_id": "base", "licence_type": "demo",
-                    "end_date": "", "modules": PLANS["demo"]["modules"]}
+            return {"plan_id": "base", "licence_type": "base",
+                    "end_date": "", "modules": PLANS["base"]["modules"]}
         return {
-            "plan_id":        lic.plan_id or "demo",
+            "plan_id":        lic.plan_id or "base",
             "licence_type":   lic.licence_type,
             "billing_period": lic.billing_period,
             "start_date":     lic.start_date,
             "end_date":       lic.end_date,
-            "modules":        json.loads(lic.modules) if lic.modules else PLANS["demo"]["modules"],
+            "modules":        json.loads(lic.modules) if lic.modules else PLANS["base"]["modules"],
         }
     finally:
         db.close()
