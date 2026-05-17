@@ -41,23 +41,39 @@ const BUNDLES = {
   premium: { mods: ['reconciliation','trading','cash-flow','invoice'], price_monthly: 3900, price_yearly: 39000, label: 'Premium',      save: 'Best Value' },
 }
 
-function calcPrice(selectedMods, billing) {
+function calcPrice(selectedMods, billing, selBundle) {
   if (!selectedMods.length) return { price: 0, label: 'Base (Free)', planId: 'base', saveMsg: '' }
-  const all4 = ALL_MOD.every(m => selectedMods.includes(m))
-  if (all4) {
-    const b = BUNDLES.premium
+
+  // If a specific bundle was clicked, use that bundle's price exactly
+  if (selBundle && BUNDLES[selBundle]) {
+    const b = BUNDLES[selBundle]
     const p = billing === 'yearly' ? b.price_yearly : b.price_monthly
-    return { price: p, label: b.label, planId: 'premium', saveMsg: b.save }
+    return { price: p, label: b.label, planId: selBundle, saveMsg: b.save }
   }
-  // Sum individual prices
-  const total = selectedMods.reduce((s, m) => s + (MOD_PRICES[m] || 0), 0)
-  // Check if basic bundle is cheaper
+
+  // Individual module selection — always include base (dashboard + reconciliation CSV)
+  // Add reconciliation to the effective module list since base is always included
+  const effectiveMods = selectedMods.includes('reconciliation')
+    ? selectedMods
+    : ['reconciliation', ...selectedMods]  // base plan recon always included
+
+  // Sum prices of ONLY the selected (paid) modules — not base recon which is free
+  const moTotal = selectedMods.reduce((s, m) => s + (MOD_PRICES[m] || 0), 0)
+  const total   = billing === 'yearly' ? moTotal * 10 : moTotal
+
+  // Auto-upgrade to basic bundle if 3+ paid modules and bundle is cheaper
   const basicPrice = billing === 'yearly' ? BUNDLES.basic.price_yearly : BUNDLES.basic.price_monthly
-  const allSelected = selectedMods.filter(m => ALL_MOD.includes(m))
-  if (allSelected.length >= 3 && total >= basicPrice) {
-    return { price: basicPrice, label: 'Basic Bundle', planId: 'basic', saveMsg: `Save vs individual` }
+  if (selectedMods.length >= 3 && total >= basicPrice) {
+    return { price: basicPrice, label: 'Basic Bundle', planId: 'basic',
+             saveMsg: 'Save vs individual', modules: effectiveMods }
   }
-  return { price: total, label: 'Custom', planId: 'custom_' + selectedMods.join('_'), saveMsg: '' }
+
+  // Custom — base always included even if not explicitly selected
+  const label = selectedMods.length === 0 ? 'Base (Free)'
+    : `Base + ${selectedMods.map(m => MOD_LABELS[m]?.label || m).join(' + ')}`
+
+  return { price: total, label, planId: 'custom_' + selectedMods.join('_'),
+           saveMsg: '', modules: effectiveMods }
 }
 
 export default function PaymentPage() {
@@ -115,9 +131,9 @@ export default function PaymentPage() {
   }
 
 
-  const { price, label, planId, saveMsg } = calcPrice(selMods, billing)
+  const { price, label, planId, saveMsg } = calcPrice(selMods, billing, selBundle)
   const isFree    = price === 0
-  const perMo     = billing === 'yearly' ? Math.round(price / 12) : price
+  const perMo     = price   // always the total charge amount (monthly or yearly)
   const isLoggedIn = !!user
 
   const handleCheckout = async () => {
@@ -237,17 +253,17 @@ export default function PaymentPage() {
 
           {/* ── Base plan ── */}
           <div style={{
-            border:`2px solid ${selMods.length===0 ? 'var(--brand)' : 'var(--border)'}`,
+            border:`2px solid var(--brand)`,
             borderRadius:'var(--r-lg)', padding:'16px', marginBottom:16,
-            background: selMods.length===0 ? 'var(--brand-light)' : 'var(--surface)',
+            background: 'var(--brand-light)',
             cursor:'pointer', transition:'all .15s', position:'relative',
           }} onClick={() => { setSelMods([]); setSelBundle(null); }}>
             <div style={{ position:'absolute', top:12, right:12,
               width:18, height:18, borderRadius:'50%',
-              border:`2px solid ${selMods.length===0 ? 'var(--brand)' : 'var(--border)'}`,
-              background: selMods.length===0 ? 'var(--brand)' : 'transparent',
+              border:'2px solid var(--brand)',
+              background: 'var(--brand)',
               display:'flex', alignItems:'center', justifyContent:'center' }}>
-              {selMods.length===0 && <Check size={10} color="#fff" strokeWidth={3}/>}
+              <Check size={10} color="#fff" strokeWidth={3}/>
             </div>
             <div style={{ marginBottom:8, paddingRight:24 }}>
               <div style={{ fontSize:'1.3rem', marginBottom:4 }}>🆓</div>
@@ -279,9 +295,10 @@ export default function PaymentPage() {
               {ALL_MOD.map(mod => {
                 const info = MOD_LABELS[mod]
                 const sel  = selMods.includes(mod)
-                const mp   = billing==='yearly'
+                const mp    = billing==='yearly'
                   ? Math.round(MOD_PRICES[mod]*10/12)
                   : MOD_PRICES[mod]
+                const mp_yr = MOD_PRICES[mod] * 10
                 return (
                   <div key={mod} onClick={() => toggleMod(mod)} style={{
                     border:`2px solid ${sel ? 'var(--brand)' : 'var(--border)'}`,
@@ -309,12 +326,14 @@ export default function PaymentPage() {
                     {/* Price */}
                     <div style={{ marginBottom:12 }}>
                       <span style={{ fontSize:'1.4rem', fontWeight:800, color:'var(--brand)' }}>
-                        ${mp/100}
+                        {billing==='yearly' ? `$${mp_yr/100}` : `$${mp/100}`}
                       </span>
-                      <span style={{ fontSize:'.78rem', color:'var(--text-3)' }}>/mo</span>
+                      <span style={{ fontSize:'.78rem', color:'var(--text-3)' }}>
+                        {billing==='yearly' ? '/yr' : '/mo'}
+                      </span>
                       {billing==='yearly' && (
                         <span style={{ fontSize:'.68rem', color:'#38A169', marginLeft:6, fontWeight:600 }}>
-                          2 months free
+                          (${mp/100}/mo effective)
                         </span>
                       )}
                     </div>
@@ -390,12 +409,18 @@ export default function PaymentPage() {
                       </div>
                     </div>
                     <div style={{ textAlign:'right' }}>
-                      <div style={{ fontWeight:800, fontSize:'1rem', color:'var(--brand)' }}>
-                        ${bp/100}/mo
-                      </div>
-                      {billing==='yearly' && (
-                        <div style={{ fontSize:'.68rem', color:'var(--text-3)' }}>
-                          ${bd.price_yearly/100}/yr
+                      {billing==='yearly' ? (
+                        <>
+                          <div style={{ fontWeight:800, fontSize:'1rem', color:'var(--brand)' }}>
+                            ${bd.price_yearly/100}/yr
+                          </div>
+                          <div style={{ fontSize:'.68rem', color:'var(--text-3)' }}>
+                            ${Math.round(bd.price_yearly/12)/100}/mo effective
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontWeight:800, fontSize:'1rem', color:'var(--brand)' }}>
+                          ${bd.price_monthly/100}/mo
                         </div>
                       )}
                     </div>
@@ -416,7 +441,7 @@ export default function PaymentPage() {
                 <div style={{ fontWeight:600, fontSize:'.88rem' }}>{label}</div>
                 {selMods.length > 0 && (
                   <div style={{ fontSize:'.72rem', color:'var(--text-3)', marginTop:2 }}>
-                    {selMods.map(m => MOD_LABELS[m]?.label).join(' + ')}
+                    {'Base (CSV Recon)'}{selMods.map(m => ' + ' + (MOD_LABELS[m]?.label || m))}
                   </div>
                 )}
                 {saveMsg && (
