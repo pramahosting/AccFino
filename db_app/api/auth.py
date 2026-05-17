@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from db_app.models import Role, User
 from db_app.models.licence import LicenceRecord
 import bcrypt
+import json as _json
 from pydantic import BaseModel
 from db_app.database import get_db
 
@@ -22,6 +23,7 @@ class RegisterRequest(BaseModel):
     phone: str | None = None
     address: str | None = None
     role: str | None = None  # Optional, only honored for first user or by admin
+    plan_id: str | None = "base"  # Selected subscription plan
 
 class UserResponse(BaseModel):
     id: int
@@ -164,14 +166,28 @@ def register(
         from datetime import datetime, timedelta
         today    = datetime.utcnow().date()
         end_date = today + timedelta(days=183)  # ~6 months
+        # Set modules based on selected plan
+        PLAN_MODULES = {
+            "base":    ["dashboard", "reconciliation"],
+            "reconciliation": ["dashboard", "reconciliation"],
+            "trading": ["dashboard", "trading"],
+            "cashflow":["dashboard", "cash-flow"],
+            "invoice": ["dashboard", "invoice"],
+            "basic":   ["dashboard", "reconciliation", "trading", "cash-flow", "invoice"],
+            "premium": ["dashboard", "reconciliation", "trading", "cash-flow", "invoice"],
+        }
+        selected_plan = getattr(request, 'plan_id', 'base') or 'base'
+        plan_modules  = PLAN_MODULES.get(selected_plan, PLAN_MODULES["base"])
+
         lic = LicenceRecord(
             user_id      = new_user.id,
-            licence_type = "demo",
+            licence_type = selected_plan,
+            plan_id      = selected_plan,
             payment_mode = "",
             start_date   = str(today),
             end_date     = str(end_date),
-            notes        = "Auto-created on registration",
-            modules      = "",   # empty = all modules enabled by default
+            notes        = f"Auto-created on registration — {selected_plan} plan",
+            modules      = _json.dumps(plan_modules),
         )
         db.add(lic)
         db.commit()
