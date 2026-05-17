@@ -1548,12 +1548,13 @@ def licence_list():
         result = []
         for u in users:
             lic = db.query(LicenceRecord).filter(LicenceRecord.user_id == u.id).first()
-            # Parse modules — default: all modules enabled
+            # Parse modules — empty = base plan (dashboard + reconciliation)
+            BASE_MODULES = ["dashboard", "reconciliation"]
             raw_mods = (lic.modules if lic and lic.modules else "")
             try:
-                mods = _json.loads(raw_mods) if raw_mods and raw_mods.strip().startswith('[') else ALL_MODULES[:]
+                mods = _json.loads(raw_mods) if raw_mods and raw_mods.strip().startswith('[') else BASE_MODULES[:]
             except Exception:
-                mods = ALL_MODULES[:]
+                mods = BASE_MODULES[:]
             # Remove admin-only modules from user view
             mods = [m for m in mods if m not in ('admin', 'file-manager', 'licence')]
             result.append({
@@ -1681,3 +1682,44 @@ def licence_update_user(user_id: int, body: dict = Body(...)):
         raise HTTPException(500, str(e))
     finally:
         db.close()
+
+# ── Strip /api prefix middleware ──────────────────────────────────────────────
+# In production the React frontend calls /api/banks, /api/sessions etc.
+# This middleware strips the /api prefix before FastAPI processes the request.
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as _SReq
+
+class StripApiPrefix(BaseHTTPMiddleware):
+    async def dispatch(self, request: _SReq, call_next):
+        scope = request.scope
+        path  = scope.get("path", "")
+        if path.startswith("/api/"):
+            scope["path"]     = path[4:]
+            scope["raw_path"] = scope["path"].encode()
+        elif path == "/api":
+            scope["path"]     = "/"
+            scope["raw_path"] = b"/"
+        return await call_next(request)
+
+app.add_middleware(StripApiPrefix)
+
+# ── Serve React SPA — registered LAST so all API routes take priority ─────────
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses   import FileResponse as _FileResponse
+
+_DIST = Path(__file__).parent.parent / "react_frontend" / "dist"
+
+if _DIST.exists():
+    if (_DIST / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/{spa_path:path}", include_in_schema=False)
+    def spa_fallback(spa_path: str = ""):
+        """Catch-all: serve index.html so React Router handles client-side routes.
+        Registered last so every API endpoint takes priority over this fallback.
+        """
+        index = _DIST / "index.html"
+        if index.exists():
+            return _FileResponse(str(index))
+        return {"error": "Frontend not built"}
