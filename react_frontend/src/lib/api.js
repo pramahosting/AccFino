@@ -98,3 +98,9 @@ export const licenceUpdateUser = (uid, body) => http.patch(`/licence/user/${uid}
 export const forgotPassword   = (email)     => http.post('/auth/forgot-password', { email })
 export const resetPassword    = (token, pw) => http.post('/auth/reset-password', { token, new_password: pw })
 export const verifyResetToken = (token)     => http.get('/auth/verify-reset-token', { params: { token } })
+
+// ── Payments ──────────────────────────────────────────────────────────────────
+export const getPlans       = ()     => http.get('/payments/plans')
+export const createCheckout = (body) => http.post('/payments/create-checkout', body)
+export const getMyPlan      = (uid)  => http.get(`/payments/my-plan/${uid}`)
+export const adminActivate  = (body) => http.post('/payments/admin/activate', body)
