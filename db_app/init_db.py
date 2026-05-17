@@ -86,42 +86,59 @@ def init_db():
 
 
 def ensure_demo_licences():
-    """Ensure every user has a demo licence record with start/end dates."""
+    """Ensure every user has a licence record with correct start/end dates."""
     from datetime import datetime, timedelta, timezone
     from db_app.models.licence import LicenceRecord
     from db_app.models.user import User
+    import json as _json
+
+    BASE_MODULES  = ["dashboard", "reconciliation"]
+    ADMIN_MODULES = ["dashboard", "reconciliation", "trading",
+                     "cash-flow", "invoice", "admin", "file-manager", "licence"]
 
     db = SessionLocal()
     try:
-        today    = datetime.now(timezone.utc).date()
-        end_date = today + timedelta(days=183)
-        today_s  = str(today)
-        end_s    = str(end_date)
+        today   = datetime.now(timezone.utc).date()
+        today_s = str(today)
 
         users = db.query(User).all()
         for user in users:
+            is_admin = any(r.name == "admin" for r in user.roles)
             lic = db.query(LicenceRecord).filter(LicenceRecord.user_id == user.id).first()
+
             if not lic:
                 lic = LicenceRecord(
                     user_id      = user.id,
-                    licence_type = "demo",
+                    licence_type = "admin" if is_admin else "base",
+                    plan_id      = "admin" if is_admin else "base",
                     payment_mode = "",
+                    # start_date fixed to today if not set
                     start_date   = today_s,
-                    end_date     = end_s,
+                    # admin: never expires | user: 6 months
+                    end_date     = "9999-12-31" if is_admin else str(today + timedelta(days=183)),
                     notes        = "Auto-created",
-                    modules      = "",
+                    modules      = _json.dumps(ADMIN_MODULES if is_admin else BASE_MODULES),
                 )
                 db.add(lic)
             else:
-                # Fill in missing dates
+                # Fix missing start_date — lock to original value
                 if not lic.start_date:
                     lic.start_date = today_s
+                # Fix missing end_date
                 if not lic.end_date:
-                    lic.end_date = end_s
-                if not lic.licence_type:
-                    lic.licence_type = "demo"
+                    lic.end_date = "9999-12-31" if is_admin else str(today + timedelta(days=183))
+                # Fix licence_type
+                if not lic.licence_type or lic.licence_type == "demo":
+                    lic.licence_type = "admin" if is_admin else "base"
+                # Fix admin end date
+                if is_admin and lic.end_date != "9999-12-31":
+                    lic.end_date = "9999-12-31"
+                # Fix modules
+                if not lic.modules or lic.modules == "":
+                    lic.modules = _json.dumps(ADMIN_MODULES if is_admin else BASE_MODULES)
+
         db.commit()
-        print("Demo licences ensured for all users.")
+        print("Licences ensured for all users.")
     except Exception as e:
         db.rollback()
         print(f"Warning: could not ensure licences: {e}")
