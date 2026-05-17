@@ -10,6 +10,7 @@ import TradingPage           from './pages/TradingPage.jsx'
 import CashFlowPage          from './pages/CashFlowPage.jsx'
 import InvoicePage           from './pages/InvoicePage.jsx'
 import AdminPage             from './pages/AdminPage.jsx'
+import PaymentPage           from './pages/PaymentPage.jsx'
 import FileManagerPage       from './pages/FileManagerPage.jsx'
 import LicencePage           from './pages/LicencePage.jsx'
 import ResetPasswordPage     from './pages/ResetPasswordPage.jsx'
@@ -17,7 +18,8 @@ import ResetPasswordPage     from './pages/ResetPasswordPage.jsx'
 function Guard({ children, adminOnly }) {
   const { user } = useAuth()
   if (!user) return <Navigate to="/login" replace />
-  if (adminOnly && !user.is_admin) return <Navigate to="/" replace />
+  const isAdmin = Array.isArray(user.roles) && user.roles.includes('admin')
+  if (adminOnly && !isAdmin) return <Navigate to="/" replace />
   return children
 }
 
@@ -25,9 +27,9 @@ function AppRoutes() {
   const { user } = useAuth()
   return (
     <Routes>
-      <Route path="/login"
-      element={user ? <Navigate to="/" replace /> : <LoginPage />} />
-      <Route path="/reset-password" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
+      <Route path="/upgrade"         element={<PaymentPage />} />
+      <Route path="/login"          element={user ? <Navigate to="/" replace /> : <LoginPage />} />
+      <Route path="/reset-password" element={user ? <Navigate to="/" replace /> : <ResetPasswordPage />} />
       <Route path="/" element={<Guard><Layout /></Guard>}>
         <Route index                    element={<DashboardPage />} />
         <Route path="reconciliation"    element={<ReconciliationPage />} />
