@@ -120,9 +120,9 @@ export default function Layout() {
         <header style={{height:'var(--header-h)',background:'var(--surface)',borderBottom:'1px solid var(--border)',
           display:'flex',alignItems:'center',padding:'0 24px',position:'sticky',top:0,zIndex:10,justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:'.78rem',color:'var(--text-3)',fontWeight:500}}>Accfino</span>
+            <span style={{fontSize:'1rem',color:'var(--text-3)',fontWeight:500}}>Accfino</span>
             <span style={{color:'var(--border-dark)'}}>/</span>
-            <span style={{fontSize:'.875rem',fontWeight:600,color:'var(--text-1)'}}>{pageName}</span>
+            <span style={{fontSize:'1rem',fontWeight:600,color:'var(--text-1)'}}>{pageName}</span>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
             <button className="btn btn-ghost btn-icon"><Bell size={16} color="var(--text-3)"/></button>
