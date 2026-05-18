@@ -1580,22 +1580,27 @@ def licence_list():
 def my_modules(user_id: int):
     """Return list of module keys the user is allowed to access."""
     import json as _json
+    BASE_MODULES = ["dashboard", "reconciliation"]
     db = _SL()
     try:
         user = db.query(_User).filter(_User.id == user_id).first()
         if not user:
-            return {"modules": ALL_MODULES}
+            return {"modules": BASE_MODULES}
         # Admins always get all modules
         if any(r.name == "admin" for r in user.roles):
             return {"modules": ALL_MODULES}
         lic = db.query(LicenceRecord).filter(LicenceRecord.user_id == user_id).first()
         if not lic or not lic.modules:
-            return {"modules": ALL_MODULES}
+            return {"modules": BASE_MODULES}
         try:
             mods = _json.loads(lic.modules)
+            if not mods:
+                return {"modules": BASE_MODULES}
+            # Remove admin-only modules
+            mods = [m for m in mods if m not in ('admin', 'file-manager', 'licence')]
+            return {"modules": mods}
         except Exception:
-            mods = ALL_MODULES[:]
-        return {"modules": mods}
+            return {"modules": BASE_MODULES}
     finally:
         db.close()
 
