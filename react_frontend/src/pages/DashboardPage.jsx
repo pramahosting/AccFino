@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { getSessions, getDashboardStats, licenceMyModules } from '../lib/api.js'
+import { getSessions, getDashboardStats, licenceMyModules, getMyPlan, activateAfterPayment } from '../lib/api.js'
 import { ArrowLeftRight, TrendingUp, TrendingDown, RefreshCw, Activity,
          BarChart3, ArrowRight, Calendar, Folder, Trash2 } from 'lucide-react'
 import { deleteSession as apiDeleteSession } from '../lib/api.js'
@@ -30,8 +31,65 @@ function StatCard({label,value,sub,colorVar,iconColor,icon:Icon}) {
 
 export default function DashboardPage() {
   const { user }  = useAuth()
-  const nav       = useNavigate()
+  const nav            = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [myPlan, setMyPlan] = useState(null)
   const [allowedModules, setAllowedModules] = useState(null)
+
+  useEffect(() => {
+    if (!user?.id) return
+    // Use cached plan from login if available, then refresh in background
+    if (user.plan) setMyPlan(user.plan)
+    getMyPlan(user.id).then(r => setMyPlan(r.data)).catch(() => {})
+  }, [user?.id])
+
+  // Handle return from Stripe payment — activate plan immediately
+  useEffect(() => {
+    if (searchParams.get('payment') === 'success' && user?.id) {
+      const planFromUrl   = searchParams.get('plan') || 'basic'
+      const periodFromUrl = searchParams.get('period') || 'monthly'
+      // mods is pipe-separated e.g. "reconciliation|invoice"
+      const modsStr   = searchParams.get('mods') || ''
+      const modsFromUrl = modsStr ? modsStr.split('|').filter(Boolean) : []
+
+      setSearchParams({})
+
+      // Use exact modules from URL — don't default to bundle
+      const planId  = planFromUrl === 'custom' ? 'custom' : planFromUrl
+      const modules = modsFromUrl.length > 0 ? modsFromUrl : null
+
+      activateAfterPayment({
+        user_id:        user.id,
+        plan_id:        planId,
+        billing_period: periodFromUrl,
+        modules:        modules || [],
+      })
+        .then(res => {
+          // Use returned data directly for instant update
+          const updated = res.data
+          if (updated?.ok) {
+            setMyPlan({
+              plan_id:  updated.plan_id,
+              modules:  updated.modules,
+              end_date: updated.end_date,
+            })
+          }
+          window.dispatchEvent(new Event('accfino:modules-changed'))
+          toast.success('🎉 Payment successful! Your plan has been upgraded.')
+          // Also refresh from server after 2s for webhook data
+          setTimeout(() => getMyPlan(user.id).then(r => setMyPlan(r.data)).catch(()=>{}), 2000)
+        })
+        .catch(() => {
+          toast.success('🎉 Payment received! Refreshing your plan...')
+          setTimeout(() => {
+            getMyPlan(user.id).then(r => {
+              setMyPlan(r.data)
+              window.dispatchEvent(new Event('accfino:modules-changed'))
+            }).catch(() => {})
+          }, 3000)
+        })
+    }
+  }, [user?.id])
 
   useEffect(() => {
     if (!user) return
@@ -105,7 +163,7 @@ export default function DashboardPage() {
   return (
     <div className="fade-in">
       {/* Header */}
-      <div style={{marginBottom:24,display:'flex',alignItems:'flex-end',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
+      <div style={{marginBottom:24,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
         <div>
           <div style={{fontSize:'.8rem',color:'var(--text-3)',fontWeight:500,marginBottom:4}}>
             {new Date().toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
@@ -116,13 +174,52 @@ export default function DashboardPage() {
             <span style={{marginLeft:8,fontSize:'.75rem',opacity:.7}}>Updated {refreshTime}</span>
           </p>
         </div>
-        <div style={{display:'flex',gap:8}}>
-          <button className="btn btn-ghost btn-sm" onClick={() => { setLoading(true); doLoad(usernameRef.current) }}>
-            <RefreshCw size={14}/> Refresh
-          </button>
-          <button className="btn btn-primary" onClick={() => nav('/reconciliation')}>
-            <ArrowLeftRight size={15}/> New Reconciliation
-          </button>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5}}>
+          {/* Current plan + upgrade — above New Reconciliation */}
+          {myPlan && (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+              <span style={{
+                fontSize:'.75rem', fontWeight:700, padding:'4px 10px',
+                borderRadius:100, background:'var(--surface-2)',
+                border:'1px solid var(--border)', color:'var(--text-2)',
+              }}>
+                {(() => {
+                  const pid = myPlan.plan_id || 'base'
+                  // Show human-readable plan name
+                  // Only known bundle plans get simple names
+                  // Individual module purchases always show "Base + X Plan"
+                  const BUNDLE_NAMES = {
+                    base:'Base', basic:'Full Bundle', premium:'Premium',
+                  }
+                  if (BUNDLE_NAMES[pid]) return BUNDLE_NAMES[pid] + ' Plan'
+                  // Custom multi-module — show "Base + Trading Plan"
+                  const SHORT = {
+                    dashboard:'Base', reconciliation:'Reconciliation',
+                    trading:'Trading', 'cash-flow':'Cash Flow', invoice:'Invoice',
+                  }
+                  const activeMods = (myPlan.modules || [])
+                    .map(m => SHORT[m]).filter(Boolean)
+                  // Always starts with Base, then add paid modules
+                  const baseLabel = ['Base']
+                  const paidMods  = activeMods.filter(m => m !== 'Base' && m !== 'Reconciliation')
+                  return [...baseLabel, ...paidMods].join(' + ') + ' Plan'
+                })()}
+              </span>
+              {!(myPlan.plan_id === 'premium' && myPlan.billing_period === 'yearly') && (
+                <button className="btn btn-primary btn-sm" onClick={() => nav('/upgrade')}>
+                  ⚡ Upgrade Plan
+                </button>
+              )}
+            </div>
+          )}
+          <div style={{display:'flex',gap:8,marginTop:5,justifyContent:'center'}}>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setLoading(true); doLoad(usernameRef.current) }}>
+              <RefreshCw size={14}/> Refresh
+            </button>
+            <button className="btn btn-primary" onClick={() => nav('/reconciliation')}>
+              <ArrowLeftRight size={15}/> New Reconciliation
+            </button>
+          </div>
         </div>
       </div>
 

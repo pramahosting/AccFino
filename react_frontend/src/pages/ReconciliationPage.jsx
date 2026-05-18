@@ -16,11 +16,18 @@ export default function ReconciliationPage() {
     if (!user?.id) return
     const isAdmin = Array.isArray(user.roles) && user.roles.includes('admin')
     if (isAdmin) { setHasOpenBanking(true); return }
-    // Open Banking only for paid reconciliation plans — not Base (free) plan
+    // Open Banking only if user specifically paid for reconciliation plan
+    // Base plan includes CSV reconciliation but NOT Open Banking
     getMyPlan(user.id)
       .then(r => {
-        const planId = r.data?.plan_id || 'base'
-        setHasOpenBanking(planId !== 'base')
+        const planId  = r.data?.plan_id || 'base'
+        const modules = r.data?.modules || []
+        // Open Banking unlocked if: reconciliation plan, basic, premium, or custom with paid recon
+        const paidRecon = planId === 'reconciliation'
+          || planId === 'basic' || planId === 'premium'
+          || (planId.includes('reconciliation') && planId !== 'base')
+          || isAdmin
+        setHasOpenBanking(paidRecon)
       })
       .catch(() => setHasOpenBanking(false))
   }, [user?.id])

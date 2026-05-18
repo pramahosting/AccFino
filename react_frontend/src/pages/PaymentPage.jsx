@@ -37,7 +37,7 @@ const MOD_PRICES = {
 
 // Bundle thresholds
 const BUNDLES = {
-  basic:   { mods: ['reconciliation','trading','cash-flow','invoice'], price_monthly: 4900, price_yearly: 49000, label: 'Basic Bundle', save: 'Save $12/mo' },
+  basic:   { mods: ['reconciliation','trading','cash-flow','invoice'], price_monthly: 4900, price_yearly: 49000, label: 'Full Bundle', save: 'Save $12/mo' },
   premium: { mods: ['reconciliation','trading','cash-flow','invoice'], price_monthly: 3900, price_yearly: 39000, label: 'Premium',      save: 'Best Value' },
 }
 
@@ -64,7 +64,7 @@ function calcPrice(selectedMods, billing, selBundle) {
   // Auto-upgrade to basic bundle if 3+ paid modules and bundle is cheaper
   const basicPrice = billing === 'yearly' ? BUNDLES.basic.price_yearly : BUNDLES.basic.price_monthly
   if (selectedMods.length >= 3 && total >= basicPrice) {
-    return { price: basicPrice, label: 'Basic Bundle', planId: 'basic',
+    return { price: basicPrice, label: 'Full Bundle', planId: 'basic',
              saveMsg: 'Save vs individual', modules: effectiveMods }
   }
 
@@ -89,8 +89,10 @@ export default function PaymentPage() {
 
   useEffect(() => {
     if (searchParams.get('success')) {
-      toast.success('Payment successful! Your plan has been upgraded.')
-      navigate(user ? '/' : '/login', { replace: true })
+      toast.success('🎉 Payment successful! Your plan has been upgraded.')
+      // Fire module refresh event then go to dashboard
+      window.dispatchEvent(new Event('accfino:modules-changed'))
+      setTimeout(() => navigate(user ? '/' : '/login', { replace: true }), 1500)
     }
     if (searchParams.get('cancelled')) {
       toast('Payment cancelled.', { icon: 'ℹ️' })
@@ -141,14 +143,18 @@ export default function PaymentPage() {
     if (isFree) { navigate('/'); return }
     setPaying(true)
     try {
-      // For custom multi-module, use the plan that covers those modules
-      const pid = planId.startsWith('custom_') ? 'basic' : planId
+      // For custom individual module selection, pass the exact amount and modules
+      const pid = planId.startsWith('custom_') ? 'custom' : planId
+      // Always include base (dashboard + reconciliation CSV) in module list
+      const allMods = [...new Set(['dashboard', 'reconciliation', ...selMods])]
       const { data } = await createCheckout({
         plan_id:        pid,
         billing_period: billing,
         user_id:        user.id,
         user_email:     user.email,
-        modules:        selMods,
+        modules:        allMods,
+        amount:         price,
+        plan_name:      label,
       })
       if (data.checkout_url) window.location.href = data.checkout_url
     } catch (e) {
@@ -361,7 +367,7 @@ export default function PaymentPage() {
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {[
-                { key:'basic',   emoji:'📦', label:'Basic Bundle', desc:'All 4 modules', save:'Save $12/mo vs individual', highlight:false },
+                { key:'basic',   emoji:'📦', label:'Full Bundle', desc:'All 4 modules', save:'Save $12/mo vs individual', highlight:false },
                 { key:'premium', emoji:'⭐', label:'Premium',      desc:'All 4 modules + priority support', save:'Best Value — Save $22/mo', highlight:true },
               ].map(b => {
                 const bd    = BUNDLES[b.key]
