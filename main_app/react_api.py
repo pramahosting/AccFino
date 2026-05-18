@@ -1688,6 +1688,50 @@ def licence_update_user(user_id: int, body: dict = Body(...)):
     finally:
         db.close()
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PRICING MANAGEMENT — admin editable pricing from JSON file
+# ══════════════════════════════════════════════════════════════════════════════
+_PRICING_FILE = Path(__file__).parent / "data" / "pricing.json"
+
+def _load_pricing() -> dict:
+    """Load pricing from JSON file, fall back to payments.py PLANS if missing."""
+    if _PRICING_FILE.exists():
+        try:
+            return json.loads(_PRICING_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    # Fallback to payments.py PLANS
+    try:
+        from db_app.api.payments import PLANS
+        return PLANS
+    except Exception:
+        return {}
+
+def _save_pricing(data: dict):
+    _PRICING_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _PRICING_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+@app.get("/pricing/plans")
+def pricing_get():
+    """Public — return all plan definitions."""
+    return _load_pricing()
+
+@app.post("/pricing/plans")
+def pricing_save(body: dict = Body(...)):
+    """Admin — save full pricing config."""
+    _save_pricing(body)
+    return {"ok": True}
+
+@app.patch("/pricing/plans/{plan_id}")
+def pricing_update_plan(plan_id: str, body: dict = Body(...)):
+    """Admin — update a single plan's pricing fields."""
+    data = _load_pricing()
+    if plan_id not in data:
+        raise HTTPException(404, f"Plan {plan_id!r} not found")
+    data[plan_id].update(body)
+    _save_pricing(data)
+    return {"ok": True, "plan": data[plan_id]}
+
 # ── Strip /api prefix middleware ──────────────────────────────────────────────
 # In production the React frontend calls /api/banks, /api/sessions etc.
 # This middleware strips the /api prefix before FastAPI processes the request.
