@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.jsx'
 import AccfinoLogo from '../ui/AccfinoLogo.jsx'
-import { licenceMyModules } from '../../lib/api.js'
+import UpgradeBanner from '../UpgradeBanner.jsx'
+import { licenceMyModules, getMyPlan } from '../../lib/api.js'
 import { LayoutDashboard, ArrowLeftRight, TrendingUp, BarChart2, FileText, ScanLine, Landmark, ShieldCheck, LogOut, ChevronLeft, ChevronRight, Bell, HelpCircle, FolderOpen, BadgeCheck } from 'lucide-react'
 
 const NAV = [
@@ -21,15 +22,17 @@ export default function Layout() {
   const nav = useNavigate()
   const loc = useLocation()
   const [col,            setCol]           = useState(false)
-  const [allowedModules, setAllowedModules] = useState(null)  // null = loading, [] = fetched
+  const [allowedModules, setAllowedModules] = useState(null)
+  const [myPlan,        setMyPlan]        = useState(null)
 
   const fetchModules = () => {
     if (!user) return
     const isAdmin = Array.isArray(user.roles) && user.roles.includes('admin')
     if (isAdmin || !user.id) { setAllowedModules('all'); return }
+    // Always fetch fresh from API — never use cached value
     licenceMyModules(user.id)
-      .then(r => setAllowedModules(r.data.modules || 'all'))
-      .catch(() => setAllowedModules('all'))
+      .then(r => setAllowedModules(r.data.modules || ['dashboard','reconciliation']))
+      .catch(() => setAllowedModules(['dashboard','reconciliation']))
   }
 
   useEffect(() => {
@@ -38,6 +41,16 @@ export default function Layout() {
     window.addEventListener('accfino:modules-changed', fetchModules)
     return () => window.removeEventListener('accfino:modules-changed', fetchModules)
   }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    getMyPlan(user.id).then(r => setMyPlan(r.data)).catch(() => {})
+    window.addEventListener('accfino:modules-changed', () =>
+      getMyPlan(user.id).then(r => setMyPlan(r.data)).catch(() => {})
+    )
+  }, [user?.id])
+
+  const showUpgradeBtn = myPlan && !(myPlan.plan_id === 'premium' && myPlan.billing_period === 'yearly')
 
   const isAdmin = Array.isArray(user?.roles) && user.roles.includes('admin')
 
@@ -51,6 +64,8 @@ export default function Layout() {
   const pageName = loc.pathname==='/'?'Dashboard':loc.pathname.slice(1).replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase())
 
   return (
+    <>
+    <UpgradeBanner />
     <div style={{display:'flex',minHeight:'100vh',background:'var(--bg)'}}>
       <aside style={{
         width:col?'var(--sidebar-w-sm)':'var(--sidebar-w)',minHeight:'100vh',flexShrink:0,
@@ -104,7 +119,15 @@ export default function Layout() {
               <div style={{fontSize:'.78rem',color:'rgba(255,255,255,.45)'}}>{user?.is_admin?'Administrator':'User'}</div>
             </div>
           </div>}
-          <button onClick={()=>{logout();nav('/login')}} className="nav-item" style={{border:'none',cursor:'pointer',width:'100%'}}>
+          <button onClick={() => {
+              try {
+                logout()
+                nav('/login')
+              } catch {
+                localStorage.removeItem('af_user')
+                window.location.href = '/login'
+              }
+            }} className="nav-item" style={{border:'none',cursor:'pointer',width:'100%'}}>
             <LogOut size={23} style={{flexShrink:0}}/>
             {!col&&<span style={{fontSize:'1rem'}}>Logout</span>}
           </button>
@@ -135,5 +158,6 @@ export default function Layout() {
         <main style={{flex:1,padding:'24px 28px',overflowY:'auto'}}><Outlet/></main>
       </div>
     </div>
+    </>
   )
 }
