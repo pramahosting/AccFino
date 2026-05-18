@@ -126,3 +126,8 @@ export const createCheckout = (body) => http.post('/payments/create-checkout', b
 export const getMyPlan      = (uid)  => http.get(`/payments/my-plan/${uid}`)
 export const adminActivate  = (body) => http.post('/payments/admin/activate', body)
 export const activateAfterPayment = (body) => http.post('/payments/activate-after-payment', body)
+
+// ── Pricing Management (admin) ────────────────────────────────────────────────
+export const getPricingPlans    = ()              => http.get('/pricing/plans')
+export const savePricingPlans   = (data)          => http.post('/pricing/plans', data)
+export const updatePricingPlan  = (planId, data)  => http.patch(`/pricing/plans/${planId}`, data)
