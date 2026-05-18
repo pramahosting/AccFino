@@ -132,12 +132,12 @@ export default function LoginPage() {
       {/* ── Left panel ── */}
       <div className="login-left">
         <div className="login-brand-card">
-          <AccfinoLogo size={44} showText textColor="#fff" />
+          <AccfinoLogo size={60} showText textColor="#fff" />
           <div style={{ marginTop: 36, marginBottom: 28 }}>
             <h2 style={{ color: '#fff', fontSize: '1.2rem', fontFamily: "'Sora',sans-serif", marginBottom: 8, lineHeight: 1.35 }}>
               Intelligent Accounting &amp; Finance Operations System
             </h2>
-            <p style={{ color: 'rgba(255,255,255,.65)', fontSize: '.8rem', lineHeight: 1.7 }}>
+            <p style={{ color: 'rgba(255,255,255,.65)', fontSize: '1rem', lineHeight: 1.7 }}>
               Next-generation agentic platform that speeds up month-end closes, detects anomalies,
               and transforms routine bookkeeping into real-time strategic financial forecasting.
             </p>
@@ -147,15 +147,15 @@ export default function LoginPage() {
               <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <span style={{ fontSize: '.95rem', flexShrink: 0, marginTop: 1 }}>{f.icon}</span>
                 <div>
-                  <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#fff', marginBottom: 2 }}>{f.title}</div>
-                  <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.6)', lineHeight: 1.5 }}>{f.desc}</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: 2 }}>{f.title}</div>
+                  <div style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.6)', lineHeight: 1.5 }}>{f.desc}</div>
                 </div>
               </div>
             ))}
           </div>
           <div style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,.12)' }}>
             <div style={{ display: 'flex', gap: 16 }}>
-              {[['AUS', '🇦🇺'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
+              {[['AUS', 'AU'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
                   <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.4)', letterSpacing: '.05em', marginTop: 2 }}>{l}</div>
@@ -175,10 +175,10 @@ export default function LoginPage() {
 
           {/* Heading */}
           <div style={{ marginBottom: 16 }}>
-            <h1 style={{ fontSize: '1.5rem', marginBottom: 6 }}>
-              {tab === 'login' ? 'Welcome back' : 'Create your account'}
+            <h1 style={{ fontSize: '1.8rem', marginBottom: 6 }}>
+              {tab === 'login' ? 'Welcome to Accfino' : 'Create your account'}
             </h1>
-            <p style={{ color: 'var(--text-3)', fontSize: '.875rem' }}>
+            <p style={{ color: 'var(--text-3)', fontSize: '1rem' }}>
               {tab === 'login' ? 'Sign in to your Accfino account' : 'Start your Accfino journey today'}
             </p>
           </div>
@@ -189,7 +189,7 @@ export default function LoginPage() {
               background: 'var(--surface-2)', borderRadius: 'var(--r-md)',
               padding: '10px 14px', marginBottom: 18, border: '1px solid var(--border)',
             }}>
-              <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-3)',
+              <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--text-3)',
                 textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
                 Subscription Plans
               </div>
@@ -208,27 +208,27 @@ export default function LoginPage() {
                         cursor: tab === 'register' ? 'pointer' : 'default',
                         background: active ? 'var(--brand)' : id==='premium' ? 'var(--brand-light)' : 'var(--surface)',
                         color: active ? '#fff' : id==='premium' ? 'var(--brand)' : 'var(--text-1)',
-                        fontSize: '.78rem', fontWeight: active ? 700 : 600,
+                        fontSize: '1rem', fontWeight: active ? 700 : 600,
                         boxShadow: active ? 'var(--sh-sm)' : 'none',
                         transition: 'all .15s',
                         outline: active ? 'none' : '1px solid var(--border)',
                       }}>
                       {plan.name}
-                      <span style={{ marginLeft: 5, opacity: .75, fontSize: '.72rem', fontWeight: 400 }}>
+                      <span style={{ marginLeft: 5, opacity: .75, fontSize: '.8rem', fontWeight: 400 }}>
                         {price === 0 ? '— Free' : `— $${price/100}/mo`}
                       </span>
                     </button>
                   )
                 })}
-                <span style={{ fontSize: '.75rem', color: 'var(--text-3)', margin: '0 4px' }}>+more plans</span>
-                <span style={{ fontSize: '.75rem', color: 'var(--brand)',
+                <span style={{ fontSize: '1rem', color: 'var(--text-3)', margin: '0 4px' }}>+more plans</span>
+                <span style={{ fontSize: '1rem', color: 'var(--brand)',
                   cursor: 'pointer', textDecoration: 'underline', fontWeight: 600 }}
                   onClick={() => navigate('/upgrade')}>
                   See all plans →
                 </span>
               </div>
               {tab === 'register' && selPlanData && (
-                <div style={{ marginTop: 8, fontSize: '.75rem', color: 'var(--text-3)' }}>
+                <div style={{ marginTop: 8, fontSize: '1rem', color: 'var(--text-3)' }}>
                   {planPrice === 0
                     ? '✓ Free for 6 months — no payment required'
                     : `✓ ${selPlanData.name} — $${planPrice/100}/mo · secure payment via Stripe after registration`}
@@ -246,7 +246,7 @@ export default function LoginPage() {
               <button key={t} onClick={() => { setTab(t); setErr('') }} style={{
                 flex: 1, padding: '8px', border: 'none', cursor: 'pointer',
                 borderRadius: 'var(--r-sm)', fontFamily: 'inherit', fontWeight: tab === t ? 700 : 500,
-                fontSize: '.875rem', transition: 'all .15s',
+                fontSize: '1rem', transition: 'all .15s',
                 background: tab === t ? 'var(--surface)' : 'transparent',
                 color: tab === t ? 'var(--brand)' : 'var(--text-3)',
                 boxShadow: tab === t ? 'var(--sh-sm)' : 'none',
@@ -357,8 +357,8 @@ export default function LoginPage() {
             </form>
           )}
 
-          <p style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: '.75rem', marginTop: 28 }}>
-            © {new Date().getFullYear()} Accfino · Australian Accounting Platform<br />
+          <p style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: '1rem', marginTop: 28 }}>
+            © {new Date().getFullYear()} Accfino · Accounting & Finance Operations Platform<br />
             <span style={{ opacity: .6 }}>Powered by Prama AI engine</span>
           </p>
         </div>
@@ -383,7 +383,7 @@ export default function LoginPage() {
             <div style={{textAlign:'center',padding:'8px 0'}}>
               <div style={{fontSize:'2.5rem',marginBottom:12}}>📧</div>
               <h3 style={{marginBottom:8}}>Check your email</h3>
-              <p style={{color:'var(--text-3)',fontSize:'.875rem',lineHeight:1.7}}>
+              <p style={{color:'var(--text-3)',fontSize:'1rem',lineHeight:1.7}}>
                 A password reset link has been sent to <strong>{forgotEmail}</strong>.
               </p>
               <button className="btn btn-primary btn-full" onClick={closeForgot} style={{marginTop:20}}>Close</button>
@@ -391,7 +391,7 @@ export default function LoginPage() {
           ) : (
             <>
               <h3 style={{marginBottom:6}}>Reset your password</h3>
-              <p style={{color:'var(--text-3)',fontSize:'.875rem',marginBottom:20}}>
+              <p style={{color:'var(--text-3)',fontSize:'1rem',marginBottom:20}}>
                 Enter your email and we'll send you a reset link.
               </p>
               <form onSubmit={handleForgot} style={{display:'flex',flexDirection:'column',gap:14}}>
