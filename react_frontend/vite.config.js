@@ -6,16 +6,16 @@ export default defineConfig({
   server: {
     port: 3000,
     hmr: {
-      // Prevent HMR from dying when backend is slow
-      timeout: 60000,
+      timeout:  60000,   // prevent HMR dying during slow navigation
+      overlay:  false,   // don't show overlay errors — use error boundary instead
     },
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8001',
+        target:       'http://127.0.0.1:8001',
         changeOrigin: true,
-        rewrite: path => path.replace(/^\/api/, ''),
-        timeout: 60000,        // 60s — allows slow PDF/CSV processing
-        proxyTimeout: 60000,   // 60s — proxy connection timeout
+        rewrite:      path => path.replace(/^\/api/, ''),
+        timeout:      60000,
+        proxyTimeout: 60000,
       }
     }
   }
