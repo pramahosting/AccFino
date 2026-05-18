@@ -27,127 +27,56 @@ router = APIRouter()
 # Set your own prices here (AUD cents for Stripe, display in AUD dollars)
 # After creating products in Stripe Dashboard, paste the Price IDs below
 
-PLANS = {
-    "base": {
-        "name":        "Base",
-        "description": "Start free — CSV reconciliation included",
-        "price_monthly": 0,
-        "price_yearly":  0,
-        "modules": ["dashboard", "reconciliation"],   # CSV only, no Open Banking
-        "features": [
-            "Dashboard overview",
-            "CSV bank reconciliation",
-            "Up to 500 transactions/month",
-            "6-month free access",
-        ],
-        "stripe_price_monthly": "",   # free — no Stripe price needed
-        "stripe_price_yearly":  "",
-        "highlight": False,
-        "badge": "Free",
-    },
-    "reconciliation": {
-        "name":        "Reconciliation",
-        "description": "Full bank reconciliation including Open Banking",
-        "price_monthly": 1900,   # AUD cents = $19.00
-        "price_yearly":  19000,  # = $190.00 (2 months free)
-        "modules": ["dashboard", "reconciliation"],   # full incl Open Banking
-        "features": [
-            "Everything in Base",
-            "Open Banking / direct bank feeds",
-            "Unlimited transactions",
-            "GST calculation & BAS-ready",
-            "Excel export with monthly summaries",
-        ],
-        "stripe_price_monthly": "price_REPLACE_RECON_MONTHLY",
-        "stripe_price_yearly":  "price_REPLACE_RECON_YEARLY",
-        "highlight": False,
-        "badge": "",
-    },
-    "trading": {
-        "name":        "Trading",
-        "description": "Crypto & equity CGT tax reports",
-        "price_monthly": 1500,
-        "price_yearly":  15000,
-        "modules": ["dashboard", "trading"],
-        "features": [
-            "Crypto CGT calculation",
-            "Equity CGT reports",
-            "ATO-ready tax summaries",
-        ],
-        "stripe_price_monthly": "price_REPLACE_TRADING_MONTHLY",
-        "stripe_price_yearly":  "price_REPLACE_TRADING_YEARLY",
-        "highlight": False,
-        "badge": "",
-    },
-    "cashflow": {
-        "name":        "Cash Flow",
-        "description": "ML-powered cash flow forecasting",
-        "price_monthly": 1500,
-        "price_yearly":  15000,
-        "modules": ["dashboard", "cash-flow"],
-        "features": [
-            "ML next-month forecast",
-            "Visual cash flow charts",
-            "Export to Excel",
-        ],
-        "stripe_price_monthly": "price_REPLACE_CASHFLOW_MONTHLY",
-        "stripe_price_yearly":  "price_REPLACE_CASHFLOW_YEARLY",
-        "highlight": False,
-        "badge": "",
-    },
-    "invoice": {
-        "name":        "Invoice",
-        "description": "GST invoices & PDF extraction",
-        "price_monthly": 1200,
-        "price_yearly":  12000,
-        "modules": ["dashboard", "invoice"],
-        "features": [
-            "Create GST invoices",
-            "Extract data from PDF invoices",
-            "Customer management",
-        ],
-        "stripe_price_monthly": "price_REPLACE_INVOICE_MONTHLY",
-        "stripe_price_yearly":  "price_REPLACE_INVOICE_YEARLY",
-        "highlight": False,
-        "badge": "",
-    },
-    "basic": {
-        "name":        "Full Bundle",
-        "description": "Reconciliation + Trading + Cash Flow + Invoice",
-        "price_monthly": 4900,   # $49/mo (save ~$12)
-        "price_yearly":  49000,  # $490/yr
-        "modules": ["dashboard", "reconciliation", "trading", "cash-flow", "invoice"],
-        "features": [
-            "Full bank reconciliation + Open Banking",
-            "Crypto & equity CGT reports",
-            "ML cash flow forecast",
-            "GST invoice management",
-            "Save $12/month vs individual",
-        ],
-        "stripe_price_monthly": "price_REPLACE_BASIC_MONTHLY",
-        "stripe_price_yearly":  "price_REPLACE_BASIC_YEARLY",
-        "highlight": False,
-        "badge": "",
-    },
-    "premium": {
-        "name":        "Premium",
-        "description": "Complete suite — best value, all modules included",
-        "price_monthly": 3900,   # $39/mo (cheaper than Basic $49 — reward commitment)
-        "price_yearly":  39000,  # $390/yr (2 months free = $325/yr effective)
-        "modules": ["dashboard", "reconciliation", "trading", "cash-flow", "invoice"],
-        "features": [
-            "Everything in Basic Bundle",
-            "Save $10/month vs Basic Bundle",
-            "Priority support",
-            "Early access to new features",
-            "Unlimited transactions & exports",
-        ],
-        "stripe_price_monthly": "price_REPLACE_PREMIUM_MONTHLY",
-        "stripe_price_yearly":  "price_REPLACE_PREMIUM_YEARLY",
-        "highlight": True,
-        "badge": "Best Value",
-    },
+import os as _os
+from pathlib import Path as _Path
+
+_PRICING_FILE = _Path(__file__).parent.parent / "main_app" / "data" / "pricing.json"
+
+def _load_plans() -> dict:
+    """Load plans from JSON file — allows admin to edit prices without redeployment."""
+    if _PRICING_FILE.exists():
+        try:
+            import json as _j
+            return _j.loads(_PRICING_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    # Fallback hardcoded plans
+    return _FALLBACK_PLANS
+
+_FALLBACK_PLANS = {
+    "base":    {"name":"Base",         "price_monthly":0,    "price_yearly":0,
+                "modules":["dashboard","reconciliation"],
+                "features":["Dashboard","CSV reconciliation"],"highlight":False,"badge":"Free",
+                "description":"Free plan"},
+    "reconciliation":{"name":"Reconciliation","price_monthly":1900,"price_yearly":19000,
+                "modules":["dashboard","reconciliation"],
+                "features":["Open Banking","Unlimited txns"],"highlight":False,"badge":"",
+                "description":"Full reconciliation"},
+    "trading": {"name":"Trading",      "price_monthly":1500, "price_yearly":15000,
+                "modules":["dashboard","trading"],
+                "features":["Crypto CGT","Equity CGT"],"highlight":False,"badge":"",
+                "description":"CGT tax reports"},
+    "cashflow":{"name":"Cash Flow",    "price_monthly":1500, "price_yearly":15000,
+                "modules":["dashboard","cash-flow"],
+                "features":["ML forecast","Charts"],"highlight":False,"badge":"",
+                "description":"ML forecasting"},
+    "invoice": {"name":"Invoice",      "price_monthly":1200, "price_yearly":12000,
+                "modules":["dashboard","invoice"],
+                "features":["GST invoices","PDF extract"],"highlight":False,"badge":"",
+                "description":"Invoice management"},
+    "basic":   {"name":"Full Bundle",  "price_monthly":4900, "price_yearly":49000,
+                "modules":["dashboard","reconciliation","trading","cash-flow","invoice"],
+                "features":["All 4 modules","Save vs individual"],"highlight":False,"badge":"",
+                "description":"All modules bundled"},
+    "premium": {"name":"Premium",      "price_monthly":3900, "price_yearly":39000,
+                "modules":["dashboard","reconciliation","trading","cash-flow","invoice"],
+                "features":["Best value","Priority support"],"highlight":True,"badge":"Best Value",
+                "description":"Complete suite"},
 }
+
+# Load plans dynamically — refreshed on each request via property
+PLANS = _load_plans()
+
 
 # Modules NEVER available regardless of plan
 LOCKED_MODULES = ["admin", "file-manager", "licence"]
@@ -178,9 +107,10 @@ def _db():
 
 @router.get("/plans")
 def get_plans():
-    """Return all plan definitions for the pricing page."""
-    safe = {}
-    for plan_id, plan in PLANS.items():
+    """Return all plan definitions — reloads from JSON file each time."""
+    plans = _load_plans()
+    safe  = {}
+    for plan_id, plan in plans.items():
         safe[plan_id] = {k: v for k, v in plan.items()
                          if not k.startswith("stripe_price")}
         safe[plan_id]["plan_id"] = plan_id
@@ -205,7 +135,8 @@ def create_checkout(body: dict = Body(...)):
 
     # Support custom plan (individual module selection)
     is_custom = plan_id == "custom" or plan_id not in PLANS
-    plan      = PLANS.get(plan_id, {})  # may be empty for custom
+    plans     = _load_plans()
+    plan      = plans.get(plan_id, {})  # may be empty for custom
 
     # Amount — use passed amount first (custom selection), then plan price
     passed_amount = body.get("amount")
@@ -309,11 +240,11 @@ async def stripe_webhook(
                     LicenceRecord.stripe_customer_id == cus_id
                 ).first()
                 if lic:
-                    lic.licence_type   = "demo"
-                    lic.plan_id        = "demo"
+                    lic.licence_type   = "base"
+                    lic.plan_id        = "base"
                     lic.billing_period = ""
                     lic.stripe_sub_id  = ""
-                    lic.modules        = json.dumps(PLANS["demo"]["modules"])
+                    lic.modules        = json.dumps(PLANS["base"]["modules"])
                     db.commit()
 
     finally:
@@ -332,7 +263,8 @@ def _activate_plan(db, user_id: int, plan_id: str, billing_period: str,
     end_delta = timedelta(days=366 if billing_period == "yearly" else 31)
     end_date  = today + end_delta
     # For custom plans, use empty dict — modules come from custom_modules param
-    plan      = PLANS.get(plan_id, {})
+    plans     = _load_plans()
+    plan      = plans.get(plan_id, {})
 
     lic = db.query(LicenceRecord).filter(LicenceRecord.user_id == user_id).first()
     if not lic:
@@ -381,15 +313,15 @@ def my_plan(user_id: int):
     try:
         lic = db.query(LicenceRecord).filter(LicenceRecord.user_id == user_id).first()
         if not lic:
-            return {"plan_id": "base", "licence_type": "demo",
-                    "end_date": "", "modules": PLANS["demo"]["modules"]}
+            return {"plan_id": "base", "licence_type": "base",
+                    "end_date": "", "modules": PLANS["base"]["modules"]}
         return {
-            "plan_id":        lic.plan_id or "demo",
+            "plan_id":        lic.plan_id or "base",
             "licence_type":   lic.licence_type,
             "billing_period": lic.billing_period,
             "start_date":     lic.start_date,
             "end_date":       lic.end_date,
-            "modules":        json.loads(lic.modules) if lic.modules else PLANS["demo"]["modules"],
+            "modules":        json.loads(lic.modules) if lic.modules else PLANS["base"]["modules"],
         }
     finally:
         db.close()
