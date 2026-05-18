@@ -1,0 +1,144 @@
+{
+  "base": {
+    "name": "Base",
+    "description": "Start free — Dashboard + CSV Reconciliation included",
+    "price_monthly": 0,
+    "price_yearly": 0,
+    "badge": "Free",
+    "highlight": false,
+    "features": [
+      "Dashboard overview & stats",
+      "CSV bank reconciliation (up to 500 txns/mo)",
+      "6 months free access",
+      "Upgrade anytime"
+    ],
+    "modules": [
+      "dashboard",
+      "reconciliation"
+    ],
+    "price_effective_from": "2026-05-18"
+  },
+  "reconciliation": {
+    "name": "Reconciliation",
+    "description": "Full bank reconciliation including Open Banking",
+    "price_monthly": 1800,
+    "price_yearly": 18000,
+    "badge": "05/18/2026",
+    "highlight": false,
+    "features": [
+      "Everything in Base",
+      "Open Banking / direct bank feeds",
+      "Unlimited transactions",
+      "GST calculation & BAS-ready",
+      "Excel export with monthly summaries"
+    ],
+    "modules": [
+      "dashboard",
+      "reconciliation"
+    ],
+    "price_effective_from": "2026-05-18"
+  },
+  "trading": {
+    "name": "Trading",
+    "description": "Crypto & equity CGT tax reports",
+    "price_monthly": 1500,
+    "price_yearly": 15000,
+    "badge": "",
+    "highlight": false,
+    "features": [
+      "Crypto CGT calculation",
+      "Equity CGT reports",
+      "ATO-ready tax summaries",
+      "Multi-exchange support"
+    ],
+    "modules": [
+      "dashboard",
+      "trading"
+    ],
+    "price_effective_from": "2026-05-18"
+  },
+  "cashflow": {
+    "name": "Cash Flow",
+    "description": "ML-powered cash flow forecasting",
+    "price_monthly": 1500,
+    "price_yearly": 15000,
+    "badge": "",
+    "highlight": false,
+    "features": [
+      "ML next-month prediction",
+      "Visual cash flow charts",
+      "Export to Excel",
+      "Historical trend analysis"
+    ],
+    "modules": [
+      "dashboard",
+      "cash-flow"
+    ],
+    "price_effective_from": "2026-05-18"
+  },
+  "invoice": {
+    "name": "Invoice",
+    "description": "GST invoices & PDF extraction",
+    "price_monthly": 1200,
+    "price_yearly": 12000,
+    "badge": "",
+    "highlight": false,
+    "features": [
+      "Create GST-compliant invoices",
+      "Extract data from PDF invoices",
+      "Customer & business management",
+      "Invoice status tracking"
+    ],
+    "modules": [
+      "dashboard",
+      "invoice"
+    ],
+    "price_effective_from": "2026-05-18"
+  },
+  "basic": {
+    "name": "Full Bundle",
+    "description": "Reconciliation + Trading + Cash Flow + Invoice",
+    "price_monthly": 4900,
+    "price_yearly": 49000,
+    "badge": "",
+    "highlight": false,
+    "features": [
+      "Full bank reconciliation + Open Banking",
+      "Crypto & equity CGT reports",
+      "ML cash flow forecast",
+      "GST invoice management",
+      "Save vs individual modules"
+    ],
+    "modules": [
+      "dashboard",
+      "reconciliation",
+      "trading",
+      "cash-flow",
+      "invoice"
+    ],
+    "price_effective_from": "2026-05-18"
+  },
+  "premium": {
+    "name": "Premium",
+    "description": "Complete suite — best value, all modules included",
+    "price_monthly": 3900,
+    "price_yearly": 39000,
+    "badge": "Best Value",
+    "highlight": true,
+    "features": [
+      "Everything in Full Bundle",
+      "Save $10/month vs Full Bundle",
+      "Priority support",
+      "Early access to new features",
+      "Unlimited transactions & exports"
+    ],
+    "modules": [
+      "dashboard",
+      "reconciliation",
+      "trading",
+      "cash-flow",
+      "invoice"
+    ],
+    "price_effective_from": "2026-05-18"
+  }
+}
