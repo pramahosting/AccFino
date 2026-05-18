@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react'
-import { login as apiLogin } from '../lib/api.js'
+import { login as apiLogin, getMyPlan, licenceMyModules } from '../lib/api.js'
 
 const Ctx = createContext(null)
 
@@ -15,8 +15,21 @@ export function AuthProvider({ children }) {
       const { data } = await apiLogin(email.trim(), password.trim())
       const roles = (data.roles || []).map(r => String(r).trim().toLowerCase())
       const u = { ...data, is_admin: roles.includes('admin') }
+
+      // Fetch current plan and modules on login so they're always fresh
+      try {
+        const [planRes, modsRes] = await Promise.all([
+          getMyPlan(data.id),
+          licenceMyModules(data.id),
+        ])
+        u.plan      = planRes.data        // { plan_id, licence_type, end_date, modules }
+        u.modules   = modsRes.data?.modules || []
+      } catch { /* non-fatal */ }
+
       setUser(u)
       localStorage.setItem('af_user', JSON.stringify(u))
+      // Notify Layout to re-apply module permissions
+      window.dispatchEvent(new Event('accfino:modules-changed'))
       return { ok: true, user: u }
     } catch (e) {
       return { ok: false, error: e.response?.data?.detail || 'Invalid credentials' }
