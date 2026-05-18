@@ -1,4 +1,24 @@
 import React from 'react'
+
+// Global error boundary — prevents full app crash on navigation errors
+class AppErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(e) { console.error('App error:', e) }
+  render() {
+    if (this.state.hasError) return (
+      <div style={{padding:40,textAlign:'center'}}>
+        <h2>Something went wrong.</h2>
+        <button onClick={() => { this.setState({hasError:false}); window.location.href='/login' }}
+          style={{marginTop:16,padding:'10px 24px',background:'#0F6B44',color:'#fff',
+            border:'none',borderRadius:8,cursor:'pointer',fontSize:'1rem'}}>
+          Return to Login
+        </button>
+      </div>
+    )
+    return this.props.children
+  }
+}
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
@@ -46,6 +66,7 @@ function AppRoutes() {
 
 export default function App() {
   return (
+    <AppErrorBoundary>
     <AuthProvider>
       <Toaster position="top-right" toastOptions={{
         duration: 3500,
@@ -54,5 +75,6 @@ export default function App() {
       }} />
       <AppRoutes />
     </AuthProvider>
+    </AppErrorBoundary>
   )
 }
