@@ -137,7 +137,7 @@ export default function LoginPage() {
             <h2 style={{ color: '#fff', fontSize: '1.2rem', fontFamily: "'Sora',sans-serif", marginBottom: 8, lineHeight: 1.35 }}>
               Intelligent Accounting &amp; Finance Operations System
             </h2>
-            <p style={{ color: 'rgba(255,255,255,.65)', fontSize: '1rem', lineHeight: 1.7 }}>
+            <p style={{ color: 'rgba(255,255,255,.65)', fontSize: '.7rem', lineHeight: 1.7 }}>
               Next-generation agentic platform that speeds up month-end closes, detects anomalies,
               and transforms routine bookkeeping into real-time strategic financial forecasting.
             </p>
@@ -148,7 +148,7 @@ export default function LoginPage() {
                 <span style={{ fontSize: '.95rem', flexShrink: 0, marginTop: 1 }}>{f.icon}</span>
                 <div>
                   <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: 2 }}>{f.title}</div>
-                  <div style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.6)', lineHeight: 1.5 }}>{f.desc}</div>
+                  <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.6)', lineHeight: 1.5 }}>{f.desc}</div>
                 </div>
               </div>
             ))}
@@ -157,7 +157,7 @@ export default function LoginPage() {
             <div style={{ display: 'flex', gap: 16 }}>
               {[['AUS', 'AU'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
+                  <div style={{ fontSize: '.9rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
                   <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.4)', letterSpacing: '.05em', marginTop: 2 }}>{l}</div>
                 </div>
               ))}
@@ -220,8 +220,8 @@ export default function LoginPage() {
                     </button>
                   )
                 })}
-                <span style={{ fontSize: '1rem', color: 'var(--text-3)', margin: '0 4px' }}>+more plans</span>
-                <span style={{ fontSize: '1rem', color: 'var(--brand)',
+                <span style={{ fontSize: '.8rem', color: 'var(--text-3)', margin: '0 4px' }}>+more plans</span>
+                <span style={{ fontSize: '.8rem', color: 'var(--brand)',
                   cursor: 'pointer', textDecoration: 'underline', fontWeight: 600 }}
                   onClick={() => navigate('/upgrade')}>
                   See all plans →
