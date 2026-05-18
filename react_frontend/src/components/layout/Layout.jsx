@@ -15,6 +15,7 @@ const NAV = [
   { to:'/admin',          icon:ShieldCheck,     label:'ML Classifier',   sub:'Training & RDR rules',key:'admin',          adminOnly:true  },
   { to:'/file-manager',   icon:FolderOpen,      label:'File Manager',    sub:'Files, tables, data', key:'file-manager',   adminOnly:true  },
   { to:'/licence',        icon:BadgeCheck,      label:'Admin & Licence', sub:'Users, roles & licences', key:'licence',    adminOnly:true  },
+  { to:'/pricing-admin',  icon:BadgeCheck,      label:'Plan Pricing',    sub:'Edit plan prices',        key:'pricing-admin',adminOnly:true  },
 ]
 
 export default function Layout() {
