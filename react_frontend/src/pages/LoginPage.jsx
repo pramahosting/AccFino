@@ -11,7 +11,7 @@ const FEATURES = [
   { icon: '🏦', title: 'Smart Multi-Bank Reconciliation',    desc: 'CSV + Open Banking feeds with automatic internal transfer detection, ML-powered classification and BAS-ready GST coding.' },
   { icon: '🔍', title: 'Fraud & Anomaly Detection',          desc: 'Every transaction scanned against historical patterns in real time — duplicates and anomalies flagged before they post.' },
   { icon: '📈', title: 'Predictive Cash Flow & Forecasting', desc: 'ML models deliver next-month cash flow predictions, liquidity insights and strategic financial forecasts on demand.' },
-{ icon: '📉', title: 'Crypto & Equity CGT',                  desc: 'Automated CGT calculations for crypto and equity trades — ATO-ready tax reports for capital gains in one click.' },
+  { icon: '📉', title: 'Crypto & Equity CGT',                  desc: 'Automated CGT calculations for crypto and equity trades — ATO-ready tax reports for capital gains in one click.' },
   { icon: '📊', title: 'ATO-Compliant Reporting',            desc: 'GST calculation, BAS-ready classification and one-click Excel export with monthly summaries — audit-ready in minutes.' },
 ]
 
@@ -132,12 +132,12 @@ export default function LoginPage() {
       {/* ── Left panel ── */}
       <div className="login-left">
         <div className="login-brand-card">
-          <AccfinoLogo size={60} showText textColor="#fff" />
+          <AccfinoLogo size={44} showText textColor="#fff" />
           <div style={{ marginTop: 36, marginBottom: 28 }}>
-            <h2 style={{ color: '#fff', fontSize: '1.6rem', fontFamily: "'Sora',sans-serif", marginBottom: 8, lineHeight: 1.35 }}>
+            <h2 style={{ color: '#fff', fontSize: '1.2rem', fontFamily: "'Sora',sans-serif", marginBottom: 8, lineHeight: 1.35 }}>
               Intelligent Accounting &amp; Finance Operations System
             </h2>
-            <p style={{ color: 'rgba(255,255,255,.65)', fontSize: '1rem', lineHeight: 1.7 }}>
+            <p style={{ color: 'rgba(255,255,255,.65)', fontSize: '.8rem', lineHeight: 1.7 }}>
               Next-generation agentic platform that speeds up month-end closes, detects anomalies,
               and transforms routine bookkeeping into real-time strategic financial forecasting.
             </p>
@@ -147,17 +147,17 @@ export default function LoginPage() {
               <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <span style={{ fontSize: '.95rem', flexShrink: 0, marginTop: 1 }}>{f.icon}</span>
                 <div>
-                  <div style={{ fontSize: '.9rem', fontWeight: 700, color: '#fff', marginBottom: 2 }}>{f.title}</div>
-                  <div style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.6)', lineHeight: 1.5 }}>{f.desc}</div>
+                  <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#fff', marginBottom: 2 }}>{f.title}</div>
+                  <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.6)', lineHeight: 1.5 }}>{f.desc}</div>
                 </div>
               </div>
             ))}
           </div>
           <div style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,.12)' }}>
             <div style={{ display: 'flex', gap: 16 }}>
-              {[['AUS', 'AU'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
+              {[['AUS', '🇦🇺'], ['GST', '10%'], ['BAS', 'Ready']].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#FF6B35' }}>{v}</div>
                   <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.4)', letterSpacing: '.05em', marginTop: 2 }}>{l}</div>
                 </div>
               ))}
@@ -175,10 +175,10 @@ export default function LoginPage() {
 
           {/* Heading */}
           <div style={{ marginBottom: 16 }}>
-            <h1 style={{ fontSize: '1.8rem', marginBottom: 6 }}>
-              {tab === 'login' ? 'Welcome to Accfino' : 'Create your account'}
+            <h1 style={{ fontSize: '1.5rem', marginBottom: 6 }}>
+              {tab === 'login' ? 'Welcome back' : 'Create your account'}
             </h1>
-            <p style={{ color: 'var(--text-3)', fontSize: '1rem' }}>
+            <p style={{ color: 'var(--text-3)', fontSize: '.875rem' }}>
               {tab === 'login' ? 'Sign in to your Accfino account' : 'Start your Accfino journey today'}
             </p>
           </div>
@@ -189,7 +189,7 @@ export default function LoginPage() {
               background: 'var(--surface-2)', borderRadius: 'var(--r-md)',
               padding: '10px 14px', marginBottom: 18, border: '1px solid var(--border)',
             }}>
-              <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--text-3)',
+              <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-3)',
                 textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
                 Subscription Plans
               </div>
@@ -208,27 +208,27 @@ export default function LoginPage() {
                         cursor: tab === 'register' ? 'pointer' : 'default',
                         background: active ? 'var(--brand)' : id==='premium' ? 'var(--brand-light)' : 'var(--surface)',
                         color: active ? '#fff' : id==='premium' ? 'var(--brand)' : 'var(--text-1)',
-                        fontSize: '.72rem', fontWeight: active ? 700 : 600,
+                        fontSize: '.78rem', fontWeight: active ? 700 : 600,
                         boxShadow: active ? 'var(--sh-sm)' : 'none',
                         transition: 'all .15s',
-                        outline: active ? 'none' : '.78px solid var(--border)',
+                        outline: active ? 'none' : '1px solid var(--border)',
                       }}>
                       {plan.name}
-                      <span style={{ marginLeft: 5, opacity: .75, fontSize: '.78rem', fontWeight: 400 }}>
+                      <span style={{ marginLeft: 5, opacity: .75, fontSize: '.72rem', fontWeight: 400 }}>
                         {price === 0 ? '— Free' : `— $${price/100}/mo`}
                       </span>
                     </button>
                   )
                 })}
-                <span style={{ fontSize: '.9rem', color: 'var(--text-3)', margin: '0 4px' }}>+more plans</span>
-                <span style={{ fontSize: '.9rem', color: 'var(--brand)',
+                <span style={{ fontSize: '.75rem', color: 'var(--text-3)', margin: '0 4px' }}>+more plans</span>
+                <span style={{ fontSize: '.75rem', color: 'var(--brand)',
                   cursor: 'pointer', textDecoration: 'underline', fontWeight: 600 }}
                   onClick={() => navigate('/upgrade')}>
                   See all plans →
                 </span>
               </div>
               {tab === 'register' && selPlanData && (
-                <div style={{ marginTop: 8, fontSize: '1rem', color: 'var(--text-3)' }}>
+                <div style={{ marginTop: 8, fontSize: '.75rem', color: 'var(--text-3)' }}>
                   {planPrice === 0
                     ? '✓ Free for 6 months — no payment required'
                     : `✓ ${selPlanData.name} — $${planPrice/100}/mo · secure payment via Stripe after registration`}
@@ -246,7 +246,7 @@ export default function LoginPage() {
               <button key={t} onClick={() => { setTab(t); setErr('') }} style={{
                 flex: 1, padding: '8px', border: 'none', cursor: 'pointer',
                 borderRadius: 'var(--r-sm)', fontFamily: 'inherit', fontWeight: tab === t ? 700 : 500,
-                fontSize: '1rem', transition: 'all .15s',
+                fontSize: '.875rem', transition: 'all .15s',
                 background: tab === t ? 'var(--surface)' : 'transparent',
                 color: tab === t ? 'var(--brand)' : 'var(--text-3)',
                 boxShadow: tab === t ? 'var(--sh-sm)' : 'none',
@@ -358,7 +358,7 @@ export default function LoginPage() {
           )}
 
           <p style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: '.75rem', marginTop: 28 }}>
-            © {new Date().getFullYear()} Accfino · Accounting and Finance Operations Platform<br />
+            © {new Date().getFullYear()} Accfino · Australian Accounting Platform<br />
             <span style={{ opacity: .6 }}>Powered by Prama AI engine</span>
           </p>
         </div>
