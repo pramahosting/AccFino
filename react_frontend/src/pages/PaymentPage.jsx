@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { getPlans, createCheckout, getMyPlan } from '../lib/api'
+import { getPlans, createCheckout, getMyPlan, getPricingPlans } from '../lib/api'
 import { Check, X, ArrowRight, Zap } from 'lucide-react'
 import toast from 'react-hot-toast'
 import AccfinoLogo from '../components/ui/AccfinoLogo.jsx'
@@ -27,16 +27,14 @@ const MOD_LABELS = {
   },
 }
 
-// Individual module prices (AUD cents/mo)
-const MOD_PRICES = {
+// Prices loaded from API — fallback values used until API responds
+let MOD_PRICES = {
   reconciliation: 1900,
   trading:        1500,
   'cash-flow':    1500,
   invoice:        1200,
 }
-
-// Bundle thresholds
-const BUNDLES = {
+let BUNDLES = {
   basic:   { mods: ['reconciliation','trading','cash-flow','invoice'], price_monthly: 4900, price_yearly: 49000, label: 'Full Bundle', save: 'Save $12/mo' },
   premium: { mods: ['reconciliation','trading','cash-flow','invoice'], price_monthly: 3900, price_yearly: 39000, label: 'Premium',      save: 'Best Value' },
 }
@@ -101,11 +99,25 @@ export default function PaymentPage() {
 
   useEffect(() => {
     Promise.all([
-      getPlans(),
+      getPricingPlans(),
       user?.id ? getMyPlan(user.id) : Promise.resolve({ data: null }),
     ]).then(([pr, mr]) => {
-      setPlans(pr.data || {})
+      const apiPlans = pr.data || {}
+      setPlans(apiPlans)
       setMyPlan(mr.data)
+      // Update MOD_PRICES from API
+      const newPrices = {}
+      ;['reconciliation','trading','cash-flow','invoice'].forEach(mod => {
+        if (apiPlans[mod]?.price_monthly) newPrices[mod] = apiPlans[mod].price_monthly
+      })
+      if (Object.keys(newPrices).length) MOD_PRICES = { ...MOD_PRICES, ...newPrices }
+      // Update BUNDLES from API
+      if (apiPlans.basic)   BUNDLES.basic.price_monthly   = apiPlans.basic.price_monthly
+      if (apiPlans.basic)   BUNDLES.basic.price_yearly    = apiPlans.basic.price_yearly
+      if (apiPlans.premium) BUNDLES.premium.price_monthly = apiPlans.premium.price_monthly
+      if (apiPlans.premium) BUNDLES.premium.price_yearly  = apiPlans.premium.price_yearly
+      if (apiPlans.basic?.name)   BUNDLES.basic.label    = apiPlans.basic.name
+      if (apiPlans.premium?.name) BUNDLES.premium.label  = apiPlans.premium.name
     }).catch(() => {})
       .finally(() => setLoading(false))
   }, [user?.id])
