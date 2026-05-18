@@ -33,6 +33,7 @@ import AdminPage             from './pages/AdminPage.jsx'
 import PaymentPage           from './pages/PaymentPage.jsx'
 import FileManagerPage       from './pages/FileManagerPage.jsx'
 import LicencePage           from './pages/LicencePage.jsx'
+import PricingAdminPage      from './pages/PricingAdminPage.jsx'
 import ResetPasswordPage     from './pages/ResetPasswordPage.jsx'
 
 function Guard({ children, adminOnly }) {
@@ -59,6 +60,7 @@ function AppRoutes() {
         <Route path="admin"             element={<Guard adminOnly><AdminPage /></Guard>} />
         <Route path="file-manager"      element={<Guard adminOnly><FileManagerPage /></Guard>} />
         <Route path="licence"           element={<Guard adminOnly><LicencePage /></Guard>} />
+        <Route path="pricing-admin"      element={<Guard adminOnly><PricingAdminPage /></Guard>} />
       </Route>
     </Routes>
   )
