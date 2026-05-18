@@ -187,9 +187,9 @@ export default function LoginPage() {
           {planList.length > 0 && (
             <div style={{
               background: 'var(--surface-2)', borderRadius: 'var(--r-md)',
-              padding: '10px 14px', marginBottom: 18, border: '1px solid var(--border)',
+              padding: '10px 14px', marginBottom: 18, border: '.78px solid var(--border)',
             }}>
-              <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--text-3)',
+              <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-3)',
                 textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
                 Subscription Plans
               </div>
@@ -208,7 +208,7 @@ export default function LoginPage() {
                         cursor: tab === 'register' ? 'pointer' : 'default',
                         background: active ? 'var(--brand)' : id==='premium' ? 'var(--brand-light)' : 'var(--surface)',
                         color: active ? '#fff' : id==='premium' ? 'var(--brand)' : 'var(--text-1)',
-                        fontSize: '1rem', fontWeight: active ? 700 : 600,
+                        fontSize: '.72rem', fontWeight: active ? 700 : 600,
                         boxShadow: active ? 'var(--sh-sm)' : 'none',
                         transition: 'all .15s',
                         outline: active ? 'none' : '1px solid var(--border)',
