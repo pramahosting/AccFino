@@ -25,13 +25,14 @@ const NAV_LINKS = [
 
 /* ─── Shared style tokens ─────────────────────────────────────────────────── */
 const BAR = {
-  position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
+  position: 'sticky', top: 0, zIndex: 200,
   height: 60,
   display: 'flex', alignItems: 'center',
-  padding: '0 40px',
+  padding: '0 55px 0 24px',
   background: 'rgba(13,17,23,.92)',
   backdropFilter: 'blur(16px) saturate(180%)',
   borderBottom: '3px solid rgba(255,255,255,0.12)',
+  flexShrink: 0,
 }
 
 const LOGO_LINK = {
