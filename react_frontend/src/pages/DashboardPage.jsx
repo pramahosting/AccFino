@@ -205,7 +205,7 @@ export default function DashboardPage() {
                   return [...baseLabel, ...paidMods].join(' + ') + ' Plan'
                 })()}
               </span>
-              {!(myPlan.plan_id === 'premium' && myPlan.billing_period === 'yearly') && (
+              {!isAdmin && !['premium','basic'].includes(myPlan.plan_id) && (
                 <button className="btn btn-primary btn-sm" onClick={() => nav('/upgrade')}>
                   ⚡ Upgrade Plan
                 </button>
