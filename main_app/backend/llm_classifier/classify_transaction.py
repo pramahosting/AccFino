@@ -8,7 +8,10 @@ from typing import Callable, Dict, Optional
 import pandas as pd
 import ollama
 import requests
-import streamlit as st
+try:
+    import streamlit as st
+except Exception:
+    st = None
 
 OLLAMA_CHAT_URL_DEFAULT = "http://localhost:11434/api/chat"
 CACHE_FILE = Path("ollama_cache.json")
