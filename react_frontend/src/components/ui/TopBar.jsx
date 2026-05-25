@@ -28,7 +28,7 @@ const BAR = {
   position: 'sticky', top: 0, zIndex: 200,
   height: 60,
   display: 'flex', alignItems: 'center',
-  padding: '0 55px 0 24px',
+  padding: '0 54px 0 24px',
   background: 'rgba(13,17,23,.92)',
   backdropFilter: 'blur(16px) saturate(180%)',
   borderBottom: '3px solid rgba(255,255,255,0.12)',
