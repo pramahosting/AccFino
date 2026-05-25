@@ -222,7 +222,7 @@ export default function LoginPage() {
             gap: 9,
             cursor: 'pointer',
             fontFamily: "'Instrument Serif', serif",
-            fontSize: '1.8rem',
+            fontSize: '1rem',
             fontWeight: 400,
             color: '#fff',
             letterSpacing: '-.01em',
@@ -295,7 +295,7 @@ export default function LoginPage() {
           style={{
             display: 'flex',
             gap: 28,
-            fontSize: '1.2rem',
+            fontSize: '1rem',
             color: '#ffffff',
             marginRight: 28,
           }}
@@ -315,7 +315,7 @@ export default function LoginPage() {
             setErr('')
           }}
           style={{
-            fontSize: '1.2rem',
+            fontSize: '1rem',
             fontWeight: 500,
             padding: '9px 20px',
             borderRadius: 6,
@@ -337,7 +337,7 @@ export default function LoginPage() {
             setErr('')
           }}
           style={{
-            fontSize: '1.2rem',
+            fontSize: '1rem',
             fontWeight: 600,
             padding: '9px 22px',
             borderRadius: 6,
@@ -361,7 +361,7 @@ export default function LoginPage() {
           <div className="login-form-wrap">
             {/* Heading */}
             <div style={{ marginBottom: 16 }}>
-              <h1 style={{ fontSize: '1.8rem', marginBottom: 6 }}>
+              <h1 style={{ fontSize: '1.5rem', marginBottom: 6 }}>
                 {tab === 'login'
                   ? 'Welcome to Accfino'
                   : 'Create your account'}
