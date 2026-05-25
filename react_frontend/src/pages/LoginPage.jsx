@@ -222,7 +222,7 @@ export default function LoginPage() {
             gap: 9,
             cursor: 'pointer',
             fontFamily: "'Instrument Serif', serif",
-            fontSize: '1rem',
+            fontSize: '1.5rem',
             fontWeight: 400,
             color: '#fff',
             letterSpacing: '-.01em',
