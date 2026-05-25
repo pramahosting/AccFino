@@ -78,8 +78,12 @@ except Exception:
 
 app = FastAPI(title="Accfino API", version="2.0")
 app.add_middleware(CORSMiddleware,
-    allow_origins=["http://localhost:3000","http://127.0.0.1:3000",
-                   "http://localhost:5173","http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:3000", "http://127.0.0.1:3000",
+        "http://localhost:5173", "http://127.0.0.1:5173",
+        "https://www.accfino.com",
+        "https://accfino.com",
+    ],
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 from fastapi.responses import JSONResponse
@@ -94,6 +98,14 @@ async def global_exception_handler(request: _Request, exc: Exception):
         status_code=500,
         content={"detail": f"Server error: {type(exc).__name__}: {str(exc)[:500]}"}
     )
+
+# ── Health check endpoint (used by Northflank / Docker HEALTHCHECK) ───────────
+@app.get("/health", include_in_schema=False)
+def health_check():
+    """Simple liveness probe — returns 200 if the API process is running."""
+    return {"status": "ok", "service": "accfino-api"}
+
+
 
 app.include_router(db_auth.router,           prefix="/auth",        tags=["auth"])
 app.include_router(db_transactions.router,   prefix="/transactions", tags=["transactions"])
@@ -1752,23 +1764,83 @@ class StripApiPrefix(BaseHTTPMiddleware):
 
 app.add_middleware(StripApiPrefix)
 
-# ── Serve React SPA — registered LAST so all API routes take priority ─────────
+# ── Serve React SPA + Marketing Site ─────────────────────────────────────────
+# Registered LAST so all /api/* routes take priority.
+#
+# URL routing:
+#   /                        → index-marketing.html  (public marketing site)
+#   /login, /reset-password  → index.html            (React SPA — public)
+#   /upgrade                 → index.html            (React SPA — public)
+#   /dashboard, /reconciliation, /trading, etc.
+#                            → index.html            (React SPA — auth guarded)
+#   /assets/*                → StaticFiles           (JS / CSS / images)
+# ─────────────────────────────────────────────────────────────────────────────
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses   import FileResponse as _FileResponse
 
-_DIST = Path(__file__).parent.parent / "react_frontend" / "dist"
+_ROOT       = Path(__file__).parent.parent          # project root
+_DIST       = _ROOT / "react_frontend" / "dist"
+_PUBLIC     = _ROOT / "react_frontend" / "public"   # Vite public folder (dev mode)
 
-if _DIST.exists():
-    if (_DIST / "assets").exists():
-        app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+# Marketing page: prefer built dist/, fall back to source public/ (local dev)
+_MARKETING  = _DIST / "index-marketing.html" if (_DIST / "index-marketing.html").exists()               else _PUBLIC / "index-marketing.html"
+_APP_INDEX  = _DIST / "index.html"
 
-    @app.get("/", include_in_schema=False)
+
+def _serve_marketing() -> _FileResponse:
+    """Return the public marketing homepage.
+    Works in both dev mode (serves from react_frontend/public/)
+    and production (serves from react_frontend/dist/).
+    """
+    if _MARKETING.exists():
+        return _FileResponse(str(_MARKETING))
+    # Last resort fallback — should never happen if file is in public/
+    return {"error": "Marketing page not found. Check react_frontend/public/index-marketing.html"}
+
+
+def _serve_app() -> _FileResponse:
+    """Return the React SPA shell (only available after npm run build)."""
+    if _APP_INDEX.exists():
+        return _FileResponse(str(_APP_INDEX))
+    return {"error": "React app not built. Run: cd react_frontend && npm run build"}
+
+
+# ── Marketing page — served at /index-marketing.html ─────────────────────────
+# "/" is intentionally NOT mapped here — React Router owns it.
+# In dev mode Vite serves index.html at "/" via SPA fallback.
+# In prod mode FastAPI serves index.html at "/" via spa_routes below.
+@app.get("/index-marketing.html", include_in_schema=False)
+def marketing_html():
+    return _serve_marketing()
+
+# ── Static assets (only available in production after npm run build) ──────────
+if _DIST.exists() and (_DIST / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+
+# ── SPA routes (only available in production; in dev Vite handles these) ──────
+if _DIST.exists() and _APP_INDEX.exists():
+
+    # Public SPA routes (no auth required)
+    @app.get("/login",          include_in_schema=False)
+    @app.get("/reset-password", include_in_schema=False)
+    @app.get("/upgrade",        include_in_schema=False)
+    def public_spa_routes():
+        return _serve_app()
+
+    # Authenticated SPA routes
+    @app.get("/dashboard",      include_in_schema=False)
+    @app.get("/reconciliation", include_in_schema=False)
+    @app.get("/trading",        include_in_schema=False)
+    @app.get("/cash-flow",      include_in_schema=False)
+    @app.get("/invoice",        include_in_schema=False)
+    @app.get("/admin",          include_in_schema=False)
+    @app.get("/file-manager",   include_in_schema=False)
+    @app.get("/licence",        include_in_schema=False)
+    @app.get("/pricing-admin",  include_in_schema=False)
+    def auth_spa_routes():
+        return _serve_app()
+
+    # Catch-all for deep SPA paths
     @app.get("/{spa_path:path}", include_in_schema=False)
     def spa_fallback(spa_path: str = ""):
-        """Catch-all: serve index.html so React Router handles client-side routes.
-        Registered last so every API endpoint takes priority over this fallback.
-        """
-        index = _DIST / "index.html"
-        if index.exists():
-            return _FileResponse(str(index))
-        return {"error": "Frontend not built"}
+        return _serve_app()
