@@ -11,7 +11,6 @@ RUN npm ci --silent
 COPY react_frontend/ ./
 RUN npm run build
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: Python runtime
 # ─────────────────────────────────────────────────────────────────────────────
@@ -35,16 +34,15 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
 
-# Debug: show exactly what was copied — remove once deployment is stable
-RUN echo "=== /app contents ===" && ls -la /app && \
-    echo "=== /app/db_app ===" && ls -la /app/db_app || echo "db_app missing!"
+# Remove frontend source — only the built dist is needed at runtime
+RUN rm -rf react_frontend/node_modules react_frontend/src react_frontend/public
 
-RUN rm -rf react_frontend/node_modules
-
+# Copy the Vite build output from Stage 1
 COPY --from=frontend-build /build/dist ./react_frontend/dist
 
+# Ensure runtime directories exist (persistent volumes will mount here)
 RUN mkdir -p \
-        db_app \
+        db_app/data \
         main_app/data \
         main_app/classifier_model \
         main_app/backend/cash_flow/outputs/plots
@@ -52,5 +50,8 @@ RUN mkdir -p \
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')" || exit 1
 
 ENTRYPOINT ["/app/entrypoint.sh"]
