@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth.jsx'
 import { register, forgotPassword, getPlans, createCheckout } from '../lib/api.js'
 import { Eye, EyeOff, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
+import TopBar from '../components/ui/TopBar.jsx'
 
 export default function LoginPage() {
   const { login, loading } = useAuth()
@@ -194,164 +195,11 @@ export default function LoginPage() {
 
   return (
     <>
-      {/* ══════════════════════════════════════════════════════
-          Marketing nav — identical to www.accfino.com top bar
-          ══════════════════════════════════════════════════════ */}
-      <nav
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          zIndex: 200,
-          height: 56,
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 40px',
-          background: 'rgba(13,17,23,.92)',
-          backdropFilter: 'blur(16px) saturate(180%)',
-          borderBottom: '3px solid rgba(255,255,255,0.12)',
-        }}
-      >
-        {/* Logo — plain <a> tag works from any browser context including error frames */}
-        <a
-          href="/index-marketing.html"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 9,
-            cursor: 'pointer',
-            fontFamily: "'Instrument Serif', serif",
-            fontSize: '1.5rem',
-            fontWeight: 400,
-            color: '#fff',
-            letterSpacing: '-.01em',
-            marginRight: 'auto',
-            textDecoration: 'none',
-          }}
-        >
-          <div
-            style={{
-              width: 45,
-              height: 45,
-              borderRadius: 12,
-              flexShrink: 0,
-              background:
-                'linear-gradient(135deg,#C8963E 0%,#E8B86D 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 2px 10px rgba(200,150,62,.4)',
-            }}
-          >
-            <svg
-              width="25"
-              height="25"
-              viewBox="0 0 40 40"
-              fill="none"
-            >
-              <rect
-                x="8"
-                y="28"
-                width="5"
-                height="16"
-                rx="2"
-                transform="rotate(-30 8 28)"
-                fill="white"
-                opacity="0.9"
-              />
-              <rect
-                x="27"
-                y="9"
-                width="5"
-                height="16"
-                rx="2"
-                transform="rotate(30 27 9)"
-                fill="white"
-                opacity="0.9"
-              />
-              <rect
-                x="12"
-                y="23"
-                width="16"
-                height="4"
-                rx="2"
-                fill="#FF6B35"
-              />
-              <path
-                d="M20 7 L24 13 H22 V18 H18 V13 H16 Z"
-                fill="#FF6B35"
-              />
-            </svg>
-          </div>
-
-          <span>Acc<span style={{color:'#FF6B35'}}>Fino</span></span>
-        </a>
-
-        {/* Nav links */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 28,
-            fontSize: '1rem',
-            color: '#ffffff',
-            marginRight: 28,
-          }}
-          className="mkt-nav-links"
-        >
-          <a href="/index-marketing.html#features" style={{color:'#ffffff',textDecoration:'none'}}>Features</a>
-          <a href="/index-marketing.html#advantages" style={{color:'#ffffff',textDecoration:'none'}}>Why AccFino</a>
-          <a href="/index-marketing.html#pricing" style={{color:'#ffffff',textDecoration:'none'}}>Pricing</a>
-          <a href="/index-marketing.html#integrations" style={{color:'#ffffff',textDecoration:'none'}}>Integrations</a>
-          <a href="/index-marketing.html#stack" style={{color:'#ffffff',textDecoration:'none'}}>Built on</a>
-        </div>
-
-        {/* CTA buttons */}
-        <button
-          onClick={() => {
-            setTab('login')
-            setErr('')
-          }}
-          style={{
-            fontSize: '1rem',
-            fontWeight: 500,
-            padding: '9px 20px',
-            borderRadius: 6,
-            border: '1px solid rgba(255,255,255,.18)',
-            background: 'transparent',
-            color: 'rgba(255,255,255,.8)',
-            cursor: 'pointer',
-            marginRight: 8,
-            fontFamily: 'inherit',
-            transition: 'all .15s',
-          }}
-        >
-          Sign in
-        </button>
-
-        <button
-          onClick={() => {
-            setTab('register')
-            setErr('')
-          }}
-          style={{
-            fontSize: '1rem',
-            fontWeight: 600,
-            padding: '9px 22px',
-            borderRadius: 6,
-            border: 'none',
-            background: '#C8963E',
-            color: '#fff',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            boxShadow: '0 2px 10px rgba(200,150,62,.35)',
-            transition: 'background .15s',
-            letterSpacing: '.01em',
-          }}
-        >
-          Start free →
-        </button>
-      </nav>
+      <TopBar
+        variant="marketing"
+        onSignIn={() => { setTab('login'); setErr('') }}
+        onStartFree={() => { setTab('register'); setErr('') }}
+      />
 
       <div className="login-page">
         {/* ── Centred form panel ── */}
@@ -1030,7 +878,7 @@ export default function LoginPage() {
                   style={{
                     fontWeight: 700,
                     color: 'var(--brand)',
-                    fontSize: '1rem',
+                    fontSize: '1.1rem',
                   }}
                 >
                   ${planPrice/100}/mo

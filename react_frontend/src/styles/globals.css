@@ -3,7 +3,7 @@
    Inspired by MYOB / Xero / modern fintech
    ═══════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
   /* Brand colours — deep forest green primary (Xero-ish) + warm accent */
@@ -77,7 +77,7 @@
 
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 14px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+html { font-size: 15px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
 body { font-family: var(--font-body); background: var(--bg); color: var(--text-1); line-height: 1.6; min-height: 100vh; }
 #root { display: flex; flex-direction: column; min-height: 100vh; }
 img, svg { display: block; }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import TopBar from '../components/ui/TopBar.jsx'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { getPlans, createCheckout, getMyPlan, getPricingPlans } from '../lib/api'
 import { Check, X, ArrowRight, Zap } from 'lucide-react'
@@ -185,55 +186,11 @@ export default function PaymentPage() {
   return (
     <>
     {/* ── Nav bar — identical to Login and Marketing page ── */}
-    <nav style={{
-      position:'fixed', top:0, left:0, right:0, zIndex:200,
-      height:60, display:'flex', alignItems:'center',
-      padding:'0 40px',
-      background:'rgba(13,17,23,.92)',
-      backdropFilter:'blur(16px) saturate(180%)',
-      borderBottom:'1px solid #ffffff',
-    }}>
-      <a href="/index-marketing.html" style={{
-        display:'flex', alignItems:'center', gap:9,
-        fontFamily:"'Instrument Serif','Sora',serif",
-        fontSize:'1.5rem', color:'#fff', letterSpacing:'-.01em',
-        marginRight:'auto', textDecoration:'none',
-      }}>
-        <div style={{
-          width:45, height:45, borderRadius:12, flexShrink:0,
-          background:'linear-gradient(135deg,#C8963E 0%,#E8B86D 100%)',
-          display:'flex', alignItems:'center', justifyContent:'center',
-          boxShadow:'0 2px 10px rgba(200,150,62,.4)',
-        }}>
-          <svg width="25" height="25" viewBox="0 0 40 40" fill="none">
-            <rect x="8" y="28" width="5" height="16" rx="2" transform="rotate(-30 8 28)" fill="white" opacity="0.9"/>
-            <rect x="27" y="9" width="5" height="16" rx="2" transform="rotate(30 27 9)" fill="white" opacity="0.9"/>
-            <rect x="12" y="23" width="16" height="4" rx="2" fill="#FF6B35"/>
-            <path d="M20 7 L24 13 H22 V18 H18 V13 H16 Z" fill="#FF6B35"/>
-          </svg>
-        </div>
-        <span>Acc<span style={{color:'#FF6B35'}}>Fino</span></span>
-      </a>
-      <div style={{display:'flex', gap:28, fontSize:'1rem', color:'#ffffff', marginRight:28}}
-        className="mkt-nav-links">
-        <a href="/index-marketing.html#features" style={{color:'#ffffff',textDecoration:'none'}}>Features</a>
-        <a href="/index-marketing.html#advantages" style={{color:'#ffffff',textDecoration:'none'}}>Why AccFino</a>
-        <a href="/index-marketing.html#pricing" style={{color:'#ffffff',textDecoration:'none'}}>Pricing</a>
-        <a href="/index-marketing.html#integrations" style={{color:'#ffffff',textDecoration:'none'}}>Integrations</a>
-        <a href="/index-marketing.html#stack" style={{color:'#ffffff',textDecoration:'none'}}>Built on</a>
-      </div>
-      <a href="/login" style={{
-        fontSize:'1rem', fontWeight:500, padding:'9px 20px',
-        borderRadius:6, border:'1px solid rgba(255,255,255,.18)',
-        background:'transparent', color:'rgba(255,255,255,.8)',
-        marginRight:8, textDecoration:'none',
-      }}>Sign in</a>
-      <a href="/login?tab=register" style={{
-        fontSize:'1rem', fontWeight:600, padding:'9px 22px',
-        borderRadius:6, background:'#C8963E', color:'#fff',
-        textDecoration:'none', boxShadow:'0 2px 10px rgba(200,150,62,.35)',
-      }}>Start free →</a>
-    </nav>
+    <TopBar
+      variant="marketing"
+      onSignIn={() => navigate('/login')}
+      onStartFree={() => navigate('/login?tab=register')}
+    />
 
     <div className="login-page" style={{paddingTop:56}}>
 
@@ -242,7 +199,7 @@ export default function PaymentPage() {
         <div className="login-brand-card">
           <AccfinoLogo size={44} showText textColor="#fff" />
           <div style={{ marginTop: 36, marginBottom: 28 }}>
-            <h2 style={{ color:'#fff', fontSize:'1.4rem', fontFamily:"'Sora',sans-serif", marginBottom:8 }}>
+            <h2 style={{ color:'#fff', fontSize:'1.4rem', fontFamily:"'Instrument Serif', serif", marginBottom:8 }}>
               Choose what you need
             </h2>
             <p style={{ color:'rgba(255,255,255,.6)', fontSize:'.9rem', lineHeight:1.7 }}>
