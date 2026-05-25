@@ -76,17 +76,17 @@ export default function Layout() {
       }}>
         <div style={{position:'absolute',inset:0,pointerEvents:'none',
           backgroundImage:'radial-gradient(circle at 80% 20%,rgba(200,150,62,.08) 0%,transparent 60%)'}}/>
-        <div style={{padding:col?'18px 12px':'18px 16px',borderBottom:'1px solid #ffffff',
+        <div style={{padding:col?'18px 12px':'18px 16px',borderBottom:'3px solid rgba(255,255,255,0.12)',
           display:'flex',alignItems:'center',minHeight:'var(--header-h)',position:'relative',zIndex:1}}>
           {/* Logo matching marketing page nav exactly */}
-          <div style={{display:'flex',alignItems:'center',gap:10,textDecoration:'none'}}>
+          <div style={{display:'flex',alignItems:'center',gap:9,textDecoration:'none'}}>
             <div style={{
-              width:51,height:51,borderRadius:13,flexShrink:0,
+              width:45,height:45,borderRadius:12,flexShrink:0,
               background:'linear-gradient(135deg,#C8963E 0%,#E8B86D 100%)',
               display:'flex',alignItems:'center',justifyContent:'center',
               boxShadow:'0 2px 10px rgba(200,150,62,.4)',
             }}>
-              <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
+              <svg width="25" height="25" viewBox="0 0 40 40" fill="none">
                 <rect x="8" y="28" width="5" height="16" rx="2" transform="rotate(-30 8 28)" fill="white" opacity="0.9"/>
                 <rect x="27" y="9" width="5" height="16" rx="2" transform="rotate(30 27 9)" fill="white" opacity="0.9"/>
                 <rect x="12" y="23" width="16" height="4" rx="2" fill="#FF6B35"/>
@@ -95,7 +95,7 @@ export default function Layout() {
             </div>
             {!col&&<span style={{
               fontFamily:"'Instrument Serif', serif",
-              fontSize:'1.5rem',fontWeight:400,color:'#fff',letterSpacing:'-.01em',lineHeight:1,
+              fontSize:'1.5rem',fontWeight:400,color:'#fff',letterSpacing:'-.01em',
             }}>Acc<span style={{color:'#FF6B35'}}>Fino</span></span>}
           </div>
         </div>
@@ -160,7 +160,7 @@ export default function Layout() {
         </button>
       </aside>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0,height:'100vh'}}>
-        <header style={{height:'var(--header-h)',background:'var(--surface)',borderBottom:'1px solid #ffffff',
+        <header style={{height:'var(--header-h)',background:'var(--surface)',borderBottom:'3px solid rgba(255,255,255,0.12)',
           display:'flex',alignItems:'center',padding:'0 24px',position:'sticky',top:0,zIndex:10,justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
             <span style={{fontSize:'1rem',color:'var(--text-3)',fontWeight:500}}>AccFino</span>
