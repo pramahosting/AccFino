@@ -1,3 +1,4 @@
+import TopBar from '../ui/TopBar.jsx'
 import React, { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.jsx'
@@ -95,7 +96,7 @@ export default function Layout() {
             </div>
             {!col&&<span style={{
               fontFamily:"'Instrument Serif', serif",
-              fontSize:'1.5rem',fontWeight:400,color:'#fff',letterSpacing:'-.01em',
+              fontSize:'1rem',color:'#fff',letterSpacing:'-.01em',
             }}>Acc<span style={{color:'#FF6B35'}}>Fino</span></span>}
           </div>
         </div>
@@ -160,21 +161,7 @@ export default function Layout() {
         </button>
       </aside>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0,height:'100vh'}}>
-        <header style={{height:'var(--header-h)',background:'var(--surface)',borderBottom:'3px solid rgba(255,255,255,0.12)',
-          display:'flex',alignItems:'center',padding:'0 24px',position:'sticky',top:0,zIndex:10,justifyContent:'space-between'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:'1rem',color:'var(--text-3)',fontWeight:500}}>AccFino</span>
-            <span style={{color:'var(--border-dark)'}}>/</span>
-            <span style={{fontSize:'1rem',fontWeight:600,color:'var(--text-1)'}}>{pageName}</span>
-          </div>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <button className="btn btn-ghost btn-icon"><Bell size={16} color="var(--text-3)"/></button>
-            <button className="btn btn-ghost btn-icon"><HelpCircle size={16} color="var(--text-3)"/></button>
-            <div style={{width:1,height:20,background:'var(--border)',margin:'0 4px'}}/>
-            <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#C8963E,#E8B86D)',
-              display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.72rem',fontWeight:700,color:'#fff'}}>{initials}</div>
-          </div>
-        </header>
+        <TopBar variant="app" pageName={pageName} initials={initials}/>
         <main style={{flex:1,padding:'24px 28px',overflowY:'auto'}}><Outlet/></main>
       </div>
     </div>
