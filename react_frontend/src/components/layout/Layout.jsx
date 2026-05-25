@@ -71,14 +71,33 @@ export default function Layout() {
       <aside style={{
         width:col?'var(--sidebar-w-sm)':'var(--sidebar-w)',minHeight:'100vh',flexShrink:0,
         position:'relative',display:'flex',flexDirection:'column',
-        background:'linear-gradient(180deg,#082B1E 0%,#0B3D28 40%,#0B6E4F 100%)',
+        background:'#0D1117',
         transition:'width .22s cubic-bezier(.4,0,.2,1)',overflow:'hidden',
       }}>
         <div style={{position:'absolute',inset:0,pointerEvents:'none',
-          backgroundImage:'radial-gradient(circle at 80% 20%,rgba(255,107,53,.08) 0%,transparent 60%)'}}/>
-        <div style={{padding:col?'18px 12px':'18px 16px',borderBottom:'1px solid rgba(255,255,255,.08)',
+          backgroundImage:'radial-gradient(circle at 80% 20%,rgba(200,150,62,.08) 0%,transparent 60%)'}}/>
+        <div style={{padding:col?'18px 12px':'18px 16px',borderBottom:'1px solid #ffffff',
           display:'flex',alignItems:'center',minHeight:'var(--header-h)',position:'relative',zIndex:1}}>
-          <AccfinoLogo size={60} showText={!col} textColor="#fff"/>
+          {/* Logo matching marketing page nav exactly */}
+          <div style={{display:'flex',alignItems:'center',gap:10,textDecoration:'none'}}>
+            <div style={{
+              width:51,height:51,borderRadius:13,flexShrink:0,
+              background:'linear-gradient(135deg,#C8963E 0%,#E8B86D 100%)',
+              display:'flex',alignItems:'center',justifyContent:'center',
+              boxShadow:'0 2px 10px rgba(200,150,62,.4)',
+            }}>
+              <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
+                <rect x="8" y="28" width="5" height="16" rx="2" transform="rotate(-30 8 28)" fill="white" opacity="0.9"/>
+                <rect x="27" y="9" width="5" height="16" rx="2" transform="rotate(30 27 9)" fill="white" opacity="0.9"/>
+                <rect x="12" y="23" width="16" height="4" rx="2" fill="#FF6B35"/>
+                <path d="M20 7 L24 13 H22 V18 H18 V13 H16 Z" fill="#FF6B35"/>
+              </svg>
+            </div>
+            {!col&&<span style={{
+              fontFamily:"'Instrument Serif', serif",
+              fontSize:'1.875rem',fontWeight:400,color:'#fff',letterSpacing:'-.01em',lineHeight:1,
+            }}>Acc<span style={{color:'#FF6B35'}}>Fino</span></span>}
+          </div>
         </div>
         <nav style={{flex:1,padding:col?'12px 6px':'12px 10px',display:'flex',flexDirection:'column',
           gap:2,overflowY:'auto',overflowX:'hidden',position:'relative',zIndex:1}}>
@@ -113,7 +132,7 @@ export default function Layout() {
         <div style={{padding:col?'12px 6px':'12px 10px',borderTop:'1px solid rgba(255,255,255,.08)',position:'relative',zIndex:1}}>
           {!col&&<div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
             borderRadius:'var(--r-md)',background:'rgba(255,255,255,.06)',marginBottom:8}}>
-            <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#FF6B35,#E55A26)',
+            <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#C8963E,#E8B86D)',
               display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.72rem',fontWeight:700,color:'#fff',flexShrink:0}}>{initials}</div>
             <div style={{minWidth:0}}>
               <div style={{fontSize:'1rem',fontWeight:600,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user?.name||user?.email}</div>
@@ -140,11 +159,11 @@ export default function Layout() {
           {col?<ChevronRight size={11} color="var(--text-2)"/>:<ChevronLeft size={11} color="var(--text-2)"/>}
         </button>
       </aside>
-      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'auto',minWidth:0}}>
-        <header style={{height:'var(--header-h)',background:'var(--surface)',borderBottom:'1px solid var(--border)',
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0,height:'100vh'}}>
+        <header style={{height:'var(--header-h)',background:'var(--surface)',borderBottom:'1px solid #ffffff',
           display:'flex',alignItems:'center',padding:'0 24px',position:'sticky',top:0,zIndex:10,justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:'1rem',color:'var(--text-3)',fontWeight:500}}>Accfino</span>
+            <span style={{fontSize:'1rem',color:'var(--text-3)',fontWeight:500}}>AccFino</span>
             <span style={{color:'var(--border-dark)'}}>/</span>
             <span style={{fontSize:'1rem',fontWeight:600,color:'var(--text-1)'}}>{pageName}</span>
           </div>
@@ -152,7 +171,7 @@ export default function Layout() {
             <button className="btn btn-ghost btn-icon"><Bell size={16} color="var(--text-3)"/></button>
             <button className="btn btn-ghost btn-icon"><HelpCircle size={16} color="var(--text-3)"/></button>
             <div style={{width:1,height:20,background:'var(--border)',margin:'0 4px'}}/>
-            <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#0B6E4F,#0D8A62)',
+            <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#C8963E,#E8B86D)',
               display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.72rem',fontWeight:700,color:'#fff'}}>{initials}</div>
           </div>
         </header>

@@ -20,6 +20,11 @@ export default function UpgradeBanner() {
 
   if (!myPlan || dismissed) return null
 
+  // Never show upgrade banner to admins or users on premium/bundle plans
+  const isAdmin = Array.isArray(user?.roles) && user.roles.includes('admin')
+  if (isAdmin) return null
+  if (['premium', 'basic'].includes(myPlan.plan_id)) return null
+
   const endDate  = myPlan.end_date
   if (!endDate || endDate === '9999-12-31') return null
 
