@@ -4,15 +4,30 @@ import React from 'react'
 class AppErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false } }
   static getDerivedStateFromError() { return { hasError: true } }
-  componentDidCatch(e) { console.error('App error:', e) }
+  componentDidCatch(e, info) {
+    console.error('App error:', e)
+    console.error('Component stack:', info?.componentStack)
+    this.setState({ errorMsg: e?.message || String(e) })
+  }
   render() {
     if (this.state.hasError) return (
-      <div style={{padding:40,textAlign:'center'}}>
-        <h2>Something went wrong.</h2>
-        <button onClick={() => { this.setState({hasError:false}); window.location.href='/login' }}
-          style={{marginTop:16,padding:'10px 24px',background:'#0F6B44',color:'#fff',
+      <div style={{padding:40,textAlign:'center',fontFamily:'sans-serif'}}>
+        <h2 style={{marginBottom:12}}>Something went wrong.</h2>
+        <p style={{color:'#666',fontSize:'.9rem',marginBottom:8}}>
+          Error: {this.state.errorMsg}
+        </p>
+        <p style={{color:'#999',fontSize:'.8rem',marginBottom:20}}>
+          Check browser console (F12) for details.
+        </p>
+        <button onClick={() => { this.setState({hasError:false, errorMsg:''}); window.location.href='/index-marketing.html' }}
+          style={{marginTop:8,padding:'10px 24px',background:'#0F6B44',color:'#fff',
+            border:'none',borderRadius:8,cursor:'pointer',fontSize:'1rem',marginRight:8}}>
+          Go to Home
+        </button>
+        <button onClick={() => { this.setState({hasError:false, errorMsg:''}); window.location.href='/login' }}
+          style={{marginTop:8,padding:'10px 24px',background:'#333',color:'#fff',
             border:'none',borderRadius:8,cursor:'pointer',fontSize:'1rem'}}>
-          Return to Login
+          Go to Login
         </button>
       </div>
     )
