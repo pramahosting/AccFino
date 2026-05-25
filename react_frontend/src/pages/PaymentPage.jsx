@@ -196,7 +196,7 @@ export default function PaymentPage() {
       <a href="/index-marketing.html" style={{
         display:'flex', alignItems:'center', gap:9,
         fontFamily:"'Instrument Serif','Sora',serif",
-        fontSize:'1.8rem', color:'#fff', letterSpacing:'-.01em',
+        fontSize:'1.5rem', color:'#fff', letterSpacing:'-.01em',
         marginRight:'auto', textDecoration:'none',
       }}>
         <div style={{
@@ -214,7 +214,7 @@ export default function PaymentPage() {
         </div>
         <span>Acc<span style={{color:'#FF6B35'}}>Fino</span></span>
       </a>
-      <div style={{display:'flex', gap:28, fontSize:'1.2rem', color:'#ffffff', marginRight:28}}
+      <div style={{display:'flex', gap:28, fontSize:'1rem', color:'#ffffff', marginRight:28}}
         className="mkt-nav-links">
         <a href="/index-marketing.html#features" style={{color:'#ffffff',textDecoration:'none'}}>Features</a>
         <a href="/index-marketing.html#advantages" style={{color:'#ffffff',textDecoration:'none'}}>Why AccFino</a>
@@ -223,13 +223,13 @@ export default function PaymentPage() {
         <a href="/index-marketing.html#stack" style={{color:'#ffffff',textDecoration:'none'}}>Built on</a>
       </div>
       <a href="/login" style={{
-        fontSize:'1.2rem', fontWeight:500, padding:'9px 20px',
+        fontSize:'1rem', fontWeight:500, padding:'9px 20px',
         borderRadius:6, border:'1px solid rgba(255,255,255,.18)',
         background:'transparent', color:'rgba(255,255,255,.8)',
         marginRight:8, textDecoration:'none',
       }}>Sign in</a>
       <a href="/login?tab=register" style={{
-        fontSize:'1.2rem', fontWeight:600, padding:'9px 22px',
+        fontSize:'1rem', fontWeight:600, padding:'9px 22px',
         borderRadius:6, background:'#C8963E', color:'#fff',
         textDecoration:'none', boxShadow:'0 2px 10px rgba(200,150,62,.35)',
       }}>Start free →</a>
