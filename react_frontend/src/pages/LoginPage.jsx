@@ -285,9 +285,7 @@ export default function LoginPage() {
             </svg>
           </div>
 
-          <span>
-            Acc<span style={{ color: '#FF6B35' }}>Fino</span>
-          </span>
+          <span>Acc<span style={{color:'#FF6B35'}}>Fino</span></span>
         </a>
 
         {/* Nav links */}
@@ -1032,7 +1030,7 @@ export default function LoginPage() {
                   style={{
                     fontWeight: 700,
                     color: 'var(--brand)',
-                    fontSize: '1.1rem',
+                    fontSize: '1rem',
                   }}
                 >
                   ${planPrice/100}/mo
