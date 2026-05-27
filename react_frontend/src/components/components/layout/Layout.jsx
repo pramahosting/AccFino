@@ -137,6 +137,7 @@ export default function Layout() {
               display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.72rem',fontWeight:700,color:'#fff',flexShrink:0}}>{initials}</div>
             <div style={{minWidth:0}}>
               <div style={{fontSize:'.7rem',fontWeight:600,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user?.name||user?.email}</div>
+              <div style={{fontSize:'.5rem',color:'rgba(255,255,255,.45)'}}>{user?.is_admin?'Administrator':'User'}</div>
             </div>
           </div>}
           <button onClick={() => {
