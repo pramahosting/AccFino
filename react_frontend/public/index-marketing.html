@@ -839,8 +839,8 @@ footer {
     <div class="plan">
       <div class="plan-name">Reconciliation</div>
       <div class="plan-desc">Full bank reconciliation + Open Banking</div>
-      <div class="plan-price"><span class="price-num">$18</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note">AUD incl. GST · $180/yr (2 months free)</div>
+      <div class="plan-price"><span class="price-num" id="price-reconciliation">$18</span><span class="price-period">/mo</span></div>
+      <div class="plan-period-note" id="note-reconciliation">AUD incl. GST · $180/yr (2 months free)</div>
       <div class="plan-divider"></div>
       <div class="plan-feat">Open Banking / direct bank feeds</div>
       <div class="plan-feat">Unlimited transactions</div>
@@ -852,8 +852,8 @@ footer {
     <div class="plan">
       <div class="plan-name">Trading</div>
       <div class="plan-desc">Crypto &amp; equity CGT reports</div>
-      <div class="plan-price"><span class="price-num">$15</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note">AUD incl. GST · $150/yr (2 months free)</div>
+      <div class="plan-price"><span class="price-num" id="price-trading">$15</span><span class="price-period">/mo</span></div>
+      <div class="plan-period-note" id="note-trading">AUD incl. GST · $150/yr (2 months free)</div>
       <div class="plan-divider"></div>
       <div class="plan-feat">Crypto CGT calculation</div>
       <div class="plan-feat">Equity CGT reports</div>
@@ -865,8 +865,8 @@ footer {
     <div class="plan">
       <div class="plan-name">Cash Flow</div>
       <div class="plan-desc">ML-powered cash flow forecasting</div>
-      <div class="plan-price"><span class="price-num">$15</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note">AUD incl. GST · $150/yr (2 months free)</div>
+      <div class="plan-price"><span class="price-num" id="price-cashflow">$15</span><span class="price-period">/mo</span></div>
+      <div class="plan-period-note" id="note-cashflow">AUD incl. GST · $150/yr (2 months free)</div>
       <div class="plan-divider"></div>
       <div class="plan-feat">ML next-month prediction</div>
       <div class="plan-feat">Visual cash flow charts</div>
@@ -883,8 +883,8 @@ footer {
     <div class="plan">
       <div class="plan-name">Invoice</div>
       <div class="plan-desc">GST invoices &amp; PDF extraction</div>
-      <div class="plan-price"><span class="price-num">$12</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note">AUD incl. GST · $120/yr (2 months free)</div>
+      <div class="plan-price"><span class="price-num" id="price-invoice">$12</span><span class="price-period">/mo</span></div>
+      <div class="plan-period-note" id="note-invoice">AUD incl. GST · $120/yr (2 months free)</div>
       <div class="plan-divider"></div>
       <div class="plan-feat">Create GST-compliant invoices</div>
       <div class="plan-feat">Extract data from PDF invoices</div>
@@ -896,8 +896,8 @@ footer {
     <div class="plan">
       <div class="plan-name">Full Bundle</div>
       <div class="plan-desc">All 4 modules — Reconciliation + Trading + Cash Flow + Invoice</div>
-      <div class="plan-price"><span class="price-num">$49</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note">AUD incl. GST · Save vs individual modules</div>
+      <div class="plan-price"><span class="price-num" id="price-basic">$49</span><span class="price-period">/mo</span></div>
+      <div class="plan-period-note" id="note-basic">AUD incl. GST · Save vs individual modules</div>
       <div class="plan-divider"></div>
       <div class="plan-feat">Full reconciliation + Open Banking</div>
       <div class="plan-feat">Crypto &amp; equity CGT reports</div>
@@ -910,8 +910,8 @@ footer {
       <span class="plan-badge badge-gold">Best Value</span>
       <div class="plan-name">Premium</div>
       <div class="plan-desc">Everything in Full Bundle + priority support</div>
-      <div class="plan-price"><span class="price-num">$39</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note">AUD incl. GST · Save $10/mo vs Full Bundle</div>
+      <div class="plan-price"><span class="price-num" id="price-premium">$39</span><span class="price-period">/mo</span></div>
+      <div class="plan-period-note" id="note-premium">AUD incl. GST · Save $10/mo vs Full Bundle</div>
       <div class="plan-divider"></div>
       <div class="plan-feat">Everything in Full Bundle</div>
       <div class="plan-feat">Save $10/month vs Full Bundle</div>
@@ -1163,6 +1163,70 @@ document.querySelectorAll('.bento-card, .adv-card, .plan, .testi, .stack-card, .
   el.style.transition = 'opacity .55s ease, transform .55s cubic-bezier(.22,.68,0,1.2)';
   observer.observe(el);
 });
+</script>
+
+<script>
+// ── Dynamic pricing from pricing.json via API ──────────────────────────────
+(function () {
+  const API = '/api/pricing'
+
+  // Map: plan key -> { priceEl id, noteEl id, yearlyMultiplier }
+  const PLANS = {
+    reconciliation: { price: 'price-reconciliation', note: 'note-reconciliation' },
+    trading:        { price: 'price-trading',        note: 'note-trading'        },
+    cashflow:       { price: 'price-cashflow',       note: 'note-cashflow'       },
+    invoice:        { price: 'price-invoice',        note: 'note-invoice'        },
+    basic:          { price: 'price-basic',          note: 'note-basic'          },
+    premium:        { price: 'price-premium',        note: 'note-premium'        },
+  }
+
+  function fmt(cents) { return '$' + (cents / 100) }
+  function fmtYr(cents) { return '$' + (cents / 100) + '/yr (2 months free)' }
+  function fmtSave(cents, otherCents) {
+    const save = otherCents - cents
+    return save > 0 ? 'Save ' + fmt(save) + '/mo vs Full Bundle' : 'Best Value'
+  }
+
+  fetch(API)
+    .then(r => r.json())
+    .then(data => {
+      // Individual modules
+      ;['reconciliation', 'trading', 'cashflow', 'invoice'].forEach(key => {
+        const apiKey = key === 'cashflow' ? 'cashflow' : key
+        const plan   = data[apiKey]
+        if (!plan) return
+        const mo  = plan.price_monthly
+        const yr  = plan.price_yearly
+        const pel = document.getElementById(PLANS[key].price)
+        const nel = document.getElementById(PLANS[key].note)
+        if (pel) pel.textContent = fmt(mo)
+        if (nel) nel.textContent = 'AUD incl. GST · ' + fmtYr(yr)
+      })
+
+      // Bundles
+      if (data.basic) {
+        const el = document.getElementById('price-basic')
+        const nl = document.getElementById('note-basic')
+        if (el) el.textContent = fmt(data.basic.price_monthly)
+        if (nl) nl.textContent = 'AUD incl. GST · Save vs individual modules'
+      }
+      if (data.premium) {
+        const el = document.getElementById('price-premium')
+        const nl = document.getElementById('note-premium')
+        if (el) el.textContent = fmt(data.premium.price_monthly)
+        if (nl) {
+          const save = data.basic
+            ? fmtSave(data.premium.price_monthly, data.basic.price_monthly)
+            : 'Best Value'
+          nl.textContent = 'AUD incl. GST · ' + save
+        }
+      }
+    })
+    .catch(() => {
+      // Silently keep the hardcoded fallback values already in the HTML
+      console.warn('AccFino: could not load live pricing, showing static prices.')
+    })
+})()
 </script>
 </body>
 </html>
