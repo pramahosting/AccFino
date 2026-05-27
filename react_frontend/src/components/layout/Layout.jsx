@@ -102,7 +102,7 @@ export default function Layout() {
         </div>
         <nav style={{flex:1,padding:col?'12px 6px':'12px 10px',display:'flex',flexDirection:'column',
           gap:2,overflowY:'auto',overflowX:'hidden',position:'relative',zIndex:1}}>
-          {!col&&<div style={{fontSize:'.8rem',fontWeight:700,color:'rgba(255,255,255,.35)',
+          {!col&&<div style={{fontSize:'.9rem',fontWeight:700,color:'rgba(255,255,255,.35)',
             letterSpacing:'.1em',textTransform:'uppercase',padding:'4px 12px 8px',marginTop:4}}>Modules</div>}
           {NAV.map(({to,icon:Icon,label,sub,key,adminOnly})=>{
             // adminOnly items only visible to admins; for others hide completely
@@ -113,8 +113,8 @@ export default function Layout() {
                 className={({isActive})=>`nav-item${isActive?' active':''}`}>
                 <Icon size={23} strokeWidth={1.8} style={{flexShrink:0}}/>
                 {!col&&<div style={{minWidth:0}}>
-                  <div style={{fontSize:'.7rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
-                  <div style={{fontSize:'.5rem',opacity:.55,lineHeight:1.3,marginTop:1}}>{sub}</div>
+                  <div style={{fontSize:'.8rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
+                  <div style={{fontSize:'.6rem',opacity:.55,lineHeight:1.3,marginTop:1}}>{sub}</div>
                 </div>}
               </NavLink>
             ) : (
@@ -123,8 +123,8 @@ export default function Layout() {
                 style={{opacity:.35,cursor:'not-allowed',pointerEvents:'none',userSelect:'none'}}>
                 <Icon size={23} strokeWidth={1.8} style={{flexShrink:0}}/>
                 {!col&&<div style={{minWidth:0}}>
-                  <div style={{fontSize:'.7rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
-                  <div style={{fontSize:'.5rem',opacity:.55,lineHeight:1.3,marginTop:1}}>🔒 No access</div>
+                  <div style={{fontSize:'.8rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
+                  <div style={{fontSize:'.6rem',opacity:.55,lineHeight:1.3,marginTop:1}}>🔒 No access</div>
                 </div>}
               </div>
             )
@@ -136,8 +136,8 @@ export default function Layout() {
             <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#C8963E,#E8B86D)',
               display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.72rem',fontWeight:700,color:'#fff',flexShrink:0}}>{initials}</div>
             <div style={{minWidth:0}}>
-              <div style={{fontSize:'.7rem',fontWeight:600,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user?.name||user?.email}</div>
-              <div style={{fontSize:'.5rem',color:'rgba(255,255,255,.45)'}}>{user?.is_admin?'Administrator':'User'}</div>
+              <div style={{fontSize:'.8rem',fontWeight:600,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user?.name||user?.email}</div>
+              <div style={{fontSize:'.6rem',color:'rgba(255,255,255,.45)'}}>{user?.is_admin?'Administrator':'User'}</div>
             </div>
           </div>}
           <button onClick={() => {
@@ -150,7 +150,7 @@ export default function Layout() {
               }
             }} className="nav-item" style={{border:'none',cursor:'pointer',width:'100%'}}>
             <LogOut size={23} style={{flexShrink:0}}/>
-            {!col&&<span style={{fontSize:'.7rem'}}>Logout</span>}
+            {!col&&<span style={{fontSize:'.8rem'}}>Logout</span>}
           </button>
         </div>
         <button onClick={()=>setCol(c=>!c)} style={{
