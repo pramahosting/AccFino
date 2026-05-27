@@ -82,12 +82,12 @@ export default function Layout() {
           {/* Logo matching marketing page nav exactly */}
           <div style={{display:'flex',alignItems:'center',gap:9,textDecoration:'none'}}>
             <div style={{
-              width:45,height:45,borderRadius:12,flexShrink:0,
+              width:35,height:35,borderRadius:12,flexShrink:0,
               background:'linear-gradient(135deg,#C8963E 0%,#E8B86D 100%)',
               display:'flex',alignItems:'center',justifyContent:'center',
               boxShadow:'0 2px 10px rgba(200,150,62,.4)',
             }}>
-              <svg width="25" height="25" viewBox="0 0 40 40" fill="none">
+              <svg width="20" height="20" viewBox="0 0 40 40" fill="none">
                 <rect x="8" y="28" width="5" height="16" rx="2" transform="rotate(-30 8 28)" fill="white" opacity="0.9"/>
                 <rect x="27" y="9" width="5" height="16" rx="2" transform="rotate(30 27 9)" fill="white" opacity="0.9"/>
                 <rect x="12" y="23" width="16" height="4" rx="2" fill="#FF6B35"/>
@@ -96,7 +96,7 @@ export default function Layout() {
             </div>
             {!col&&<span style={{
               fontFamily:"'Instrument Serif', serif",
-              fontSize:'1.5rem',color:'#fff',letterSpacing:'-.01em',
+              fontSize:'1.35rem',color:'#fff',letterSpacing:'-.01em',
             }}>Acc<span style={{color:'#FF6B35'}}>Fino</span></span>}
           </div>
         </div>
@@ -133,7 +133,7 @@ export default function Layout() {
         <div style={{padding:col?'12px 6px':'12px 10px',borderTop:'1px solid rgba(255,255,255,.08)',position:'relative',zIndex:1}}>
           {!col&&<div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
             borderRadius:'var(--r-md)',background:'rgba(255,255,255,.06)',marginBottom:8}}>
-            <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#C8963E,#E8B86D)',
+            <div style={{width:30,height:30,borderRadius:'50%',background:'linear-gradient(135deg,#C8963E,#E8B86D)',
               display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.72rem',fontWeight:700,color:'#fff',flexShrink:0}}>{initials}</div>
             <div style={{minWidth:0}}>
               <div style={{fontSize:'.8rem',fontWeight:600,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user?.name||user?.email}</div>
