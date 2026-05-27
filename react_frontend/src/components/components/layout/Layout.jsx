@@ -96,7 +96,7 @@ export default function Layout() {
             </div>
             {!col&&<span style={{
               fontFamily:"'Instrument Serif', serif",
-              fontSize:'1rem',color:'#fff',letterSpacing:'-.01em',
+              fontSize:'1.5rem',color:'#fff',letterSpacing:'-.01em',
             }}>Acc<span style={{color:'#FF6B35'}}>Fino</span></span>}
           </div>
         </div>
