@@ -38,13 +38,13 @@ const BAR = {
 const LOGO_LINK = {
   display: 'flex', alignItems: 'center', gap: 9,
   fontFamily: "'Instrument Serif', serif",
-  fontSize: '1.5rem',
+  fontSize: '1.35rem',
   color: '#fff', letterSpacing: '-.01em',
   textDecoration: 'none', cursor: 'pointer',
 }
 
 const LOGO_GEM = {
-  width: 45, height: 45, borderRadius: 12, flexShrink: 0,
+  width: 35, height: 35, borderRadius: 12, flexShrink: 0,
   background: 'linear-gradient(135deg,#C8963E 0%,#E8B86D 100%)',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   boxShadow: '0 2px 10px rgba(200,150,62,.4)',
@@ -52,12 +52,12 @@ const LOGO_GEM = {
 
 const NAV_LINKS_WRAP = {
   display: 'flex', gap: 28,
-  fontSize: '1rem', color: '#ffffff',
+  fontSize: '.9rem', color: '#ffffff',
   marginRight: 28,
 }
 
 const BTN_GHOST = {
-  fontSize: '1rem', fontWeight: 500, padding: '9px 20px',
+  fontSize: '.9rem', fontWeight: 500, padding: '9px 20px',
   borderRadius: 6, border: '1px solid rgba(255,255,255,.18)',
   background: 'transparent', color: 'rgba(255,255,255,.8)',
   cursor: 'pointer', marginRight: 8, fontFamily: 'inherit',
@@ -65,7 +65,7 @@ const BTN_GHOST = {
 }
 
 const BTN_CTA = {
-  fontSize: '1rem', fontWeight: 600, padding: '9px 22px',
+  fontSize: '.9rem', fontWeight: 600, padding: '9px 22px',
   borderRadius: 6, border: 'none',
   background: '#C8963E', color: '#fff',
   cursor: 'pointer', fontFamily: 'inherit',
@@ -77,7 +77,7 @@ const BTN_CTA = {
 function LogoGem() {
   return (
     <div style={LOGO_GEM}>
-      <svg width="25" height="25" viewBox="0 0 40 40" fill="none">
+      <svg width="20" height="20" viewBox="0 0 40 40" fill="none">
         <rect x="8"  y="28" width="5" height="16" rx="2" transform="rotate(-30 8 28)"  fill="white" opacity="0.9"/>
         <rect x="27" y="9"  width="5" height="16" rx="2" transform="rotate(30 27 9)"   fill="white" opacity="0.9"/>
         <rect x="12" y="23" width="16" height="4" rx="2" fill="#FF6B35"/>
@@ -131,15 +131,15 @@ export default function TopBar({ variant = 'marketing', onSignIn, onStartFree, p
     }}>
       {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: '1rem', color: 'var(--text-3)', fontWeight: 500 }}>AccFino</span>
+        <span style={{ fontSize: '.9rem', color: 'var(--text-3)', fontWeight: 500 }}>AccFino</span>
         <span style={{ color: 'var(--border-dark)' }}>/</span>
-        <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-1)' }}>{pageName}</span>
+        <span style={{ fontSize: '.9rem', fontWeight: 600, color: 'var(--text-1)' }}>{pageName}</span>
       </div>
 
       {/* Right icons */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{
-          width: 32, height: 32, borderRadius: '50%',
+          width: 30, height: 30, borderRadius: '50%',
           background: 'linear-gradient(135deg,#C8963E,#E8B86D)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '.72rem', fontWeight: 700, color: '#fff',
