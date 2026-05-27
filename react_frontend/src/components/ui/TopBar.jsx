@@ -3,24 +3,27 @@
  *
  * Props:
  *   variant   "marketing"  — logo + nav links + Sign in + Start free (Login / PaymentPage)
- *             "app"        — logo + breadcrumb + user icons (home Dashboard / app pages)
+ *             "app"        — breadcrumb (left) + userName (centre) + avatar + logout (right)
  *
  *   // marketing variant only:
- *   onSignIn        () => void   — Sign in button click
- *   onStartFree     () => void   — Start free button click
+ *   onSignIn        () => void
+ *   onStartFree     () => void
  *
  *   // app variant only:
- *   pageName        string       — breadcrumb page label e.g. "Dashboard"
- *   initials        string       — user initials e.g. "JT"
+ *   pageName        string   — breadcrumb page label e.g. "Dashboard"
+ *   initials        string   — user initials e.g. "JT"
+ *   userName        string   — full name or email displayed in centre
+ *   onLogout        () => void
  */
 import React from 'react'
+import { LogOut } from 'lucide-react'
 
 const NAV_LINKS = [
-  { label: 'Features',    href: '/index-marketing.html#features'    },
-  { label: 'Why AccFino', href: '/index-marketing.html#advantages'  },
-  { label: 'Pricing',     href: '/index-marketing.html#pricing'     },
-  { label: 'Integrations',href: '/index-marketing.html#integrations'},
-  { label: 'Built on',    href: '/index-marketing.html#stack'       },
+  { label: 'Features',     href: '/index-marketing.html#features'     },
+  { label: 'Why AccFino',  href: '/index-marketing.html#advantages'   },
+  { label: 'Pricing',      href: '/index-marketing.html#pricing'      },
+  { label: 'Integrations', href: '/index-marketing.html#integrations' },
+  { label: 'Built on',     href: '/index-marketing.html#stack'        },
 ]
 
 /* ─── Shared style tokens ─────────────────────────────────────────────────── */
@@ -93,25 +96,20 @@ function LogoText() {
 }
 
 /* ─── TopBar component ────────────────────────────────────────────────────── */
-export default function TopBar({ variant = 'marketing', onSignIn, onStartFree, pageName, initials }) {
+export default function TopBar({ variant = 'marketing', onSignIn, onStartFree, pageName, initials, userName, onLogout }) {
 
   if (variant === 'marketing') {
     return (
       <nav style={BAR}>
-        {/* Logo */}
         <a href="/index-marketing.html" style={{ ...LOGO_LINK, marginRight: 'auto' }}>
           <LogoGem/>
           <LogoText/>
         </a>
-
-        {/* Nav links */}
         <div style={NAV_LINKS_WRAP} className="mkt-nav-links">
           {NAV_LINKS.map(({ label, href }) => (
             <a key={href} href={href} style={{ color: '#ffffff', textDecoration: 'none' }}>{label}</a>
           ))}
         </div>
-
-        {/* Buttons */}
         <button style={BTN_GHOST} onClick={onSignIn}>Sign in</button>
         <button style={BTN_CTA}   onClick={onStartFree}>Start free →</button>
       </nav>
@@ -126,25 +124,43 @@ export default function TopBar({ variant = 'marketing', onSignIn, onStartFree, p
       borderBottom: '3px solid rgba(255,255,255,0.12)',
       display: 'flex', alignItems: 'center',
       padding: '0 24px',
-      position: 'sticky', top: 0, zIndex: 10,
-      justifyContent: 'space-between',
+      position: 'relative',
+      top: 0, zIndex: 10,
+      flexShrink: 0,
     }}>
-      {/* Breadcrumb */}
+      {/* Breadcrumb — left */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: '.9rem', color: 'var(--text-3)', fontWeight: 500 }}>AccFino</span>
         <span style={{ color: 'var(--border-dark)' }}>/</span>
         <span style={{ fontSize: '.9rem', fontWeight: 600, color: 'var(--text-1)' }}>{pageName}</span>
       </div>
 
-      {/* Right icons */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{
-          width: 30, height: 30, borderRadius: '50%',
-          background: 'linear-gradient(135deg,#C8963E,#E8B86D)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '.72rem', fontWeight: 700, color: '#fff',
-        }}>{initials}</div>
-      </div>
-    </header>
+{/* User name — centre */}
+<div style={{
+  position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+  display: 'flex', alignItems: 'center', gap: 8,
+  pointerEvents: 'none', whiteSpace: 'nowrap',
+}}>
+  <div style={{
+    width: 28, height: 28, borderRadius: '50%',
+    background: 'linear-gradient(135deg,#C8963E,#E8B86D)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: '.65rem', fontWeight: 700, color: '#fff', flexShrink: 0,
+  }}>{initials}</div>
+  <span style={{ fontSize: '.9rem', fontWeight: 600, color: 'var(--text-1)' }}>
+    {userName}
+  </span>
+</div>
+{/* Logout — right */}
+<div style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto' }}>
+  <button onClick={onLogout} style={{
+    background: 'none', border: 'none', cursor: 'pointer',
+    fontSize: '.85rem', color: 'var(--text-1)', fontFamily: 'inherit',
+    display: 'flex', alignItems: 'center', gap: 4, padding: 0,
+  }}>
+    <LogOut size={25}/> Logout
+  </button>
+</div>
+</header>
   )
 }
