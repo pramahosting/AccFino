@@ -113,8 +113,8 @@ export default function Layout() {
                 className={({isActive})=>`nav-item${isActive?' active':''}`}>
                 <Icon size={23} strokeWidth={1.8} style={{flexShrink:0}}/>
                 {!col&&<div style={{minWidth:0}}>
-                  <div style={{fontSize:'.8rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
-                  <div style={{fontSize:'.6rem',opacity:.55,lineHeight:1.3,marginTop:1}}>{sub}</div>
+                  <div style={{fontSize:'.7rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
+                  <div style={{fontSize:'.5rem',opacity:.55,lineHeight:1.3,marginTop:1}}>{sub}</div>
                 </div>}
               </NavLink>
             ) : (
@@ -123,8 +123,8 @@ export default function Layout() {
                 style={{opacity:.35,cursor:'not-allowed',pointerEvents:'none',userSelect:'none'}}>
                 <Icon size={23} strokeWidth={1.8} style={{flexShrink:0}}/>
                 {!col&&<div style={{minWidth:0}}>
-                  <div style={{fontSize:'1rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
-                  <div style={{fontSize:'.78rem',opacity:.55,lineHeight:1.3,marginTop:1}}>🔒 No access</div>
+                  <div style={{fontSize:'.7rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
+                  <div style={{fontSize:'.5rem',opacity:.55,lineHeight:1.3,marginTop:1}}>🔒 No access</div>
                 </div>}
               </div>
             )
@@ -136,8 +136,8 @@ export default function Layout() {
             <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#C8963E,#E8B86D)',
               display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.72rem',fontWeight:700,color:'#fff',flexShrink:0}}>{initials}</div>
             <div style={{minWidth:0}}>
-              <div style={{fontSize:'1rem',fontWeight:600,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user?.name||user?.email}</div>
-              <div style={{fontSize:'.78rem',color:'rgba(255,255,255,.45)'}}>{user?.is_admin?'Administrator':'User'}</div>
+              <div style={{fontSize:'.7rem',fontWeight:600,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user?.name||user?.email}</div>
+              <div style={{fontSize:'.5rem',color:'rgba(255,255,255,.45)'}}>{user?.is_admin?'Administrator':'User'}</div>
             </div>
           </div>}
           <button onClick={() => {
