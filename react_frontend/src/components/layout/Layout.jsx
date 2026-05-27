@@ -102,7 +102,7 @@ export default function Layout() {
         </div>
         <nav style={{flex:1,padding:col?'12px 6px':'12px 10px',display:'flex',flexDirection:'column',
           gap:2,overflowY:'auto',overflowX:'hidden',position:'relative',zIndex:1}}>
-          {!col&&<div style={{fontSize:'1rem',fontWeight:700,color:'rgba(255,255,255,.35)',
+          {!col&&<div style={{fontSize:'.8rem',fontWeight:700,color:'rgba(255,255,255,.35)',
             letterSpacing:'.1em',textTransform:'uppercase',padding:'4px 12px 8px',marginTop:4}}>Modules</div>}
           {NAV.map(({to,icon:Icon,label,sub,key,adminOnly})=>{
             // adminOnly items only visible to admins; for others hide completely
