@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import TopBar from '../components/ui/TopBar.jsx'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { getPlans, createCheckout, getMyPlan, getPricingPlans } from '../lib/api'
-import { Check, X, ArrowRight, Zap } from 'lucide-react'
+import { createCheckout, getMyPlan, getPricingPlans } from '../lib/api'
+import { Check, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import AccfinoLogo from '../components/ui/AccfinoLogo.jsx'
 
@@ -28,46 +28,29 @@ const MOD_LABELS = {
   },
 }
 
-// Prices loaded from API — fallback values used until API responds
-let MOD_PRICES = {
-  reconciliation: 1900,
-  trading:        1500,
-  'cash-flow':    1500,
-  invoice:        1200,
-}
-let BUNDLES = {
-  basic:   { mods: ['reconciliation','trading','cash-flow','invoice'], price_monthly: 4900, price_yearly: 49000, label: 'Full Bundle', save: 'Save $12/mo' },
-  premium: { mods: ['reconciliation','trading','cash-flow','invoice'], price_monthly: 3900, price_yearly: 39000, label: 'Premium',      save: 'Best Value' },
-}
-
-function calcPrice(selectedMods, billing, selBundle) {
+// All prices come exclusively from the API (pricing.json) — nothing hardcoded here.
+function calcPrice(selectedMods, billing, selBundle, modPrices, bundles) {
   if (!selectedMods.length) return { price: 0, label: 'Base (Free)', planId: 'base', saveMsg: '' }
 
-  // If a specific bundle was clicked, use that bundle's price exactly
-  if (selBundle && BUNDLES[selBundle]) {
-    const b = BUNDLES[selBundle]
+  if (selBundle && bundles[selBundle]) {
+    const b = bundles[selBundle]
     const p = billing === 'yearly' ? b.price_yearly : b.price_monthly
     return { price: p, label: b.label, planId: selBundle, saveMsg: b.save }
   }
 
-  // Individual module selection — always include base (dashboard + reconciliation CSV)
-  // Add reconciliation to the effective module list since base is always included
   const effectiveMods = selectedMods.includes('reconciliation')
     ? selectedMods
-    : ['reconciliation', ...selectedMods]  // base plan recon always included
+    : ['reconciliation', ...selectedMods]
 
-  // Sum prices of ONLY the selected (paid) modules — not base recon which is free
-  const moTotal = selectedMods.reduce((s, m) => s + (MOD_PRICES[m] || 0), 0)
+  const moTotal = selectedMods.reduce((s, m) => s + (modPrices[m] || 0), 0)
   const total   = billing === 'yearly' ? moTotal * 10 : moTotal
 
-  // Auto-upgrade to basic bundle if 3+ paid modules and bundle is cheaper
-  const basicPrice = billing === 'yearly' ? BUNDLES.basic.price_yearly : BUNDLES.basic.price_monthly
-  if (selectedMods.length >= 3 && total >= basicPrice) {
+  const basicPrice = billing === 'yearly' ? bundles.basic?.price_yearly : bundles.basic?.price_monthly
+  if (bundles.basic && selectedMods.length >= 3 && total >= basicPrice) {
     return { price: basicPrice, label: 'Full Bundle', planId: 'basic',
              saveMsg: 'Save vs individual', modules: effectiveMods }
   }
 
-  // Custom — base always included even if not explicitly selected
   const label = selectedMods.length === 0 ? 'Base (Free)'
     : `Base + ${selectedMods.map(m => MOD_LABELS[m]?.label || m).join(' + ')}`
 
@@ -82,14 +65,21 @@ export default function PaymentPage() {
   const [plans,  setPlans] = useState({})
   const [myPlan, setMyPlan]= useState(null)
   const [billing, setBilling] = useState('monthly')
-  const [selMods, setSelMods] = useState([])   // selected individual modules
+  const [selMods, setSelMods] = useState([])
+  const [selBundle, setSelBundle] = useState(null)
   const [paying,  setPaying]  = useState(false)
   const [loading, setLoading] = useState(true)
+
+  // Prices derived entirely from API — no hardcoded fallbacks
+  const [modPrices, setModPrices] = useState({})
+  const [bundles,   setBundles]   = useState({
+    basic:   { mods: ALL_MOD, price_monthly: null, price_yearly: null, label: 'Full Bundle', save: '' },
+    premium: { mods: ALL_MOD, price_monthly: null, price_yearly: null, label: 'Premium',      save: '' },
+  })
 
   useEffect(() => {
     if (searchParams.get('success')) {
       toast.success('🎉 Payment successful! Your plan has been upgraded.')
-      // Fire module refresh event then go to dashboard
       window.dispatchEvent(new Event('accfino:modules-changed'))
       setTimeout(() => navigate(user ? '/' : '/login', { replace: true }), 1500)
     }
@@ -103,52 +93,60 @@ export default function PaymentPage() {
       getPricingPlans(),
       user?.id ? getMyPlan(user.id) : Promise.resolve({ data: null }),
     ]).then(([pr, mr]) => {
-      const apiPlans = pr.data || {}
-      setPlans(apiPlans)
+      const api = pr.data || {}
+      setPlans(api)
       setMyPlan(mr.data)
-      // Update MOD_PRICES from API
-      const newPrices = {}
-      ;['reconciliation','trading','cash-flow','invoice'].forEach(mod => {
-        if (apiPlans[mod]?.price_monthly) newPrices[mod] = apiPlans[mod].price_monthly
+
+      // Build modPrices purely from API
+      const mp = {}
+      ALL_MOD.forEach(mod => {
+        if (api[mod]?.price_monthly) mp[mod] = api[mod].price_monthly
       })
-      if (Object.keys(newPrices).length) MOD_PRICES = { ...MOD_PRICES, ...newPrices }
-      // Update BUNDLES from API
-      if (apiPlans.basic)   BUNDLES.basic.price_monthly   = apiPlans.basic.price_monthly
-      if (apiPlans.basic)   BUNDLES.basic.price_yearly    = apiPlans.basic.price_yearly
-      if (apiPlans.premium) BUNDLES.premium.price_monthly = apiPlans.premium.price_monthly
-      if (apiPlans.premium) BUNDLES.premium.price_yearly  = apiPlans.premium.price_yearly
-      if (apiPlans.basic?.name)   BUNDLES.basic.label    = apiPlans.basic.name
-      if (apiPlans.premium?.name) BUNDLES.premium.label  = apiPlans.premium.name
-    }).catch(() => {})
+      setModPrices(mp)
+
+      // Build bundles purely from API
+      const nb = { ...bundles }
+      if (api.basic) {
+        nb.basic = {
+          mods:          ALL_MOD,
+          price_monthly: api.basic.price_monthly,
+          price_yearly:  api.basic.price_yearly,
+          label:         api.basic.name || 'Full Bundle',
+          save:          api.basic.features?.find(f => f.toLowerCase().includes('save')) || '',
+        }
+      }
+      if (api.premium) {
+        nb.premium = {
+          mods:          ALL_MOD,
+          price_monthly: api.premium.price_monthly,
+          price_yearly:  api.premium.price_yearly,
+          label:         api.premium.name || 'Premium',
+          save:          api.premium.features?.find(f => f.toLowerCase().includes('save')) || 'Best Value',
+        }
+      }
+      setBundles(nb)
+    }).catch(() => toast.error('Could not load pricing — please refresh.'))
       .finally(() => setLoading(false))
   }, [user?.id])
 
-  const [selBundle, setSelBundle] = useState(null)
-
   const toggleMod = (mod) => {
-    // Clicking individual module clears any bundle selection
     setSelBundle(null)
-    setSelMods(prev =>
-      prev.includes(mod) ? prev.filter(m => m !== mod) : [...prev, mod]
-    )
+    setSelMods(prev => prev.includes(mod) ? prev.filter(m => m !== mod) : [...prev, mod])
   }
 
   const selectBundle = (bundleKey) => {
     if (selBundle === bundleKey) {
-      // Deselect bundle -> go back to base
       setSelBundle(null)
       setSelMods([])
     } else {
-      // Select this bundle exclusively — clear individual selections
       setSelBundle(bundleKey)
-      setSelMods([...BUNDLES[bundleKey].mods])
+      setSelMods([...bundles[bundleKey].mods])
     }
   }
 
-
-  const { price, label, planId, saveMsg } = calcPrice(selMods, billing, selBundle)
+  const { price, label, planId, saveMsg } = calcPrice(selMods, billing, selBundle, modPrices, bundles)
   const isFree    = price === 0
-  const perMo     = price   // always the total charge amount (monthly or yearly)
+  const perMo     = price
   const isLoggedIn = !!user
 
   const handleCheckout = async () => {
@@ -156,9 +154,7 @@ export default function PaymentPage() {
     if (isFree) { navigate('/'); return }
     setPaying(true)
     try {
-      // For custom individual module selection, pass the exact amount and modules
-      const pid = planId.startsWith('custom_') ? 'custom' : planId
-      // Always include base (dashboard + reconciliation CSV) in module list
+      const pid     = planId.startsWith('custom_') ? 'custom' : planId
       const allMods = [...new Set(['dashboard', 'reconciliation', ...selMods])]
       const { data } = await createCheckout({
         plan_id:        pid,
@@ -175,17 +171,22 @@ export default function PaymentPage() {
     } finally { setPaying(false) }
   }
 
-  const FEATURES = [
-    'Bank reconciliation with automatic internal transfer detection',
-    'GST calculation & BAS-ready classification',
-    'ML-powered GL account auto-classification',
-    'Multi-bank CSV import with session persistence',
-    'Excel export with monthly summaries',
+  // Mini comparison prices for left panel — derived from API
+  const bundleMonthly = bundles.basic?.price_monthly
+  const premiumMonthly = bundles.premium?.price_monthly
+  const miniPlans = [
+    { name: 'Base',    price: 'Free',
+      mods: 'Dashboard + CSV Reconciliation' },
+    { name: plans.basic?.name   || 'Full Bundle',
+      price: bundleMonthly  ? `$${bundleMonthly/100}/mo`  : '…',
+      mods: 'All 4 modules bundled' },
+    { name: plans.premium?.name || 'Premium',
+      price: premiumMonthly ? `$${premiumMonthly/100}/mo` : '…',
+      mods: 'All modules · Best value' },
   ]
 
   return (
     <>
-    {/* ── Nav bar — identical to Login and Marketing page ── */}
     <TopBar
       variant="marketing"
       onSignIn={() => navigate('/login')}
@@ -206,14 +207,8 @@ export default function PaymentPage() {
               Pick individual modules or save with a bundle. Start free, upgrade anytime.
             </p>
           </div>
-
-          {/* Mini plan comparison */}
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {[
-              { name:'Base',    price:'Free',    mods:'Dashboard + CSV Reconciliation' },
-              { name:'Basic',   price:'$49/mo',  mods:'All 4 modules bundled' },
-              { name:'Premium', price:'$39/mo',  mods:'All modules · Best value' },
-            ].map(p => (
+            {miniPlans.map(p => (
               <div key={p.name} style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
                 <Check size={14} color="#FF6B35" style={{ marginTop:2, flexShrink:0 }}/>
                 <span style={{ fontSize:'.82rem', color:'rgba(255,255,255,.75)', lineHeight:1.5 }}>
@@ -222,7 +217,6 @@ export default function PaymentPage() {
               </div>
             ))}
           </div>
-
           <div style={{ marginTop:28, paddingTop:20, borderTop:'1px solid rgba(255,255,255,.12)',
             fontSize:'.78rem', color:'rgba(255,255,255,.4)' }}>
             🔒 Secured by Stripe · Cancel anytime · AUD pricing incl. GST
@@ -230,11 +224,10 @@ export default function PaymentPage() {
         </div>
       </div>
 
-      {/* ── Right panel — pricing ── */}
+      {/* ── Right panel ── */}
       <div className="login-right" style={{ width: "auto", flex: 1, padding: "32px 40px", overflowY: "auto", alignItems: "flex-start" }}>
         <div className="login-form-wrap" style={{ maxWidth: 720, width: "100%" }}>
 
-          {/* Back / nav */}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
             <button onClick={() => { window.location.href = isLoggedIn ? '/' : '/index-marketing.html' }}
               style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-3)',
@@ -287,23 +280,23 @@ export default function PaymentPage() {
           }} onClick={() => { setSelMods([]); setSelBundle(null); }}>
             <div style={{ position:'absolute', top:12, right:12,
               width:18, height:18, borderRadius:'50%',
-              border:'2px solid var(--brand)',
-              background: 'var(--brand)',
+              border:'2px solid var(--brand)', background: 'var(--brand)',
               display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Check size={10} color="#fff" strokeWidth={3}/>
             </div>
             <div style={{ marginBottom:8, paddingRight:24 }}>
               <div style={{ fontSize:'1.3rem', marginBottom:4 }}>🆓</div>
               <div style={{ fontWeight:700, fontSize:'.92rem' }}>Base Plan</div>
-              <div style={{ fontSize:'.75rem', color:'var(--text-3)' }}>Try Accfino free for 6 months</div>
+              <div style={{ fontSize:'.75rem', color:'var(--text-3)' }}>
+                {plans.base?.description || 'Try Accfino free for 6 months'}
+              </div>
             </div>
             <div style={{ marginBottom:12 }}>
               <span style={{ fontSize:'1.4rem', fontWeight:800, color:'var(--brand)' }}>Free</span>
               <span style={{ fontSize:'.78rem', color:'var(--text-3)', marginLeft:6 }}>· No card required</span>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-              {['Dashboard overview & stats','CSV bank reconciliation (up to 500 txns/mo)',
-                'Up to 6 months free access','Upgrade anytime'].map((f,i) => (
+              {(plans.base?.features || ['Dashboard overview & stats','CSV bank reconciliation (up to 500 txns/mo)','Up to 6 months free access','Upgrade anytime']).map((f,i) => (
                 <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:6, fontSize:'.73rem' }}>
                   <Check size={11} color="#38A169" style={{ flexShrink:0, marginTop:1 }}/>
                   <span style={{ color:'var(--text-2)', lineHeight:1.4 }}>{f}</span>
@@ -320,12 +313,11 @@ export default function PaymentPage() {
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:12 }}>
               {ALL_MOD.map(mod => {
-                const info = MOD_LABELS[mod]
-                const sel  = selMods.includes(mod)
-                const mp    = billing==='yearly'
-                  ? Math.round(MOD_PRICES[mod]*10/12)
-                  : MOD_PRICES[mod]
-                const mp_yr = MOD_PRICES[mod] * 10
+                const info  = MOD_LABELS[mod]
+                const sel   = selMods.includes(mod)
+                const mRaw  = modPrices[mod] || 0
+                const mp    = billing==='yearly' ? Math.round(mRaw*10/12) : mRaw
+                const mp_yr = mRaw * 10
                 return (
                   <div key={mod} onClick={() => toggleMod(mod)} style={{
                     border:`2px solid ${sel ? 'var(--brand)' : 'var(--border)'}`,
@@ -333,7 +325,6 @@ export default function PaymentPage() {
                     background: sel ? 'var(--brand-light)' : 'var(--surface)',
                     transition:'all .15s', position:'relative',
                   }}>
-                    {/* Select indicator */}
                     <div style={{ position:'absolute', top:12, right:12,
                       width:18, height:18, borderRadius:'50%',
                       border:`2px solid ${sel ? 'var(--brand)' : 'var(--border)'}`,
@@ -342,30 +333,28 @@ export default function PaymentPage() {
                     }}>
                       {sel && <Check size={10} color="#fff" strokeWidth={3}/>}
                     </div>
-
-                    {/* Header */}
                     <div style={{ marginBottom:10, paddingRight:24 }}>
                       <div style={{ fontSize:'1.3rem', marginBottom:4 }}>{info.icon}</div>
                       <div style={{ fontWeight:700, fontSize:'.92rem' }}>{info.label}</div>
                       <div style={{ fontSize:'.75rem', color:'var(--text-3)' }}>{info.desc}</div>
                     </div>
-
-                    {/* Price */}
                     <div style={{ marginBottom:12 }}>
-                      <span style={{ fontSize:'1.4rem', fontWeight:800, color:'var(--brand)' }}>
-                        {billing==='yearly' ? `$${mp_yr/100}` : `$${mp/100}`}
-                      </span>
-                      <span style={{ fontSize:'.78rem', color:'var(--text-3)' }}>
-                        {billing==='yearly' ? '/yr' : '/mo'}
-                      </span>
-                      {billing==='yearly' && (
-                        <span style={{ fontSize:'.68rem', color:'#38A169', marginLeft:6, fontWeight:600 }}>
-                          (${mp/100}/mo effective)
+                      {mRaw ? (<>
+                        <span style={{ fontSize:'1.4rem', fontWeight:800, color:'var(--brand)' }}>
+                          {billing==='yearly' ? `$${mp_yr/100}` : `$${mRaw/100}`}
                         </span>
+                        <span style={{ fontSize:'.78rem', color:'var(--text-3)' }}>
+                          {billing==='yearly' ? '/yr' : '/mo'}
+                        </span>
+                        {billing==='yearly' && (
+                          <span style={{ fontSize:'.68rem', color:'#38A169', marginLeft:6, fontWeight:600 }}>
+                            (${mp/100}/mo effective)
+                          </span>
+                        )}
+                      </>) : (
+                        <span style={{ fontSize:'.85rem', color:'var(--text-3)' }}>Loading…</span>
                       )}
                     </div>
-
-                    {/* Features */}
                     <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
                       {(info.features||[]).map((f,i) => (
                         <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:6, fontSize:'.73rem' }}>
@@ -388,12 +377,14 @@ export default function PaymentPage() {
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {[
-                { key:'basic',   emoji:'📦', label:'Full Bundle', desc:'All 4 modules', save:'Save $12/mo vs individual', highlight:false },
-                { key:'premium', emoji:'⭐', label:'Premium',      desc:'All 4 modules + priority support', save:'Best Value — Save $22/mo', highlight:true },
+                { key:'basic',   emoji:'📦', highlight:false },
+                { key:'premium', emoji:'⭐', highlight:true  },
               ].map(b => {
-                const bd    = BUNDLES[b.key]
+                const bd    = bundles[b.key]
                 const allSel= selBundle === b.key
-                const bp    = billing==='yearly' ? Math.round(bd.price_yearly/12) : bd.price_monthly
+                const bp    = billing==='yearly'
+                  ? (bd.price_yearly  ? Math.round(bd.price_yearly/12)  : null)
+                  : (bd.price_monthly || null)
                 return (
                   <div key={b.key} onClick={() => selectBundle(b.key)} style={{
                     border:`2px solid ${allSel ? 'var(--brand)' : b.highlight ? 'var(--brand)' : 'var(--border)'}`,
@@ -402,11 +393,11 @@ export default function PaymentPage() {
                     transition:'all .15s', display:'flex', alignItems:'center', gap:12,
                     position:'relative',
                   }}>
-                    {b.highlight && (
+                    {b.highlight && bd.save && (
                       <div style={{ position:'absolute', top:-10, right:12,
                         background:'var(--brand)', color:'#fff', fontSize:'.65rem',
                         fontWeight:700, padding:'2px 10px', borderRadius:100 }}>
-                        {b.save}
+                        {bd.save}
                       </div>
                     )}
                     <div style={{
@@ -419,12 +410,10 @@ export default function PaymentPage() {
                     </div>
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:700, fontSize:'.88rem' }}>
-                        {b.emoji} {b.label}
+                        {b.emoji} {bd.label}
                       </div>
                       <div style={{ fontSize:'.73rem', color:'var(--text-3)', marginTop:2 }}>
-                        {b.desc}
-                        {!b.highlight && <span style={{ marginLeft:8, color:'#38A169',
-                          fontWeight:600 }}>{b.save}</span>}
+                        {plans[b.key]?.description || ''}
                       </div>
                       <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
                         {ALL_MOD.map(m => (
@@ -436,19 +425,21 @@ export default function PaymentPage() {
                       </div>
                     </div>
                     <div style={{ textAlign:'right' }}>
-                      {billing==='yearly' ? (
-                        <>
+                      {bp ? (
+                        billing==='yearly' ? (<>
                           <div style={{ fontWeight:800, fontSize:'1rem', color:'var(--brand)' }}>
                             ${bd.price_yearly/100}/yr
                           </div>
                           <div style={{ fontSize:'.68rem', color:'var(--text-3)' }}>
                             ${Math.round(bd.price_yearly/12)/100}/mo effective
                           </div>
-                        </>
+                        </>) : (
+                          <div style={{ fontWeight:800, fontSize:'1rem', color:'var(--brand)' }}>
+                            ${bd.price_monthly/100}/mo
+                          </div>
+                        )
                       ) : (
-                        <div style={{ fontWeight:800, fontSize:'1rem', color:'var(--brand)' }}>
-                          ${bd.price_monthly/100}/mo
-                        </div>
+                        <span style={{ fontSize:'.85rem', color:'var(--text-3)' }}>Loading…</span>
                       )}
                     </div>
                   </div>
@@ -490,7 +481,6 @@ export default function PaymentPage() {
             </div>
           </div>
 
-          {/* CTA button */}
           {!isFree ? (
             <button className="btn btn-primary btn-xl btn-full"
               onClick={handleCheckout} disabled={paying}
