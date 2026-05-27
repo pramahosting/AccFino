@@ -113,8 +113,8 @@ export default function Layout() {
                 className={({isActive})=>`nav-item${isActive?' active':''}`}>
                 <Icon size={23} strokeWidth={1.8} style={{flexShrink:0}}/>
                 {!col&&<div style={{minWidth:0}}>
-                  <div style={{fontSize:'1rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
-                  <div style={{fontSize:'.78rem',opacity:.55,lineHeight:1.3,marginTop:1}}>{sub}</div>
+                  <div style={{fontSize:'.8rem',fontWeight:600,lineHeight:1.2}}>{label}</div>
+                  <div style={{fontSize:'.6rem',opacity:.55,lineHeight:1.3,marginTop:1}}>{sub}</div>
                 </div>}
               </NavLink>
             ) : (
