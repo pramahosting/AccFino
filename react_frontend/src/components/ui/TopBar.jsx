@@ -22,8 +22,8 @@ const NAV_LINKS = [
   { label: 'Features',     href: '/index-marketing.html#features'     },
   { label: 'Why AccFino',  href: '/index-marketing.html#advantages'   },
   { label: 'Pricing',      href: '/index-marketing.html#pricing'      },
-  { label: 'Integrations', href: '/index-marketing.html#integrations' },
-  { label: 'Built on',     href: '/index-marketing.html#stack'        },
+ /* { label: 'Integrations', href: '/index-marketing.html#integrations' }, */
+ /* { label: 'Built on',     href: '/index-marketing.html#stack'        }, */
 ]
 
 /* ─── Shared style tokens ─────────────────────────────────────────────────── */
