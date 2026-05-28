@@ -784,14 +784,14 @@ footer {
       </div>
       <div class="compare-row"><span class="chk-accfino">All plans · built-in</span></div>
       <div class="compare-row"><span class="chk-accfino">All plans · built-in</span></div>
-      <div class="compare-row"><span class="chk-accfino">$15/mo module</span></div>
+      <div class="compare-row"><span class="chk-accfino">$<span id="cmp-module">15</span>/mo module</span></div>
       <div class="compare-row"><span class="chk-yes">✓</span></div>
       <div class="compare-row"><span class="chk-accfino">Built-in · all plans</span></div>
       <div class="compare-row"><span class="chk-yes">✓</span></div>
       <div class="compare-row"><span class="chk-accfino">Unique to AccFino</span></div>
       <div class="compare-row"><span class="chk-yes">✓ Always AU</span></div>
       <div class="compare-row"><span class="chk-yes">✓ Free forever</span></div>
-      <div class="compare-row"><span class="chk-accfino">$0 → $18 → $39</span></div>
+      <div class="compare-row"><span class="chk-accfino">$0 → $<span id="cmp-range-mid">18</span> → $<span id="cmp-range-top">39</span></span></div>
     </div>
     <div class="compare-col">
       <div class="compare-header">
@@ -1168,7 +1168,7 @@ document.querySelectorAll('.bento-card, .adv-card, .plan, .testi, .stack-card, .
 <script>
 // ── Dynamic pricing from pricing.json via API ──────────────────────────────
 (function () {
-  const API = '/api/pricing'
+  const API = '/api/pricing/plans'
 
   // Map: plan key -> { priceEl id, noteEl id, yearlyMultiplier }
   const PLANS = {
@@ -1188,44 +1188,44 @@ document.querySelectorAll('.bento-card, .adv-card, .plan, .testi, .stack-card, .
   }
 
   fetch(API)
-    .then(r => r.json())
-    .then(data => {
-      // Individual modules
-      ;['reconciliation', 'trading', 'cashflow', 'invoice'].forEach(key => {
-        const apiKey = key === 'cashflow' ? 'cashflow' : key
-        const plan   = data[apiKey]
-        if (!plan) return
-        const mo  = plan.price_monthly
-        const yr  = plan.price_yearly
-        const pel = document.getElementById(PLANS[key].price)
-        const nel = document.getElementById(PLANS[key].note)
-        if (pel) pel.textContent = fmt(mo)
-        if (nel) nel.textContent = 'AUD incl. GST · ' + fmtYr(yr)
-      })
-
-      // Bundles
-      if (data.basic) {
-        const el = document.getElementById('price-basic')
-        const nl = document.getElementById('note-basic')
-        if (el) el.textContent = fmt(data.basic.price_monthly)
-        if (nl) nl.textContent = 'AUD incl. GST · Save vs individual modules'
-      }
-      if (data.premium) {
-        const el = document.getElementById('price-premium')
-        const nl = document.getElementById('note-premium')
-        if (el) el.textContent = fmt(data.premium.price_monthly)
-        if (nl) {
-          const save = data.basic
-            ? fmtSave(data.premium.price_monthly, data.basic.price_monthly)
-            : 'Best Value'
-          nl.textContent = 'AUD incl. GST · ' + save
-        }
-      }
+  .then(r => r.json())
+  .then(data => {
+    // Pricing cards — individual modules
+    ;['reconciliation', 'trading', 'cashflow', 'invoice'].forEach(key => {
+      const plan = data[key]
+      if (!plan) return
+      const pel = document.getElementById(PLANS[key].price)
+      const nel = document.getElementById(PLANS[key].note)
+      if (pel) pel.textContent = '$' + (plan.price_monthly / 100)
+      if (nel) nel.textContent = 'AUD incl. GST · $' + (plan.price_yearly / 100) + '/yr (2 months free)'
     })
-    .catch(() => {
-      // Silently keep the hardcoded fallback values already in the HTML
-      console.warn('AccFino: could not load live pricing, showing static prices.')
-    })
+    // Pricing cards — bundles
+    if (data.basic) {
+      const el = document.getElementById('price-basic')
+      const nl = document.getElementById('note-basic')
+      if (el) el.textContent = '$' + (data.basic.price_monthly / 100)
+      if (nl) nl.textContent = 'AUD incl. GST · Save vs individual modules'
+    }
+    if (data.premium) {
+      const el = document.getElementById('price-premium')
+      const nl = document.getElementById('note-premium')
+      if (el) el.textContent = '$' + (data.premium.price_monthly / 100)
+      if (nl) {
+        const save = data.basic ? (data.basic.price_monthly - data.premium.price_monthly) : 0
+        nl.textContent = 'AUD incl. GST · ' + (save > 0 ? 'Save $' + (save/100) + '/mo vs Full Bundle' : 'Best Value')
+      }
+    }
+    // Comparison table
+    const modPrices = ['reconciliation','trading','cashflow','invoice']
+      .map(k => data[k]?.price_monthly).filter(Boolean)
+    const cheapest = modPrices.length ? Math.min(...modPrices) : null
+    if (cheapest) { const el = document.getElementById('cmp-module'); if (el) el.textContent = cheapest / 100 }
+    if (data.reconciliation) { const el = document.getElementById('cmp-range-mid'); if (el) el.textContent = data.reconciliation.price_monthly / 100 }
+    if (data.premium)        { const el = document.getElementById('cmp-range-top'); if (el) el.textContent = data.premium.price_monthly / 100 }
+  })
+  .catch(() => {
+    console.warn('AccFino: could not load live pricing, showing static prices.')
+  })
 })()
 </script>
 </body>
