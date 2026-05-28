@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { fmTree, fmRead, fmSave, fmDeleteRow } from '../lib/api'
-import { Database, Save, Trash2, Edit2, Check, X, RefreshCw, ChevronRight, Folder } from 'lucide-react'
+import { Database, Save, Trash2, Edit2, Check, X, RefreshCw, ChevronRight, Folder, PlusCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function findNode(nodes, path) {
@@ -30,18 +30,21 @@ function buildOptions(nodes) {
 
 // ── Data Viewer ───────────────────────────────────────────────────────────────
 function DataViewer({ filePath, table, name, onClose }) {
-  const [cols,    setCols]   = useState([])
-  const [rows,    setRows]   = useState([])
-  const [srcInfo, setSrc]    = useState('')
-  const [isRaw,   setIsRaw]  = useState(false)
-  const [loading, setLoad]   = useState(true)
-  const [err,     setErr]    = useState('')
-  const [editIdx, setEIdx]   = useState(null)
-  const [editRow, setERow]   = useState(null)
-  const [saving,  setSaving] = useState(false)
+  const [cols,      setCols]      = useState([])
+  const [rows,      setRows]      = useState([])
+  const [srcInfo,   setSrc]       = useState('')
+  const [isRaw,     setIsRaw]     = useState(false)
+  const [loading,   setLoad]      = useState(true)
+  const [err,       setErr]       = useState('')
+  const [editIdx,   setEIdx]      = useState(null)
+  const [editRow,   setERow]      = useState(null)
+  const [saving,    setSaving]    = useState(false)
+  const [addingRow, setAddingRow] = useState(false)
+  const [newRow,    setNewRow]    = useState({})
 
   const load = useCallback(async (signal) => {
     setLoad(true); setErr(''); setCols([]); setRows([]); setIsRaw(false)
+    setAddingRow(false); setNewRow({})
     try {
       const { data } = await fmRead(filePath, table || '')
       if (signal?.aborted) return
@@ -60,7 +63,7 @@ function DataViewer({ filePath, table, name, onClose }) {
   useEffect(() => {
     const ctrl = new AbortController()
     load(ctrl.signal)
-    return () => ctrl.abort()   // cancel on unmount — prevents setState after unmount
+    return () => ctrl.abort()
   }, [load])
 
   const applyEdit = () => {
@@ -76,6 +79,13 @@ function DataViewer({ filePath, table, name, onClose }) {
       setRows(r => r.filter((_, j) => j !== i))
       toast.success('Row deleted')
     } catch { toast.error('Delete failed') }
+  }
+
+  const confirmNewRow = () => {
+    setRows(r => [...r, newRow])
+    setAddingRow(false)
+    setNewRow({})
+    toast.success('Row added — click Save to persist')
   }
 
   const saveAll = async () => {
@@ -101,11 +111,21 @@ function DataViewer({ filePath, table, name, onClose }) {
         )}
         <div style={{flex:1}}/>
         <button className="btn btn-outline btn-sm" onClick={load}><RefreshCw size={13}/></button>
-        {!err && !isRaw && (
+        {!err && !isRaw && (<>
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={() => {
+              setNewRow(Object.fromEntries(cols.map(c => [c, ''])))
+              setAddingRow(true)
+            }}
+            disabled={addingRow || loading}
+          >
+            <PlusCircle size={13}/> Add Row
+          </button>
           <button className="btn btn-primary btn-sm" onClick={saveAll} disabled={saving||loading}>
             <Save size={13}/>{saving?' Saving…':' Save'}
           </button>
-        )}
+        </>)}
         <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={13}/> Close</button>
       </div>
 
@@ -118,8 +138,19 @@ function DataViewer({ filePath, table, name, onClose }) {
         </div>
       )}
 
-      {!loading && !err && rows.length === 0 && (
-        <div style={{padding:40,textAlign:'center',color:'var(--text-3)'}}>No data found.</div>
+      {!loading && !err && rows.length === 0 && !addingRow && (
+        <div style={{padding:40,textAlign:'center',color:'var(--text-3)'}}>
+          No data found.
+          {!isRaw && (
+            <button className="btn btn-outline btn-sm" style={{marginLeft:12}}
+              onClick={() => {
+                setNewRow(Object.fromEntries(cols.map(c => [c, ''])))
+                setAddingRow(true)
+              }}>
+              <PlusCircle size={13}/> Add first row
+            </button>
+          )}
+        </div>
       )}
 
       {/* RAW view for CSV and PDF */}
@@ -153,13 +184,13 @@ function DataViewer({ filePath, table, name, onClose }) {
         </div>
       )}
 
-      {/* TABLE view for all other formats */}
-      {!loading && !err && rows.length > 0 && !isRaw && (
+      {/* TABLE view for JSON, CSV (tabular), DB */}
+      {!loading && !err && (rows.length > 0 || addingRow) && !isRaw && (
         <div style={{overflowX:'auto'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.78rem'}}>
             <thead>
               <tr style={{background:'var(--surface-2)',borderBottom:'2px solid var(--border)'}}>
-                <th style={{padding:'8px 10px',width:76,textAlign:'left'}}>Actions</th>
+                <th style={{padding:'8px 10px',width:90,textAlign:'left'}}>Actions</th>
                 {cols.map(c => (
                   <th key={c} style={{padding:'8px 10px',textAlign:'left',whiteSpace:'nowrap',
                     color:'var(--text-2)',fontWeight:600}}>{c}</th>
@@ -167,6 +198,35 @@ function DataViewer({ filePath, table, name, onClose }) {
               </tr>
             </thead>
             <tbody>
+
+              {/* ── New row input ── */}
+              {addingRow && (
+                <tr style={{borderBottom:'1px solid var(--border)',background:'rgba(200,150,62,.08)'}}>
+                  <td style={{padding:'6px 10px',whiteSpace:'nowrap'}}>
+                    <div style={{display:'flex',gap:4}}>
+                      <button className="btn btn-primary btn-xs" onClick={confirmNewRow} title="Confirm">
+                        <Check size={11}/>
+                      </button>
+                      <button className="btn btn-ghost btn-xs" onClick={() => { setAddingRow(false); setNewRow({}) }} title="Cancel">
+                        <X size={11}/>
+                      </button>
+                    </div>
+                  </td>
+                  {cols.map(c => (
+                    <td key={c} style={{padding:'6px 10px'}}>
+                      <input
+                        className="input input-sm"
+                        style={{width:'100%',minWidth:70}}
+                        placeholder={c}
+                        value={newRow[c] ?? ''}
+                        onChange={e => setNewRow(r => ({...r,[c]:e.target.value}))}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              )}
+
+              {/* ── Existing rows ── */}
               {rows.map((row, i) => (
                 <tr key={i} style={{borderBottom:'1px solid var(--border)',
                   background: i % 2 ? 'var(--surface-2)' : 'transparent'}}>
@@ -230,9 +290,9 @@ export default function FileManagerPage() {
     return node?.children || []
   }, [tree, crumbs])
 
-  const options      = buildOptions(currentNodes)
-  const fileCount    = options.filter(o => !o.isFolder).length
-  const folderCount  = options.filter(o =>  o.isFolder).length
+  const options     = buildOptions(currentNodes)
+  const fileCount   = options.filter(o => !o.isFolder).length
+  const folderCount = options.filter(o =>  o.isFolder).length
 
   const handleChange = e => {
     const v = e.target.value
@@ -268,7 +328,7 @@ export default function FileManagerPage() {
         <div>
           <h2 style={{margin:0}}>File Manager</h2>
           <p style={{color:'var(--text-3)',fontSize:'.85rem',margin:'4px 0 0'}}>
-            Browse and edit files and tables in main_app/data
+            Browse, edit, add and delete records in files and tables
           </p>
         </div>
         <div style={{flex:1}}/>
@@ -326,7 +386,7 @@ export default function FileManagerPage() {
           )}
         </div>
         <p style={{color:'var(--text-3)',fontSize:'.8rem',marginTop:8}}>
-          Select 📁 to enter a folder · select a file or table to view and edit its data
+          Select 📁 to enter a folder · select a file or table to view, edit, add or delete records
         </p>
       </div>
 
