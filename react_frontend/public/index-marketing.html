@@ -820,12 +820,8 @@ footer {
   <p class="section-sub">All prices in AUD including GST. No per-seat fees. No setup costs. Upgrade, downgrade, or cancel any time.</p>
 
   <!-- Plans rendered dynamically from /api/pricing/plans -->
-  <div id="pricing-loading" style="text-align:center;padding:40px;color:var(--ink-3);font-size:.9rem;">
-    Loading plans…
   </div>
-  <div id="pricing-cards" style="display:none;">
-    <!-- injected by JS -->
-  </div>
+  <div id="pricing-cards"><!-- rendered immediately by JS --></div>
 </section>
 
 <!-- ─── INTEGRATIONS ──────────────────────────────────────── -->
@@ -1076,8 +1072,10 @@ document.querySelectorAll('.bento-card, .adv-card, .plan, .testi, .stack-card, .
 
   // Plans that are "bundles" (shown in a separate row, highlighted)
   const BUNDLE_KEYS = ['basic', 'premium']
-  // Base plan is always free — rendered statically first
   const BASE_KEY = 'base'
+
+  // Default pricing — renders instantly with no API wait, updated silently in background
+  var DEFAULT_PRICING = window.__ACCFINO_PRICING__ || {"base":{"name":"Vault","description":"Dashboard + CSV reconciliation included","price_monthly":0,"price_yearly":0,"badge":"Free","highlight":false,"features":["Dashboard overview & stats","CSV bank reconciliation (up to 500 txns/mo)","Open Banking unlocked when you add any paid plan","6 months free access","Upgrade anytime"]},"trading":{"name":"Trading","description":"Crypto & equity CGT tax reports + Open Banking","price_monthly":1500,"price_yearly":15000,"badge":"","highlight":false,"features":["Crypto CGT calculation","Equity CGT reports","ATO-ready tax summaries","Multi-exchange support","Open Banking / direct bank feeds included"]},"cashflow":{"name":"Cash Flow","description":"ML-powered cash flow forecasting","price_monthly":1500,"price_yearly":15000,"badge":"","highlight":false,"features":["ML next-month prediction","Visual cash flow charts","Export to Excel","Historical trend analysis","Open Banking / direct bank feeds included"]},"invoice":{"name":"Invoice","description":"GST invoices & PDF extraction","price_monthly":1200,"price_yearly":12000,"badge":"","highlight":false,"features":["Create GST-compliant invoices","Extract data from PDF invoices","Customer & business management","Invoice status tracking","Open Banking / direct bank feeds included"]},"basic":{"name":"Full Bundle","description":"All modules + Open Banking included","price_monthly":4900,"price_yearly":49000,"badge":"","highlight":false,"features":["Full bank reconciliation + Open Banking","Crypto & equity CGT reports","ML cash flow forecast","GST invoice management","Save vs individual modules"]},"premium":{"name":"Opus","description":"Complete suite - best value, all modules + Open Banking","price_monthly":3900,"price_yearly":39000,"badge":"Best Value","highlight":true,"features":["Everything in Full Bundle","Save $10/month vs Full Bundle","Priority support","Early access to new features","Unlimited transactions & exports"]}}
 
   function esc(str) {
     return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
@@ -1115,15 +1113,13 @@ document.querySelectorAll('.bento-card, .adv-card, .plan, .testi, .stack-card, .
     </div>`
   }
 
-  // Use server-pre-injected pricing if available (instant), else fetch
-  const preloaded = window.__ACCFINO_PRICING__
-  const dataPromise = preloaded
-    ? Promise.resolve(preloaded)
-    : fetch(API).then(r => r.json())
+  // Render immediately — zero loading flash
+  renderPricing(DEFAULT_PRICING)
+  // Silently refresh from API in background
+  fetch(API).then(function(r){ return r.json() }).then(function(data){ renderPricing(data) }).catch(function(){})
 
-  dataPromise.then(data => {
+  function renderPricing(data) {
       const container = document.getElementById('pricing-cards')
-      const loading   = document.getElementById('pricing-loading')
       if (!container) return
 
       // Separate base, individual modules, bundles
@@ -1163,8 +1159,6 @@ document.querySelectorAll('.bento-card, .adv-card, .plan, .testi, .stack-card, .
       }
 
       container.innerHTML = html
-      container.style.display = 'block'
-      if (loading) loading.style.display = 'none'
 
       // ── Also update comparison table if present ──
       const modPrices = Object.values(modules).map(p => p.price_monthly).filter(Boolean)
@@ -1176,7 +1170,6 @@ document.querySelectorAll('.bento-card, .adv-card, .plan, .testi, .stack-card, .
       if (prem)  { const el = document.getElementById('cmp-range-top'); if (el) el.textContent = prem.price_monthly / 100 }
     })
   }).catch(err => {
-      const loading = document.getElementById('pricing-loading')
       if (loading) loading.textContent = 'Could not load pricing — please refresh.'
       console.warn('AccFino pricing load failed:', err)
     })
