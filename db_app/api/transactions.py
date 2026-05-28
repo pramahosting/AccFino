@@ -127,8 +127,10 @@ def save_transactions(
         debit = _to_float(tx.debit, 0.0)
         credit = _to_float(tx.credit, 0.0)
 
-        # Skip malformed rows instead of failing entire request with 422.
-        if not tx_date or not bank or not account or not description:
+        # Skip only truly malformed rows — allow empty account (user may not have entered one)
+        bank    = bank    or 'Unknown'
+        account = account or 'Unknown'
+        if not tx_date or not description:
             skipped += 1
             continue
 
@@ -158,25 +160,14 @@ def save_transactions(
         ).first()
 
         if exists:
-            # Upsert: update non-key fields so GL Account, GST, etc. reflect latest UI edits.
-            needs_update = (
-                exists.classification != tx.classification
-                or exists.pair_id != tx.pair_id
-                or exists.gl_account != tx.gl_account
-                or exists.gst != _to_float(tx.gst, 0.0)
-                or exists.gst_category != tx.gst_category
-                or exists.who != tx.who
-            )
-            if needs_update:
-                exists.classification = tx.classification
-                exists.pair_id = tx.pair_id
-                exists.gl_account = tx.gl_account
-                exists.gst = _to_float(tx.gst, 0.0)
-                exists.gst_category = tx.gst_category
-                exists.who = tx.who
-                updated += 1
-            else:
-                skipped += 1
+            # Always upsert — update all non-key fields to reflect latest UI edits
+            exists.classification = tx.classification
+            exists.pair_id        = tx.pair_id
+            exists.gl_account     = tx.gl_account
+            exists.gst            = _to_float(tx.gst, 0.0)
+            exists.gst_category   = tx.gst_category
+            exists.who            = tx.who
+            updated += 1
             continue
 
         db.add(Transaction(
