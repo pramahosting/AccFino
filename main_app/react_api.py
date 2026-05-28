@@ -1282,27 +1282,23 @@ def fm_read(file_path: str, table: str = ""):
         except Exception as e:
             raise HTTPException(500, f"SQLite error: {e}")
 
-    # ── CSV — return raw lines preserving original format ───────────────────
+    # ── CSV — parse into columns/rows for tabular editing ───────────────────
     if ext == ".csv":
         try:
-            # Read as binary then decode — handles BOM, CRLF, encoding issues
+            import csv as _csv_r, io as _io
             raw_bytes = target.read_bytes()
-            # Strip BOM if present
             if raw_bytes.startswith(b"\xef\xbb\xbf"):
                 raw_bytes = raw_bytes[3:]
             text = raw_bytes.decode("utf-8", errors="replace")
-            # Normalise line endings — remove \r to prevent HTTP response corruption
             text = text.replace("\r\n", "\n").replace("\r", "\n")
-            lines = text.splitlines()
-            # Strip trailing empty lines
-            while lines and not lines[-1].strip():
-                lines.pop()
-            safe_lines = [_safe_val(ln) for ln in lines[:2000]]
+            reader = _csv_r.DictReader(_io.StringIO(text))
+            items  = [dict(row) for row in reader]
+            cols   = list(reader.fieldnames or (items[0].keys() if items else []))
+            rows   = [{c: _safe_val(r.get(c, "")) for c in cols} for r in items[:2000]]
             return {
-                "columns": ["line"],
-                "rows":    [{"line": ln} for ln in safe_lines],
-                "source":  f"csv · {len(safe_lines)} lines",
-                "display": "raw",
+                "columns": cols,
+                "rows":    rows,
+                "source":  f"csv · {len(rows)} rows",
             }
         except Exception as e:
             raise HTTPException(500, f"CSV read error: {e}")
@@ -1326,10 +1322,28 @@ def fm_read(file_path: str, table: str = ""):
                 return {"columns": cols, "rows": _safe_rows(items[:500], all_keys),
                         "source": f"json · {len(items)} rows"}
             elif isinstance(items, dict):
-                rows = [{"key": _safe_val(k), "value": _safe_val(v)}
-                        for k, v in list(items.items())[:500]]
-                return {"columns": ["key", "value"], "rows": rows,
-                        "source": f"json · {len(rows)} entries"}
+                # If values are dicts (e.g. pricing.json), expand into tabular rows
+                first_val = next(iter(items.values()), None)
+                if isinstance(first_val, dict):
+                    all_keys = list(dict.fromkeys(
+                        k for v in items.values() if isinstance(v, dict) for k in v
+                    ))
+                    cols = ["_key"] + all_keys
+                    rows = []
+                    for k, v in list(items.items())[:500]:
+                        if isinstance(v, dict):
+                            row = {"_key": _safe_val(k)}
+                            row.update({c: _safe_val(v.get(c, "")) for c in all_keys})
+                        else:
+                            row = {"_key": _safe_val(k), **{c: "" for c in all_keys}}
+                        rows.append(row)
+                    return {"columns": cols, "rows": rows,
+                            "source": f"json · {len(rows)} entries"}
+                else:
+                    rows = [{"key": _safe_val(k), "value": _safe_val(v)}
+                            for k, v in list(items.items())[:500]]
+                    return {"columns": ["key", "value"], "rows": rows,
+                            "source": f"json · {len(rows)} entries"}
             elif isinstance(items, list):
                 rows = [{"#": str(i+1), "value": _safe_val(v)}
                         for i, v in enumerate(items[:500])]
@@ -1487,6 +1501,19 @@ def fm_save(body: dict = Body(...)):
         with open(target, "w", newline="", encoding="utf-8") as f:
             w = _csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
             w.writeheader(); w.writerows(rows)
+        return {"ok": True, "saved": len(rows)}
+
+    if target.suffix.lower() in (".json", ".jsonl"):
+        import json as _js
+        if not rows:
+            return {"ok": True, "saved": 0}
+        if target.suffix.lower() == ".jsonl":
+            with open(target, "w", encoding="utf-8") as f:
+                for row in rows:
+                    f.write(_js.dumps(row) + "\n")
+        else:
+            with open(target, "w", encoding="utf-8") as f:
+                _js.dump(rows, f, indent=2, ensure_ascii=False)
         return {"ok": True, "saved": len(rows)}
 
     raise HTTPException(400, f"Save not supported for: {source or target.suffix}")
