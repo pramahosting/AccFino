@@ -67,8 +67,8 @@ export default function Layout() {
   const pageName = loc.pathname === '/' ? 'Dashboard' : loc.pathname.slice(1).replace(/-/g,' ').replace(/\b\w/g, c => c.toUpperCase())
 
   const handleLogout = () => {
-    try { logout(); nav('/login') }
-    catch { localStorage.removeItem('af_user'); window.location.href = '/login' }
+    try { logout(); window.location.href = '/' }
+    catch { localStorage.removeItem('af_user'); window.location.href = '/' }
   }
 
   return (
