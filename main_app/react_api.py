@@ -1771,6 +1771,33 @@ def pricing_update_plan(plan_id: str, body: dict = Body(...)):
     _save_pricing(data)
     return {"ok": True, "plan": data[plan_id]}
 
+# ── Legal document routes ─────────────────────────────────────────────────────
+_LEGAL_DIR = Path(__file__).parent / "data" / "legal_documents"
+
+LEGAL_DOCS = {
+    "terms-of-service":           "terms_of_service.pdf",
+    "privacy-policy":             "privacy_policy.pdf",
+    "acceptable-use-policy":      "acceptable_use_policy.pdf",
+    "subscription-refund-policy": "subscription_refund_policy.pdf",
+    "cookie-policy":              "cookie_policy.pdf",
+    "disclaimer":                 "disclaimer.pdf",
+}
+
+@app.get("/legal/{doc_name}", include_in_schema=False)
+def serve_legal_doc(doc_name: str):
+    from fastapi.responses import FileResponse as _FR
+    filename = LEGAL_DOCS.get(doc_name)
+    if not filename:
+        raise HTTPException(404, "Document not found")
+    path = _LEGAL_DIR / filename
+    if not path.exists():
+        raise HTTPException(404, f"File not found: {path}")
+    return _FR(
+        str(path),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={filename}"}
+    )
+
 # ── Strip /api prefix middleware ──────────────────────────────────────────────
 # In production the React frontend calls /api/banks, /api/sessions etc.
 # This middleware strips the /api prefix before FastAPI processes the request.
