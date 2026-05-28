@@ -83,7 +83,7 @@
     "price_effective_from": "2026-05-18"
   },
   "premium": {
-    "name": "Premium",
+    "name": "Ultra",
     "description": "Complete suite \u2014 best value, all modules + Open Banking",
     "price_monthly": 2500,
     "price_yearly": 25000,
