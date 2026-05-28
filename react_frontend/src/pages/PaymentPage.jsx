@@ -7,69 +7,26 @@ import { Check, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import AccfinoLogo from '../components/ui/AccfinoLogo.jsx'
 
-const HIDDEN  = ['admin', 'file-manager', 'licence', 'dashboard']
-const ALL_MOD = ['trading', 'cash-flow', 'invoice']
-const MOD_LABELS = {
-  trading: {
-    icon: '📈', label: 'Trading', desc: 'Crypto & equity CGT',
-    features: ['Crypto CGT calculation','Equity CGT reports','ATO-ready tax summaries','Multi-exchange support'],
-  },
-  'cash-flow': {
-    icon: '💰', label: 'Cash Flow', desc: 'ML forecast',
-    features: ['ML next-month prediction','Visual cash flow charts','Export to Excel','Historical trend analysis'],
-  },
-  invoice: {
-    icon: '🧾', label: 'Invoice', desc: 'GST invoices',
-    features: ['Create GST-compliant invoices','Extract data from PDF invoices','Customer & business management','Invoice status tracking'],
-  },
-}
+// Keys treated as bundles (shown separately at the bottom)
+const BUNDLE_KEYS = ['premium']
+// Keys never shown as purchasable plans
+const HIDDEN_KEYS = ['base', 'admin', 'file-manager', 'licence', 'dashboard']
 
-// All prices come exclusively from the API (pricing.json) — nothing hardcoded here.
-function calcPrice(selectedMods, billing, selBundle, modPrices, bundles) {
-  if (!selectedMods.length) return { price: 0, label: 'Base (Free)', planId: 'base', saveMsg: '' }
-
-  if (selBundle && bundles[selBundle]) {
-    const b = bundles[selBundle]
-    const p = billing === 'yearly' ? b.price_yearly : b.price_monthly
-    return { price: p, label: b.label, planId: selBundle, saveMsg: b.save }
-  }
-
-  const effectiveMods = ['reconciliation', ...selectedMods]
-
-  const moTotal = selectedMods.reduce((s, m) => s + (modPrices[m] || 0), 0)
-  const total   = billing === 'yearly' ? moTotal * 10 : moTotal
-
-  const basicPrice = billing === 'yearly' ? bundles.basic?.price_yearly : bundles.basic?.price_monthly
-  if (bundles.basic && selectedMods.length >= 3 && total >= basicPrice) {
-    return { price: basicPrice, label: 'Full Bundle', planId: 'basic',
-             saveMsg: 'Save vs individual', modules: effectiveMods }
-  }
-
-  const label = selectedMods.length === 0 ? 'Base (Free)'
-    : `Base + ${selectedMods.map(m => MOD_LABELS[m]?.label || m).join(' + ')}`
-
-  return { price: total, label, planId: 'custom_' + selectedMods.join('_'),
-           saveMsg: '', modules: effectiveMods }
-}
-
+// All prices + labels come exclusively from pricing.json via API
 export default function PaymentPage() {
-  const { user }           = useAuth()
-  const navigate           = useNavigate()
-  const [searchParams]     = useSearchParams()
-  const [plans,  setPlans] = useState({})
-  const [myPlan, setMyPlan]= useState(null)
-  const [billing, setBilling] = useState('monthly')
-  const [selMods, setSelMods] = useState([])
-  const [selBundle, setSelBundle] = useState(null)
-  const [paying,  setPaying]  = useState(false)
-  const [loading, setLoading] = useState(true)
+  const { user }       = useAuth()
+  const navigate       = useNavigate()
+  const [searchParams] = useSearchParams()
 
-  // Prices derived entirely from API — no hardcoded fallbacks
-  const [modPrices, setModPrices] = useState({})
-  const [bundles,   setBundles]   = useState({
-    basic:   { mods: ALL_MOD, price_monthly: null, price_yearly: null, label: 'Full Bundle', save: '' },
-    premium: { mods: ALL_MOD, price_monthly: null, price_yearly: null, label: 'Premium',      save: '' },
-  })
+  const [plans,     setPlans]     = useState({})   // raw API response
+  const [modPlans,  setModPlans]  = useState([])   // individual module plans [{key, plan}]
+  const [bndPlans,  setBndPlans]  = useState([])   // bundle plans [{key, plan}]
+  const [myPlan,    setMyPlan]    = useState(null)
+  const [billing,   setBilling]   = useState('monthly')
+  const [selKeys,   setSelKeys]   = useState([])   // selected plan keys
+  const [selBundle, setSelBundle] = useState(null)
+  const [paying,    setPaying]    = useState(false)
+  const [loading,   setLoading]   = useState(true)
 
   useEffect(() => {
     if (searchParams.get('success')) {
@@ -77,9 +34,7 @@ export default function PaymentPage() {
       window.dispatchEvent(new Event('accfino:modules-changed'))
       setTimeout(() => navigate(user ? '/' : '/login', { replace: true }), 1500)
     }
-    if (searchParams.get('cancelled')) {
-      toast('Payment cancelled.', { icon: 'ℹ️' })
-    }
+    if (searchParams.get('cancelled')) toast('Payment cancelled.', { icon: 'ℹ️' })
   }, [])
 
   useEffect(() => {
@@ -90,74 +45,70 @@ export default function PaymentPage() {
       const api = pr.data || {}
       setPlans(api)
       setMyPlan(mr.data)
-
-      // Build modPrices purely from API
-      const mp = {}
-      ALL_MOD.forEach(mod => {
-        if (api[mod]?.price_monthly) mp[mod] = api[mod].price_monthly
+      // Split into module plans and bundle plans
+      const mods = [], bnds = []
+      Object.entries(api).forEach(([key, plan]) => {
+        if (HIDDEN_KEYS.includes(key)) return
+        if (BUNDLE_KEYS.includes(key)) bnds.push({ key, plan })
+        else mods.push({ key, plan })
       })
-      setModPrices(mp)
-
-      // Build bundles purely from API
-      const nb = { ...bundles }
-      if (api.basic) {
-        nb.basic = {
-          mods:          ALL_MOD,
-          price_monthly: api.basic.price_monthly,
-          price_yearly:  api.basic.price_yearly,
-          label:         api.basic.name || 'Full Bundle',
-          save:          api.basic.features?.find(f => f.toLowerCase().includes('save')) || '',
-        }
-      }
-      if (api.premium) {
-        nb.premium = {
-          mods:          ALL_MOD,
-          price_monthly: api.premium.price_monthly,
-          price_yearly:  api.premium.price_yearly,
-          label:         api.premium.name || 'Premium',
-          save:          api.premium.features?.find(f => f.toLowerCase().includes('save')) || 'Best Value',
-        }
-      }
-      setBundles(nb)
+      setModPlans(mods)
+      setBndPlans(bnds)
     }).catch(() => toast.error('Could not load pricing — please refresh.'))
       .finally(() => setLoading(false))
   }, [user?.id])
 
-  const toggleMod = (mod) => {
+  const toggleMod = (key) => {
     setSelBundle(null)
-    setSelMods(prev => prev.includes(mod) ? prev.filter(m => m !== mod) : [...prev, mod])
+    setSelKeys(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
   }
 
-  const selectBundle = (bundleKey) => {
-    if (selBundle === bundleKey) {
-      setSelBundle(null)
-      setSelMods([])
-    } else {
-      setSelBundle(bundleKey)
-      setSelMods([...bundles[bundleKey].mods])
+  const selectBundle = (key) => {
+    if (selBundle === key) { setSelBundle(null); setSelKeys([]) }
+    else { setSelBundle(key); setSelKeys([]) }
+  }
+
+  // Calculate total price
+  const calcTotal = () => {
+    if (selBundle) {
+      const b = plans[selBundle]
+      if (!b) return 0
+      return billing === 'yearly' ? b.price_yearly : b.price_monthly
     }
+    return selKeys.reduce((sum, k) => {
+      const p = plans[k]
+      if (!p) return sum
+      return sum + (billing === 'yearly' ? p.price_yearly : p.price_monthly)
+    }, 0)
   }
 
-  const { price, label, planId, saveMsg } = calcPrice(selMods, billing, selBundle, modPrices, bundles)
-  const isFree    = price === 0
-  const perMo     = price
+  const totalPrice = calcTotal()
+  const isFree     = totalPrice === 0 && !selBundle && !selKeys.length
   const isLoggedIn = !!user
+
+  const selectedLabel = () => {
+    if (selBundle) return plans[selBundle]?.name || selBundle
+    if (!selKeys.length) return plans.base?.name || 'Vault'
+    return selKeys.map(k => plans[k]?.name || k).join(' + ')
+  }
 
   const handleCheckout = async () => {
     if (!isLoggedIn) { navigate('/login'); return }
-    if (isFree) { navigate('/'); return }
+    if (!selBundle && !selKeys.length) { navigate('/'); return }
     setPaying(true)
     try {
-      const pid     = planId.startsWith('custom_') ? 'custom' : planId
-      const allMods = [...new Set(['dashboard', 'reconciliation', ...selMods])]
+      const allMods = selBundle
+        ? (plans[selBundle]?.modules || [])
+        : [...new Set(['dashboard', 'reconciliation', ...selKeys.flatMap(k => plans[k]?.modules || [k])])]
+      const planId = selBundle || (selKeys.length === 1 ? selKeys[0] : 'custom')
       const { data } = await createCheckout({
-        plan_id:        pid,
+        plan_id:        planId,
         billing_period: billing,
         user_id:        user.id,
         user_email:     user.email,
         modules:        allMods,
-        amount:         price,
-        plan_name:      label,
+        amount:         totalPrice,
+        plan_name:      selectedLabel(),
       })
       if (data.checkout_url) window.location.href = data.checkout_url
     } catch (e) {
@@ -165,19 +116,22 @@ export default function PaymentPage() {
     } finally { setPaying(false) }
   }
 
-  // Mini comparison prices for left panel — derived from API
-  const bundleMonthly = bundles.basic?.price_monthly
-  const premiumMonthly = bundles.premium?.price_monthly
-  const miniPlans = [
-    { name: 'Base',    price: 'Free',
-      mods: 'Dashboard + CSV Reconciliation' },
-    { name: plans.basic?.name   || 'Full Bundle',
-      price: bundleMonthly  ? `$${bundleMonthly/100}/mo`  : '…',
-      mods: 'All 4 modules bundled' },
-    { name: plans.premium?.name || 'Premium',
-      price: premiumMonthly ? `$${premiumMonthly/100}/mo` : '…',
-      mods: 'All modules · Best value' },
+  // Left panel: all plans from API in order
+  const leftPlans = [
+    { name: plans.base?.name || 'Vault', price: 'Free', desc: plans.base?.description || '' },
+    ...modPlans.map(({ key, plan }) => ({
+      name:  plan.name,
+      price: plan.price_monthly ? `$${plan.price_monthly / 100}/mo` : '…',
+      desc:  plan.description || '',
+    })),
+    ...bndPlans.map(({ key, plan }) => ({
+      name:  plan.name,
+      price: plan.price_monthly ? `$${plan.price_monthly / 100}/mo` : '…',
+      desc:  plan.description || '',
+    })),
   ]
+
+  const ICONS = { trading:'📈', cashflow:'💰', 'cash-flow':'💰', invoice:'🧾', premium:'⭐', ultra:'⭐' }
 
   return (
     <>
@@ -187,46 +141,58 @@ export default function PaymentPage() {
       onStartFree={() => navigate('/login?tab=register')}
     />
 
-    <div className="login-page" style={{paddingTop:56}}>
+    <div className="login-page" style={{ paddingTop: 56 }}>
 
       {/* ── Left panel ── */}
-      <div className="login-left" style={{ flex: "0 0 320px", padding: "32px", alignItems: "flex-start", paddingTop: "48px" }}>
-        <div className="login-brand-card">
+      <div className="login-left" style={{
+        flex: '0 0 320px', padding: '32px',
+        alignItems: 'flex-start', justifyContent: 'flex-start',
+        paddingTop: '48px',
+      }}>
+        <div style={{ width: '100%' }}>
           <AccfinoLogo size={44} showText textColor="#fff" />
-          <div style={{ marginTop: 36, marginBottom: 28 }}>
-            <h2 style={{ color:'#fff', fontSize:'1.4rem', fontFamily:"'Instrument Serif', serif", marginBottom:8 }}>
+          <div style={{ marginTop: 28, marginBottom: 24 }}>
+            <h2 style={{ color:'#fff', fontSize:'1.3rem', fontFamily:"'Instrument Serif', serif", marginBottom:8 }}>
               Choose what you need
             </h2>
-            <p style={{ color:'rgba(255,255,255,.6)', fontSize:'.9rem', lineHeight:1.7 }}>
+            <p style={{ color:'rgba(255,255,255,.6)', fontSize:'.85rem', lineHeight:1.7 }}>
               Pick individual modules or save with a bundle. Start free, upgrade anytime.
             </p>
           </div>
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {miniPlans.map(p => (
+
+          {/* Plan list from API */}
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {leftPlans.map(p => (
               <div key={p.name} style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-                <Check size={14} color="#FF6B35" style={{ marginTop:2, flexShrink:0 }}/>
-                <span style={{ fontSize:'.82rem', color:'rgba(255,255,255,.75)', lineHeight:1.5 }}>
-                  <strong style={{ color:'#fff' }}>{p.name}</strong> — {p.price} · {p.mods}
-                </span>
+                <Check size={13} color="#FF6B35" style={{ marginTop:3, flexShrink:0 }}/>
+                <div>
+                  <span style={{ fontSize:'.82rem', fontWeight:700, color:'#fff' }}>{p.name}</span>
+                  <span style={{ fontSize:'.82rem', color:'rgba(255,255,255,.55)' }}> — {p.price}</span>
+                  {p.desc && <div style={{ fontSize:'.72rem', color:'rgba(255,255,255,.38)', lineHeight:1.4, marginTop:1 }}>{p.desc}</div>}
+                </div>
               </div>
             ))}
           </div>
-          <div style={{ marginTop:28, paddingTop:20, borderTop:'1px solid rgba(255,255,255,.12)',
-            fontSize:'.78rem', color:'rgba(255,255,255,.4)' }}>
+
+          <div style={{ marginTop:28, paddingTop:18, borderTop:'1px solid rgba(255,255,255,.12)',
+            fontSize:'.75rem', color:'rgba(255,255,255,.35)', lineHeight:1.7 }}>
             🔒 Secured by Stripe · Cancel anytime · AUD pricing incl. GST
           </div>
         </div>
       </div>
 
       {/* ── Right panel ── */}
-      <div className="login-right" style={{ width: "auto", flex: 1, padding: "32px 40px", overflowY: "auto", alignItems: "flex-start" }}>
-        <div className="login-form-wrap" style={{ maxWidth: 720, width: "100%" }}>
+      <div className="login-right" style={{
+        width:'auto', flex:1, padding:'32px 40px',
+        overflowY:'auto', alignItems:'flex-start',
+      }}>
+        <div className="login-form-wrap" style={{ maxWidth:720, width:'100%' }}>
 
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-            <button onClick={() => { window.location.href = isLoggedIn ? '/' : '/index-marketing.html' }}
+            <button onClick={() => window.location.href = isLoggedIn ? '/' : '/index-marketing.html'}
               style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-3)',
                 fontSize:'.82rem', padding:0, display:'flex', alignItems:'center', gap:4 }}>
-              ← {isLoggedIn ? 'Back to Dashboard' : 'Back to Sign In'}
+              ← {isLoggedIn ? 'Back to Dashboard' : 'Back'}
             </button>
             {myPlan && (
               <span style={{ fontSize:'.75rem', color:'var(--text-3)' }}>
@@ -237,7 +203,7 @@ export default function PaymentPage() {
 
           <h1 style={{ fontSize:'1.4rem', marginBottom:4 }}>Subscription Plans</h1>
           <p style={{ color:'var(--text-3)', fontSize:'.85rem', marginBottom:20 }}>
-            Select modules or a bundle — price updates instantly.
+            Select a plan — price updates instantly.
           </p>
 
           {/* Billing toggle */}
@@ -253,8 +219,7 @@ export default function PaymentPage() {
                 boxShadow: billing===p ? 'var(--sh-sm)' : 'none', transition:'all .15s',
               }}>
                 {p.charAt(0).toUpperCase()+p.slice(1)}
-                {p==='yearly' && <span style={{ marginLeft:6, fontSize:'.68rem',
-                  color:'#38A169', fontWeight:700 }}>SAVE 17%</span>}
+                {p==='yearly' && <span style={{ marginLeft:6, fontSize:'.68rem', color:'#38A169', fontWeight:700 }}>SAVE 17%</span>}
               </button>
             ))}
           </div>
@@ -265,33 +230,30 @@ export default function PaymentPage() {
             </div>
           ) : (<>
 
-          {/* ── Base plan ── */}
+          {/* ── Base (free) plan ── */}
           <div style={{
-            border:`2px solid var(--brand)`,
-            borderRadius:'var(--r-lg)', padding:'16px', marginBottom:16,
-            background: 'var(--brand-light)',
-            cursor:'pointer', transition:'all .15s', position:'relative',
-          }} onClick={() => { setSelMods([]); setSelBundle(null); }}>
-            <div style={{ position:'absolute', top:12, right:12,
-              width:18, height:18, borderRadius:'50%',
-              border:'2px solid var(--brand)', background: 'var(--brand)',
+            border:'2px solid var(--brand)', borderRadius:'var(--r-lg)',
+            padding:'16px', marginBottom:16, background:'var(--brand-light)',
+            cursor:'pointer', position:'relative',
+          }} onClick={() => { setSelKeys([]); setSelBundle(null) }}>
+            <div style={{ position:'absolute', top:12, right:12, width:18, height:18,
+              borderRadius:'50%', border:'2px solid var(--brand)', background:'var(--brand)',
               display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Check size={10} color="#fff" strokeWidth={3}/>
             </div>
-            <div style={{ marginBottom:8, paddingRight:24 }}>
-              <div style={{ fontSize:'1.3rem', marginBottom:4 }}>🆓</div>
-              <div style={{ fontWeight:700, fontSize:'.92rem' }}>Base Plan</div>
-              <div style={{ fontSize:'.75rem', color:'var(--text-3)' }}>
-                {plans.base?.description || 'Try Accfino free for 6 months'}
-              </div>
+            <div style={{ fontSize:'1.2rem', marginBottom:6 }}>🆓</div>
+            <div style={{ fontWeight:700, fontSize:'.95rem', marginBottom:2 }}>
+              {plans.base?.name || 'Vault'}
             </div>
-            <div style={{ marginBottom:12 }}>
-              <span style={{ fontSize:'1.4rem', fontWeight:800, color:'var(--brand)' }}>Free</span>
-              <span style={{ fontSize:'.78rem', color:'var(--text-3)', marginLeft:6 }}>· No card required</span>
+            <div style={{ fontSize:'.75rem', color:'var(--text-3)', marginBottom:10 }}>
+              {plans.base?.description || 'Dashboard + CSV Reconciliation'}
             </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-              {(plans.base?.features || ['Dashboard overview & stats','CSV bank reconciliation (up to 500 txns/mo)','Open Banking unlocked when you add any paid plan','Up to 6 months free access','Upgrade anytime']).map((f,i) => (
-                <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:6, fontSize:'.73rem' }}>
+            <div style={{ fontSize:'1.4rem', fontWeight:800, color:'var(--brand)', marginBottom:10 }}>
+              Free <span style={{ fontSize:'.78rem', fontWeight:400, color:'var(--text-3)' }}>· No card required</span>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+              {(plans.base?.features || []).map((f,i) => (
+                <div key={i} style={{ display:'flex', gap:6, fontSize:'.73rem', alignItems:'flex-start' }}>
                   <Check size={11} color="#38A169" style={{ flexShrink:0, marginTop:1 }}/>
                   <span style={{ color:'var(--text-2)', lineHeight:1.4 }}>{f}</span>
                 </div>
@@ -299,202 +261,170 @@ export default function PaymentPage() {
             </div>
           </div>
 
-          {/* ── Individual modules ── */}
-          <div style={{ marginBottom:12 }}>
-            <div style={{ fontSize:'.72rem', fontWeight:700, color:'var(--text-3)',
-              textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
-              Add modules individually
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:12 }}>
-              {ALL_MOD.map(mod => {
-                const info  = MOD_LABELS[mod]
-                const sel   = selMods.includes(mod)
-                const mRaw  = modPrices[mod] || 0
-                const mp    = billing==='yearly' ? Math.round(mRaw*10/12) : mRaw
-                const mp_yr = mRaw * 10
-                return (
-                  <div key={mod} onClick={() => toggleMod(mod)} style={{
-                    border:`2px solid ${sel ? 'var(--brand)' : 'var(--border)'}`,
-                    borderRadius:'var(--r-lg)', padding:'16px', cursor:'pointer',
-                    background: sel ? 'var(--brand-light)' : 'var(--surface)',
-                    transition:'all .15s', position:'relative',
-                  }}>
-                    <div style={{ position:'absolute', top:12, right:12,
-                      width:18, height:18, borderRadius:'50%',
+          {/* ── Individual module plans from API ── */}
+          {modPlans.length > 0 && (
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:'.72rem', fontWeight:700, color:'var(--text-3)',
+                textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
+                Add modules individually
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(210px, 1fr))', gap:12 }}>
+                {modPlans.map(({ key, plan }) => {
+                  const sel  = selKeys.includes(key)
+                  const pRaw = billing === 'yearly' ? plan.price_yearly : plan.price_monthly
+                  const pYrEff = plan.price_yearly ? Math.round(plan.price_yearly / 12) : null
+                  const icon = ICONS[key] || ICONS[plan.name?.toLowerCase()] || '📦'
+                  return (
+                    <div key={key} onClick={() => toggleMod(key)} style={{
                       border:`2px solid ${sel ? 'var(--brand)' : 'var(--border)'}`,
-                      background: sel ? 'var(--brand)' : 'transparent',
-                      display:'flex', alignItems:'center', justifyContent:'center',
+                      borderRadius:'var(--r-lg)', padding:'16px', cursor:'pointer',
+                      background: sel ? 'var(--brand-light)' : 'var(--surface)',
+                      transition:'all .15s', position:'relative',
                     }}>
-                      {sel && <Check size={10} color="#fff" strokeWidth={3}/>}
-                    </div>
-                    <div style={{ marginBottom:10, paddingRight:24 }}>
-                      <div style={{ fontSize:'1.3rem', marginBottom:4 }}>{info.icon}</div>
-                      <div style={{ fontWeight:700, fontSize:'.92rem' }}>{info.label}</div>
-                      <div style={{ fontSize:'.75rem', color:'var(--text-3)' }}>{info.desc}</div>
-                    </div>
-                    <div style={{ marginBottom:12 }}>
-                      {mRaw ? (<>
-                        <span style={{ fontSize:'1.4rem', fontWeight:800, color:'var(--brand)' }}>
-                          {billing==='yearly' ? `$${mp_yr/100}` : `$${mRaw/100}`}
-                        </span>
-                        <span style={{ fontSize:'.78rem', color:'var(--text-3)' }}>
-                          {billing==='yearly' ? '/yr' : '/mo'}
-                        </span>
-                        {billing==='yearly' && (
-                          <span style={{ fontSize:'.68rem', color:'#38A169', marginLeft:6, fontWeight:600 }}>
-                            (${mp/100}/mo effective)
+                      <div style={{ position:'absolute', top:12, right:12, width:18, height:18,
+                        borderRadius:'50%', border:`2px solid ${sel ? 'var(--brand)' : 'var(--border)'}`,
+                        background: sel ? 'var(--brand)' : 'transparent',
+                        display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {sel && <Check size={10} color="#fff" strokeWidth={3}/>}
+                      </div>
+                      <div style={{ fontSize:'1.2rem', marginBottom:6 }}>{icon}</div>
+                      <div style={{ fontWeight:700, fontSize:'.92rem', marginBottom:2 }}>{plan.name}</div>
+                      <div style={{ fontSize:'.75rem', color:'var(--text-3)', marginBottom:10 }}>{plan.description}</div>
+                      <div style={{ marginBottom:10 }}>
+                        {pRaw ? (<>
+                          <span style={{ fontSize:'1.3rem', fontWeight:800, color:'var(--brand)' }}>
+                            ${pRaw/100}
                           </span>
-                        )}
-                      </>) : (
-                        <span style={{ fontSize:'.85rem', color:'var(--text-3)' }}>Loading…</span>
-                      )}
-                    </div>
-                    <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-                      {(info.features||[]).map((f,i) => (
-                        <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:6, fontSize:'.73rem' }}>
-                          <Check size={11} color="#38A169" style={{ flexShrink:0, marginTop:1 }}/>
-                          <span style={{ color:'var(--text-2)', lineHeight:1.4 }}>{f}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* ── Bundle options ── */}
-          <div style={{ marginBottom:16 }}>
-            <div style={{ fontSize:'.72rem', fontWeight:700, color:'var(--text-3)',
-              textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
-              Or choose a bundle (save more)
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {[
-                { key:'basic',   emoji:'📦', highlight:false },
-                { key:'premium', emoji:'⭐', highlight:true  },
-              ].map(b => {
-                const bd    = bundles[b.key]
-                const allSel= selBundle === b.key
-                const bp    = billing==='yearly'
-                  ? (bd.price_yearly  ? Math.round(bd.price_yearly/12)  : null)
-                  : (bd.price_monthly || null)
-                return (
-                  <div key={b.key} onClick={() => selectBundle(b.key)} style={{
-                    border:`2px solid ${allSel ? 'var(--brand)' : b.highlight ? 'var(--brand)' : 'var(--border)'}`,
-                    borderRadius:'var(--r-md)', padding:'12px 16px', cursor:'pointer',
-                    background: allSel ? 'var(--brand-light)' : b.highlight ? 'var(--surface-2)' : 'var(--surface)',
-                    transition:'all .15s', display:'flex', alignItems:'center', gap:12,
-                    position:'relative',
-                  }}>
-                    {b.highlight && bd.save && (
-                      <div style={{ position:'absolute', top:-10, right:12,
-                        background:'var(--brand)', color:'#fff', fontSize:'.65rem',
-                        fontWeight:700, padding:'2px 10px', borderRadius:100 }}>
-                        {bd.save}
-                      </div>
-                    )}
-                    <div style={{
-                      width:20, height:20, borderRadius:'50%', flexShrink:0,
-                      border:`2px solid ${allSel ? 'var(--brand)' : 'var(--border)'}`,
-                      background: allSel ? 'var(--brand)' : 'transparent',
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                    }}>
-                      {allSel && <Check size={11} color="#fff" strokeWidth={3}/>}
-                    </div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:700, fontSize:'.88rem' }}>
-                        {b.emoji} {bd.label}
-                      </div>
-                      <div style={{ fontSize:'.73rem', color:'var(--text-3)', marginTop:2 }}>
-                        {plans[b.key]?.description || ''}
-                      </div>
-                      <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
-                        {ALL_MOD.map(m => (
-                          <span key={m} style={{ fontSize:'.68rem', padding:'2px 7px',
-                            borderRadius:100, background:'var(--surface-3)', color:'var(--text-2)' }}>
-                            {MOD_LABELS[m]?.icon} {MOD_LABELS[m]?.label}
+                          <span style={{ fontSize:'.78rem', color:'var(--text-3)' }}>
+                            {billing==='yearly' ? '/yr' : '/mo'}
                           </span>
+                          {billing==='yearly' && pYrEff && (
+                            <span style={{ fontSize:'.68rem', color:'#38A169', marginLeft:6, fontWeight:600 }}>
+                              (${pYrEff/100}/mo)
+                            </span>
+                          )}
+                        </>) : <span style={{ color:'var(--text-3)', fontSize:'.85rem' }}>Loading…</span>}
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                        {(plan.features || []).map((f,i) => (
+                          <div key={i} style={{ display:'flex', gap:6, fontSize:'.73rem', alignItems:'flex-start' }}>
+                            <Check size={11} color="#38A169" style={{ flexShrink:0, marginTop:1 }}/>
+                            <span style={{ color:'var(--text-2)', lineHeight:1.4 }}>{f}</span>
+                          </div>
                         ))}
                       </div>
                     </div>
-                    <div style={{ textAlign:'right' }}>
-                      {bp ? (
-                        billing==='yearly' ? (<>
-                          <div style={{ fontWeight:800, fontSize:'1rem', color:'var(--brand)' }}>
-                            ${bd.price_yearly/100}/yr
-                          </div>
-                          <div style={{ fontSize:'.68rem', color:'var(--text-3)' }}>
-                            ${Math.round(bd.price_yearly/12)/100}/mo effective
-                          </div>
-                        </>) : (
-                          <div style={{ fontWeight:800, fontSize:'1rem', color:'var(--brand)' }}>
-                            ${bd.price_monthly/100}/mo
-                          </div>
-                        )
-                      ) : (
-                        <span style={{ fontSize:'.85rem', color:'var(--text-3)' }}>Loading…</span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* ── Price summary + CTA ── */}
-          <div style={{
-            background:'var(--surface-2)', borderRadius:'var(--r-md)',
-            padding:'14px 16px', marginBottom:16,
-            border:'1px solid var(--border)',
-          }}>
+          {/* ── Bundle plans from API ── */}
+          {bndPlans.length > 0 && (
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:'.72rem', fontWeight:700, color:'var(--text-3)',
+                textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
+                Or choose a bundle (best value)
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {bndPlans.map(({ key, plan }) => {
+                  const sel  = selBundle === key
+                  const pRaw = billing === 'yearly' ? plan.price_yearly : plan.price_monthly
+                  const pYrEff = plan.price_yearly ? Math.round(plan.price_yearly / 12) : null
+                  const icon = ICONS[key] || ICONS[plan.name?.toLowerCase()] || '⭐'
+                  return (
+                    <div key={key} onClick={() => selectBundle(key)} style={{
+                      border:`2px solid ${sel ? 'var(--brand)' : plan.highlight ? 'var(--brand)' : 'var(--border)'}`,
+                      borderRadius:'var(--r-md)', padding:'12px 16px', cursor:'pointer',
+                      background: sel ? 'var(--brand-light)' : plan.highlight ? 'var(--surface-2)' : 'var(--surface)',
+                      transition:'all .15s', display:'flex', alignItems:'center', gap:12, position:'relative',
+                    }}>
+                      {plan.badge && (
+                        <div style={{ position:'absolute', top:-10, right:12,
+                          background:'var(--brand)', color:'#fff', fontSize:'.65rem',
+                          fontWeight:700, padding:'2px 10px', borderRadius:100 }}>
+                          {plan.badge}
+                        </div>
+                      )}
+                      <div style={{ width:20, height:20, borderRadius:'50%', flexShrink:0,
+                        border:`2px solid ${sel ? 'var(--brand)' : 'var(--border)'}`,
+                        background: sel ? 'var(--brand)' : 'transparent',
+                        display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {sel && <Check size={11} color="#fff" strokeWidth={3}/>}
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:700, fontSize:'.92rem' }}>{icon} {plan.name}</div>
+                        <div style={{ fontSize:'.73rem', color:'var(--text-3)', marginTop:2 }}>{plan.description}</div>
+                        <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
+                          {(plan.features || []).slice(0,4).map((f,i) => (
+                            <span key={i} style={{ fontSize:'.68rem', padding:'2px 7px',
+                              borderRadius:100, background:'var(--surface-3)', color:'var(--text-2)' }}>
+                              {f}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ textAlign:'right', flexShrink:0 }}>
+                        {pRaw ? (<>
+                          <div style={{ fontWeight:800, fontSize:'1rem', color:'var(--brand)' }}>
+                            ${pRaw/100}{billing==='yearly' ? '/yr' : '/mo'}
+                          </div>
+                          {billing==='yearly' && pYrEff && (
+                            <div style={{ fontSize:'.68rem', color:'var(--text-3)' }}>
+                              ${pYrEff/100}/mo effective
+                            </div>
+                          )}
+                        </>) : <span style={{ fontSize:'.85rem', color:'var(--text-3)' }}>Loading…</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Price summary ── */}
+          <div style={{ background:'var(--surface-2)', borderRadius:'var(--r-md)',
+            padding:'14px 16px', marginBottom:16, border:'1px solid var(--border)' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
-                <div style={{ fontWeight:600, fontSize:'.88rem' }}>{label}</div>
-                {selMods.length > 0 && (
+                <div style={{ fontWeight:600, fontSize:'.88rem' }}>{selectedLabel()}</div>
+                {(selKeys.length > 0 || selBundle) && (
                   <div style={{ fontSize:'.72rem', color:'var(--text-3)', marginTop:2 }}>
-                    {'Base (CSV + Open Banking on upgrade)'}{selMods.map(m => ' + ' + (MOD_LABELS[m]?.label || m))}
-                  </div>
-                )}
-                {saveMsg && (
-                  <div style={{ fontSize:'.72rem', color:'#38A169', fontWeight:600, marginTop:2 }}>
-                    ✓ {saveMsg}
+                    Includes Dashboard + CSV Reconciliation + Open Banking
                   </div>
                 )}
               </div>
               <div style={{ textAlign:'right' }}>
                 <div style={{ fontWeight:800, fontSize:'1.3rem', color:'var(--brand)' }}>
-                  {isFree ? 'Free' : `$${perMo/100}/mo`}
+                  {(!selBundle && !selKeys.length) ? 'Free' : `$${totalPrice/100}/${billing==='yearly'?'yr':'mo'}`}
                 </div>
-                {!isFree && billing==='yearly' && (
-                  <div style={{ fontSize:'.7rem', color:'var(--text-3)' }}>
-                    billed ${price/100}/yr
-                  </div>
-                )}
               </div>
             </div>
           </div>
 
-          {!isFree ? (
+          {/* ── CTA button ── */}
+          {(!selBundle && !selKeys.length) ? (
+            <button className="btn btn-primary btn-xl btn-full"
+              onClick={() => navigate(isLoggedIn ? '/' : '/login')}
+              style={{ fontSize:'.95rem', marginBottom:8 }}>
+              {isLoggedIn ? 'Continue with Vault →' : 'Sign In / Register →'}
+            </button>
+          ) : (
             <button className="btn btn-primary btn-xl btn-full"
               onClick={handleCheckout} disabled={paying}
               style={{ fontSize:'.95rem', marginBottom:8 }}>
               {paying
                 ? <><span className="spinner spinner-sm"/> Processing…</>
                 : isLoggedIn
-                  ? <>Pay ${perMo/100}/mo securely with Stripe <ArrowRight size={15}/></>
-                  : <>Sign in to Pay ${perMo/100}/mo <ArrowRight size={15}/></>}
-            </button>
-          ) : (
-            <button className="btn btn-primary btn-xl btn-full"
-              onClick={() => navigate(isLoggedIn ? '/' : '/login')}
-              style={{ fontSize:'.95rem', marginBottom:8 }}>
-              {isLoggedIn ? 'Continue with Base Plan →' : 'Sign In / Register →'}
+                  ? <>Pay ${totalPrice/100}/{billing==='yearly'?'yr':'mo'} with Stripe <ArrowRight size={15}/></>
+                  : <>Sign in to continue <ArrowRight size={15}/></>}
             </button>
           )}
 
           <p style={{ textAlign:'center', fontSize:'.72rem', color:'var(--text-3)', marginTop:4 }}>
-            {isFree
+            {(!selBundle && !selKeys.length)
               ? 'No credit card required · Upgrade anytime'
               : '🔒 Secured by Stripe · No card stored on our servers · Cancel anytime'}
           </p>
@@ -502,7 +432,7 @@ export default function PaymentPage() {
           </>)}
 
           <p style={{ textAlign:'center', color:'var(--text-3)', fontSize:'.72rem', marginTop:20 }}>
-            © {new Date().getFullYear()} Accfino · Australian Accounting Platform
+            © {new Date().getFullYear()} Headstart Finances Australia Pty Ltd · Trading as AccFino
           </p>
         </div>
       </div>
