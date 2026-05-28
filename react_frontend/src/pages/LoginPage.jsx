@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { register, forgotPassword, getPlans, createCheckout } from '../lib/api.js'
+import { register, forgotPassword, getPricingPlans, createCheckout } from '../lib/api.js'
 import { Eye, EyeOff, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import TopBar from '../components/ui/TopBar.jsx'
@@ -43,7 +43,7 @@ export default function LoginPage() {
   }
 
   useEffect(() => {
-    getPlans().then(r => setPlans(r.data || {})).catch(() => {})
+    getPricingPlans().then(r => setPlans(r.data || {})).catch(() => {})
 
     // Auto-switch to register tab if ?tab=register in URL
     const tabParam = searchParams.get('tab')
