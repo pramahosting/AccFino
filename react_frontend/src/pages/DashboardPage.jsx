@@ -188,9 +188,9 @@ export default function DashboardPage() {
                   // Show human-readable plan name
                   // Only known bundle plans get simple names
                   // Individual module purchases always show "Base + X Plan"
-                  const BUNDLE_NAMES = {
-                    base:'Base', basic:'Full Bundle', premium:'Premium',
-                  }
+                  // Use plan name directly from pricing.json via myPlan
+                  if (myPlan.plan_name) return myPlan.plan_name + ' Plan'
+                  const BUNDLE_NAMES = { base:'Vault', premium:'Ultra' }
                   if (BUNDLE_NAMES[pid]) return BUNDLE_NAMES[pid] + ' Plan'
                   // Custom multi-module — show "Base + Trading Plan"
                   const SHORT = {
@@ -205,7 +205,7 @@ export default function DashboardPage() {
                   return [...baseLabel, ...paidMods].join(' + ') + ' Plan'
                 })()}
               </span>
-              {!isAdmin && !['premium','basic'].includes(myPlan.plan_id) && (
+              {!isAdmin && myPlan.plan_id !== 'premium' && (
                 <button className="btn btn-primary btn-sm" onClick={() => nav('/upgrade')}>
                   ⚡ Upgrade Plan
                 </button>
