@@ -1,7 +1,7 @@
 {
   "base": {
     "name": "Base",
-    "description": "Start free — Dashboard + CSV Reconciliation included",
+    "description": "Start free \u2014 Dashboard + CSV Reconciliation included",
     "price_monthly": 0,
     "price_yearly": 0,
     "badge": "Free",
@@ -9,6 +9,7 @@
     "features": [
       "Dashboard overview & stats",
       "CSV bank reconciliation (up to 500 txns/mo)",
+      "Open Banking unlocked when you add any paid plan",
       "6 months free access",
       "Upgrade anytime"
     ],
@@ -18,29 +19,9 @@
     ],
     "price_effective_from": "2026-05-18"
   },
-  "reconciliation": {
-    "name": "Reconciliation",
-    "description": "Full bank reconciliation including Open Banking",
-    "price_monthly": 1800,
-    "price_yearly": 18000,
-    "badge": "05/18/2026",
-    "highlight": false,
-    "features": [
-      "Everything in Base",
-      "Open Banking / direct bank feeds",
-      "Unlimited transactions",
-      "GST calculation & BAS-ready",
-      "Excel export with monthly summaries"
-    ],
-    "modules": [
-      "dashboard",
-      "reconciliation"
-    ],
-    "price_effective_from": "2026-05-18"
-  },
   "trading": {
     "name": "Trading",
-    "description": "Crypto & equity CGT tax reports",
+    "description": "Crypto & equity CGT tax reports + Open Banking",
     "price_monthly": 1500,
     "price_yearly": 15000,
     "badge": "",
@@ -49,7 +30,8 @@
       "Crypto CGT calculation",
       "Equity CGT reports",
       "ATO-ready tax summaries",
-      "Multi-exchange support"
+      "Multi-exchange support",
+      "Open Banking / direct bank feeds included"
     ],
     "modules": [
       "dashboard",
@@ -68,7 +50,8 @@
       "ML next-month prediction",
       "Visual cash flow charts",
       "Export to Excel",
-      "Historical trend analysis"
+      "Historical trend analysis",
+      "Open Banking / direct bank feeds included"
     ],
     "modules": [
       "dashboard",
@@ -87,7 +70,8 @@
       "Create GST-compliant invoices",
       "Extract data from PDF invoices",
       "Customer & business management",
-      "Invoice status tracking"
+      "Invoice status tracking",
+      "Open Banking / direct bank feeds included"
     ],
     "modules": [
       "dashboard",
@@ -97,7 +81,7 @@
   },
   "basic": {
     "name": "Full Bundle",
-    "description": "Reconciliation + Trading + Cash Flow + Invoice",
+    "description": "All modules + Open Banking included",
     "price_monthly": 4900,
     "price_yearly": 49000,
     "badge": "",
@@ -120,7 +104,7 @@
   },
   "premium": {
     "name": "Premium",
-    "description": "Complete suite — best value, all modules included",
+    "description": "Complete suite \u2014 best value, all modules + Open Banking",
     "price_monthly": 3900,
     "price_yearly": 39000,
     "badge": "Best Value",
