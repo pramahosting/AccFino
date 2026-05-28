@@ -8,12 +8,8 @@ import toast from 'react-hot-toast'
 import AccfinoLogo from '../components/ui/AccfinoLogo.jsx'
 
 const HIDDEN  = ['admin', 'file-manager', 'licence', 'dashboard']
-const ALL_MOD = ['reconciliation', 'trading', 'cash-flow', 'invoice']
+const ALL_MOD = ['trading', 'cash-flow', 'invoice']
 const MOD_LABELS = {
-  reconciliation: {
-    icon: '🏦', label: 'Reconciliation', desc: 'CSV + Open Banking',
-    features: ['Upload CSV bank statements','Open Banking / direct feeds','Auto internal transfer detection','GST & BAS-ready classification','Excel export with monthly summaries'],
-  },
   trading: {
     icon: '📈', label: 'Trading', desc: 'Crypto & equity CGT',
     features: ['Crypto CGT calculation','Equity CGT reports','ATO-ready tax summaries','Multi-exchange support'],
@@ -38,9 +34,7 @@ function calcPrice(selectedMods, billing, selBundle, modPrices, bundles) {
     return { price: p, label: b.label, planId: selBundle, saveMsg: b.save }
   }
 
-  const effectiveMods = selectedMods.includes('reconciliation')
-    ? selectedMods
-    : ['reconciliation', ...selectedMods]
+  const effectiveMods = ['reconciliation', ...selectedMods]
 
   const moTotal = selectedMods.reduce((s, m) => s + (modPrices[m] || 0), 0)
   const total   = billing === 'yearly' ? moTotal * 10 : moTotal
@@ -296,7 +290,7 @@ export default function PaymentPage() {
               <span style={{ fontSize:'.78rem', color:'var(--text-3)', marginLeft:6 }}>· No card required</span>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-              {(plans.base?.features || ['Dashboard overview & stats','CSV bank reconciliation (up to 500 txns/mo)','Up to 6 months free access','Upgrade anytime']).map((f,i) => (
+              {(plans.base?.features || ['Dashboard overview & stats','CSV bank reconciliation (up to 500 txns/mo)','Open Banking unlocked when you add any paid plan','Up to 6 months free access','Upgrade anytime']).map((f,i) => (
                 <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:6, fontSize:'.73rem' }}>
                   <Check size={11} color="#38A169" style={{ flexShrink:0, marginTop:1 }}/>
                   <span style={{ color:'var(--text-2)', lineHeight:1.4 }}>{f}</span>
@@ -459,7 +453,7 @@ export default function PaymentPage() {
                 <div style={{ fontWeight:600, fontSize:'.88rem' }}>{label}</div>
                 {selMods.length > 0 && (
                   <div style={{ fontSize:'.72rem', color:'var(--text-3)', marginTop:2 }}>
-                    {'Base (CSV Recon)'}{selMods.map(m => ' + ' + (MOD_LABELS[m]?.label || m))}
+                    {'Base (CSV + Open Banking on upgrade)'}{selMods.map(m => ' + ' + (MOD_LABELS[m]?.label || m))}
                   </div>
                 )}
                 {saveMsg && (
