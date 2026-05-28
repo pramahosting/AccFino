@@ -1115,9 +1115,13 @@ document.querySelectorAll('.bento-card, .adv-card, .plan, .testi, .stack-card, .
     </div>`
   }
 
-  fetch(API)
-    .then(r => r.json())
-    .then(data => {
+  // Use server-pre-injected pricing if available (instant), else fetch
+  const preloaded = window.__ACCFINO_PRICING__
+  const dataPromise = preloaded
+    ? Promise.resolve(preloaded)
+    : fetch(API).then(r => r.json())
+
+  dataPromise.then(data => {
       const container = document.getElementById('pricing-cards')
       const loading   = document.getElementById('pricing-loading')
       if (!container) return
@@ -1171,7 +1175,7 @@ document.querySelectorAll('.bento-card, .adv-card, .plan, .testi, .stack-card, .
       const prem  = data['premium']
       if (prem)  { const el = document.getElementById('cmp-range-top'); if (el) el.textContent = prem.price_monthly / 100 }
     })
-    .catch(err => {
+  }).catch(err => {
       const loading = document.getElementById('pricing-loading')
       if (loading) loading.textContent = 'Could not load pricing — please refresh.'
       console.warn('AccFino pricing load failed:', err)
