@@ -155,10 +155,10 @@ export default function TopBar({ variant = 'marketing', onSignIn, onStartFree, p
 <div style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto' }}>
   <button onClick={onLogout} style={{
     background: 'none', border: 'none', cursor: 'pointer',
-    fontSize: '.85rem', color: 'var(--text-1)', fontFamily: 'inherit',
+    fontSize: '.9rem', fontWeight: 700, color: 'var(--text-1)', fontFamily: 'inherit',
     display: 'flex', alignItems: 'center', gap: 4, padding: 0,
   }}>
-    <LogOut size={25}/> Logout
+    <LogOut size={25} color="#FF6B35"/> Logout
   </button>
 </div>
 </header>
