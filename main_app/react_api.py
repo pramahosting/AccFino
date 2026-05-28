@@ -1814,15 +1814,28 @@ _MARKETING  = _DIST / "index-marketing.html" if (_DIST / "index-marketing.html")
 _APP_INDEX  = _DIST / "index.html"
 
 
-def _serve_marketing() -> _FileResponse:
-    """Return the public marketing homepage.
+def _serve_marketing():
+    """Return the public marketing homepage with pricing pre-injected.
     Works in both dev mode (serves from react_frontend/public/)
     and production (serves from react_frontend/dist/).
     """
-    if _MARKETING.exists():
-        return _FileResponse(str(_MARKETING))
-    # Last resort fallback — should never happen if file is in public/
-    return {"error": "Marketing page not found. Check react_frontend/public/index-marketing.html"}
+    if not _MARKETING.exists():
+        return {"error": "Marketing page not found. Check react_frontend/public/index-marketing.html"}
+    import json as _json_mkt
+    from fastapi.responses import HTMLResponse as _HTMLResponse
+    html = _MARKETING.read_text(encoding="utf-8")
+    # Pre-inject pricing so cards render instantly — no fetch round-trip
+    try:
+        pricing = _load_pricing()
+        pricing_json = _json_mkt.dumps(pricing, ensure_ascii=False)
+        inject = f'''<script>
+// Pricing pre-loaded server-side — no fetch needed
+window.__ACCFINO_PRICING__ = {pricing_json};
+</script>'''
+        html = html.replace("</head>", inject + "\n</head>", 1)
+    except Exception:
+        pass  # Fall back to client-side fetch if inject fails
+    return _HTMLResponse(content=html, status_code=200)
 
 
 def _serve_app() -> _FileResponse:
@@ -1843,6 +1856,11 @@ def marketing_html():
 # ── Static assets (only available in production after npm run build) ──────────
 if _DIST.exists() and (_DIST / "assets").exists():
     app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+
+# ── Root "/" → marketing home page (top of page) ─────────────────────────────
+@app.get("/", include_in_schema=False)
+def root():
+    return _serve_marketing()
 
 # ── SPA routes (only available in production; in dev Vite handles these) ──────
 if _DIST.exists() and _APP_INDEX.exists():
