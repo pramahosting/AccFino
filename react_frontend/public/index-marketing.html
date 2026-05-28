@@ -780,7 +780,7 @@ footer {
       <div class="compare-header">
         <div class="ch-label">AccFino ✦</div>
         <div class="ch-name">AccFino</div>
-        <div class="ch-price">From $0 / month</div>
+        <div class="ch-price">From <span id="cmp-base">$0</span> / month</div>
       </div>
       <div class="compare-row"><span class="chk-accfino">All plans · built-in</span></div>
       <div class="compare-row"><span class="chk-accfino">All plans · built-in</span></div>
@@ -819,108 +819,12 @@ footer {
   <h2 class="section-heading">Pay for what you use.<br><em>Nothing more.</em></h2>
   <p class="section-sub">All prices in AUD including GST. No per-seat fees. No setup costs. Upgrade, downgrade, or cancel any time.</p>
 
-  <!-- Individual modules row -->
-  <p style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);margin-bottom:12px;">Individual modules — mix and match</p>
-  <div class="pricing-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
-
-    <div class="plan">
-      <span class="plan-badge badge-free">Free</span>
-      <div class="plan-name">Base</div>
-      <div class="plan-desc">Dashboard + CSV reconciliation</div>
-      <div class="plan-price"><span class="price-num">$0</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note">Free for 6 months · basic access after</div>
-      <div class="plan-divider"></div>
-      <div class="plan-feat">Dashboard overview &amp; analytics</div>
-      <div class="plan-feat">CSV reconciliation (500 txns/mo)</div>
-      <div class="plan-feat">Upgrade any time</div>
-      <div class="plan-cta"><button class="btn-plan" onclick="window.location.href='/upgrade'">Get started free</button></div>
-    </div>
-
-    <div class="plan">
-      <div class="plan-name">Reconciliation</div>
-      <div class="plan-desc">Full bank reconciliation + Open Banking</div>
-      <div class="plan-price"><span class="price-num" id="price-reconciliation">$18</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note" id="note-reconciliation">AUD incl. GST · $180/yr (2 months free)</div>
-      <div class="plan-divider"></div>
-      <div class="plan-feat">Open Banking / direct bank feeds</div>
-      <div class="plan-feat">Unlimited transactions</div>
-      <div class="plan-feat">GST calculation &amp; BAS-ready</div>
-      <div class="plan-feat">Excel export with summaries</div>
-      <div class="plan-cta"><button class="btn-plan" onclick="window.location.href='/upgrade?plan=reconciliation'">Start free trial</button></div>
-    </div>
-
-    <div class="plan">
-      <div class="plan-name">Trading</div>
-      <div class="plan-desc">Crypto &amp; equity CGT reports</div>
-      <div class="plan-price"><span class="price-num" id="price-trading">$15</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note" id="note-trading">AUD incl. GST · $150/yr (2 months free)</div>
-      <div class="plan-divider"></div>
-      <div class="plan-feat">Crypto CGT calculation</div>
-      <div class="plan-feat">Equity CGT reports</div>
-      <div class="plan-feat">ATO-ready tax summaries</div>
-      <div class="plan-feat">Multi-exchange support</div>
-      <div class="plan-cta"><button class="btn-plan" onclick="window.location.href='/upgrade?plan=trading'">Start free trial</button></div>
-    </div>
-
-    <div class="plan">
-      <div class="plan-name">Cash Flow</div>
-      <div class="plan-desc">ML-powered cash flow forecasting</div>
-      <div class="plan-price"><span class="price-num" id="price-cashflow">$15</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note" id="note-cashflow">AUD incl. GST · $150/yr (2 months free)</div>
-      <div class="plan-divider"></div>
-      <div class="plan-feat">ML next-month prediction</div>
-      <div class="plan-feat">Visual cash flow charts</div>
-      <div class="plan-feat">Export to Excel</div>
-      <div class="plan-feat">Historical trend analysis</div>
-      <div class="plan-cta"><button class="btn-plan" onclick="window.location.href='/upgrade?plan=cashflow'">Start free trial</button></div>
-    </div>
-
+  <!-- Plans rendered dynamically from /api/pricing/plans -->
+  <div id="pricing-loading" style="text-align:center;padding:40px;color:var(--ink-3);font-size:.9rem;">
+    Loading plans…
   </div>
-
-  <!-- Second row: Invoice + Bundles -->
-  <div class="pricing-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:0;">
-
-    <div class="plan">
-      <div class="plan-name">Invoice</div>
-      <div class="plan-desc">GST invoices &amp; PDF extraction</div>
-      <div class="plan-price"><span class="price-num" id="price-invoice">$12</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note" id="note-invoice">AUD incl. GST · $120/yr (2 months free)</div>
-      <div class="plan-divider"></div>
-      <div class="plan-feat">Create GST-compliant invoices</div>
-      <div class="plan-feat">Extract data from PDF invoices</div>
-      <div class="plan-feat">Customer &amp; business management</div>
-      <div class="plan-feat">Invoice status tracking</div>
-      <div class="plan-cta"><button class="btn-plan" onclick="window.location.href='/upgrade?plan=invoice'">Start free trial</button></div>
-    </div>
-
-    <div class="plan">
-      <div class="plan-name">Full Bundle</div>
-      <div class="plan-desc">All 4 modules — Reconciliation + Trading + Cash Flow + Invoice</div>
-      <div class="plan-price"><span class="price-num" id="price-basic">$49</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note" id="note-basic">AUD incl. GST · Save vs individual modules</div>
-      <div class="plan-divider"></div>
-      <div class="plan-feat">Full reconciliation + Open Banking</div>
-      <div class="plan-feat">Crypto &amp; equity CGT reports</div>
-      <div class="plan-feat">ML cash flow forecasting</div>
-      <div class="plan-feat">GST invoice management + OCR</div>
-      <div class="plan-cta"><button class="btn-plan" onclick="window.location.href='/upgrade?plan=basic'">Start free trial</button></div>
-    </div>
-
-    <div class="plan featured">
-      <span class="plan-badge badge-gold">Best Value</span>
-      <div class="plan-name">Premium</div>
-      <div class="plan-desc">Everything in Full Bundle + priority support</div>
-      <div class="plan-price"><span class="price-num" id="price-premium">$39</span><span class="price-period">/mo</span></div>
-      <div class="plan-period-note" id="note-premium">AUD incl. GST · Save $10/mo vs Full Bundle</div>
-      <div class="plan-divider"></div>
-      <div class="plan-feat">Everything in Full Bundle</div>
-      <div class="plan-feat">Save $10/month vs Full Bundle</div>
-      <div class="plan-feat">Priority support</div>
-      <div class="plan-feat">Early access to new features</div>
-      <div class="plan-feat">Unlimited transactions &amp; exports</div>
-      <div class="plan-cta"><button class="btn-plan primary" onclick="window.location.href='/upgrade?plan=premium'">Start free trial</button></div>
-    </div>
-
+  <div id="pricing-cards" style="display:none;">
+    <!-- injected by JS -->
   </div>
 </section>
 
@@ -1166,66 +1070,112 @@ document.querySelectorAll('.bento-card, .adv-card, .plan, .testi, .stack-card, .
 </script>
 
 <script>
-// ── Dynamic pricing from pricing.json via API ──────────────────────────────
+// ── Pricing cards — fully dynamic from /api/pricing/plans ─────────────────
 (function () {
   const API = '/api/pricing/plans'
 
-  // Map: plan key -> { priceEl id, noteEl id, yearlyMultiplier }
-  const PLANS = {
-    reconciliation: { price: 'price-reconciliation', note: 'note-reconciliation' },
-    trading:        { price: 'price-trading',        note: 'note-trading'        },
-    cashflow:       { price: 'price-cashflow',       note: 'note-cashflow'       },
-    invoice:        { price: 'price-invoice',        note: 'note-invoice'        },
-    basic:          { price: 'price-basic',          note: 'note-basic'          },
-    premium:        { price: 'price-premium',        note: 'note-premium'        },
+  // Plans that are "bundles" (shown in a separate row, highlighted)
+  const BUNDLE_KEYS = ['basic', 'premium']
+  // Base plan is always free — rendered statically first
+  const BASE_KEY = 'base'
+
+  function esc(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
   }
 
-  function fmt(cents) { return '$' + (cents / 100) }
-  function fmtYr(cents) { return '$' + (cents / 100) + '/yr (2 months free)' }
-  function fmtSave(cents, otherCents) {
-    const save = otherCents - cents
-    return save > 0 ? 'Save ' + fmt(save) + '/mo vs Full Bundle' : 'Best Value'
+  function fmtPrice(cents) {
+    return cents === 0 ? '$0' : '$' + (cents / 100)
+  }
+
+  function fmtNote(plan, key) {
+    if (plan.price_monthly === 0) return 'Free for 6 months · basic access after'
+    const yr = plan.price_yearly
+    if (yr) return 'AUD incl. GST · ' + fmtPrice(yr) + '/yr (2 months free)'
+    return 'AUD incl. GST'
+  }
+
+  function renderCard(key, plan, featured) {
+    const isFree    = plan.price_monthly === 0
+    const badge     = plan.badge ? `<span class="plan-badge ${isFree ? 'badge-free' : 'badge-gold'}">${esc(plan.badge)}</span>` : ''
+    const feats     = (plan.features || []).map(f => `<div class="plan-feat">${esc(f)}</div>`).join('
+      ')
+    const btnClass  = featured ? 'btn-plan primary' : 'btn-plan'
+    const btnLabel  = isFree ? 'Get started free' : 'Start free trial'
+    const btnHref   = isFree ? '/upgrade' : `/upgrade?plan=${esc(key)}`
+    return `
+    <div class="plan${featured ? ' featured' : ''}">
+      ${badge}
+      <div class="plan-name">${esc(plan.name)}</div>
+      <div class="plan-desc">${esc(plan.description)}</div>
+      <div class="plan-price"><span class="price-num">${fmtPrice(plan.price_monthly)}</span><span class="price-period">/mo</span></div>
+      <div class="plan-period-note">${esc(fmtNote(plan, key))}</div>
+      <div class="plan-divider"></div>
+      ${feats}
+      <div class="plan-cta"><button class="${btnClass}" onclick="window.location.href='${btnHref}'">${btnLabel}</button></div>
+    </div>`
   }
 
   fetch(API)
-  .then(r => r.json())
-  .then(data => {
-    // Pricing cards — individual modules
-    ;['reconciliation', 'trading', 'cashflow', 'invoice'].forEach(key => {
-      const plan = data[key]
-      if (!plan) return
-      const pel = document.getElementById(PLANS[key].price)
-      const nel = document.getElementById(PLANS[key].note)
-      if (pel) pel.textContent = '$' + (plan.price_monthly / 100)
-      if (nel) nel.textContent = 'AUD incl. GST · $' + (plan.price_yearly / 100) + '/yr (2 months free)'
-    })
-    // Pricing cards — bundles
-    if (data.basic) {
-      const el = document.getElementById('price-basic')
-      const nl = document.getElementById('note-basic')
-      if (el) el.textContent = '$' + (data.basic.price_monthly / 100)
-      if (nl) nl.textContent = 'AUD incl. GST · Save vs individual modules'
-    }
-    if (data.premium) {
-      const el = document.getElementById('price-premium')
-      const nl = document.getElementById('note-premium')
-      if (el) el.textContent = '$' + (data.premium.price_monthly / 100)
-      if (nl) {
-        const save = data.basic ? (data.basic.price_monthly - data.premium.price_monthly) : 0
-        nl.textContent = 'AUD incl. GST · ' + (save > 0 ? 'Save $' + (save/100) + '/mo vs Full Bundle' : 'Best Value')
+    .then(r => r.json())
+    .then(data => {
+      const container = document.getElementById('pricing-cards')
+      const loading   = document.getElementById('pricing-loading')
+      if (!container) return
+
+      // Separate base, individual modules, bundles
+      const baseplan  = data[BASE_KEY]
+      const bundles   = {}
+      const modules   = {}
+
+      Object.entries(data).forEach(([key, plan]) => {
+        if (key === BASE_KEY) return
+        if (BUNDLE_KEYS.includes(key)) bundles[key] = plan
+        else modules[key] = plan
+      })
+
+      // ── Row 1: Base + individual modules ──
+      const modKeys    = Object.keys(modules)
+      const allModKeys = baseplan ? [BASE_KEY, ...modKeys] : modKeys
+      const cols1      = allModKeys.length
+
+      let html = ''
+
+      if (cols1 > 0) {
+        html += `<p style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);margin-bottom:12px;">Individual modules — mix and match</p>`
+        html += `<div class="pricing-grid" style="grid-template-columns:repeat(${Math.min(cols1,4)},1fr);margin-bottom:20px;">`
+        if (baseplan) html += renderCard(BASE_KEY, baseplan, false)
+        modKeys.forEach(key => { html += renderCard(key, modules[key], false) })
+        html += `</div>`
       }
-    }
-    // Comparison table
-    const modPrices = ['reconciliation','trading','cashflow','invoice']
-      .map(k => data[k]?.price_monthly).filter(Boolean)
-    const cheapest = modPrices.length ? Math.min(...modPrices) : null
-    if (cheapest) { const el = document.getElementById('cmp-module'); if (el) el.textContent = cheapest / 100 }
-    if (data.reconciliation) { const el = document.getElementById('cmp-range-mid'); if (el) el.textContent = data.reconciliation.price_monthly / 100 }
-    if (data.premium)        { const el = document.getElementById('cmp-range-top'); if (el) el.textContent = data.premium.price_monthly / 100 }
-  })
-  .catch(() => {
-    console.warn('AccFino: could not load live pricing, showing static prices.')
-  })
+
+      // ── Row 2: Bundles ──
+      const bundleKeys = Object.keys(bundles)
+      if (bundleKeys.length > 0) {
+        html += `<div class="pricing-grid" style="grid-template-columns:repeat(${bundleKeys.length},1fr);margin-bottom:0;">`
+        bundleKeys.forEach(key => {
+          html += renderCard(key, bundles[key], bundles[key].highlight === true)
+        })
+        html += `</div>`
+      }
+
+      container.innerHTML = html
+      container.style.display = 'block'
+      if (loading) loading.style.display = 'none'
+
+      // ── Also update comparison table if present ──
+      const modPrices = Object.values(modules).map(p => p.price_monthly).filter(Boolean)
+      const cheapest  = modPrices.length ? Math.min(...modPrices) : null
+      if (cheapest) { const el = document.getElementById('cmp-module'); if (el) el.textContent = cheapest / 100 }
+      const recon = data['reconciliation']
+      if (recon) { const el = document.getElementById('cmp-range-mid'); if (el) el.textContent = recon.price_monthly / 100 }
+      const prem  = data['premium']
+      if (prem)  { const el = document.getElementById('cmp-range-top'); if (el) el.textContent = prem.price_monthly / 100 }
+    })
+    .catch(err => {
+      const loading = document.getElementById('pricing-loading')
+      if (loading) loading.textContent = 'Could not load pricing — please refresh.'
+      console.warn('AccFino pricing load failed:', err)
+    })
 })()
 </script>
 </body>
