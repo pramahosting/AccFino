@@ -519,7 +519,7 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
         parsed = pd.to_numeric(v, errors="coerce")
         return float(parsed) if pd.notnull(parsed) else 0.0
 
-    # Build deduped prediction cache
+    # Build deduped prediction cache — ML models only, no Ollama LLM calls
     prediction_by_key = {}
     if models_available:
         try:
@@ -534,7 +534,22 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
                 if key not in seen:
                     seen.add(key)
                     try:
-                        prediction_by_key[key] = classify_transaction(desc, debit=debit, credit=credit)
+                        # Use only local ML model — no network calls, no Ollama
+                        from backend.transaction_classifier.transaction_classify import (
+                            _category_model, _gst_model, _rdr_apply, load_models as _lm
+                        )
+                        _lm()
+                        forced = _rdr_apply(desc, debit=debit, credit=credit)
+                        if forced:
+                            prediction_by_key[key] = {
+                                "gl_account":   forced.get("gl_account")   or _category_model.predict([desc])[0],
+                                "gst_category": forced.get("gst_category") or _gst_model.predict([desc])[0],
+                            }
+                        else:
+                            prediction_by_key[key] = {
+                                "gl_account":   _category_model.predict([desc])[0],
+                                "gst_category": _gst_model.predict([desc])[0],
+                            }
                     except Exception:
                         prediction_by_key[key] = {}
         except Exception:
