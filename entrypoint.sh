@@ -12,6 +12,18 @@ mkdir -p /app/db_app/data
 mkdir -p /app/main_app/data
 mkdir -p /app/main_app/classifier_model
 mkdir -p /app/main_app/backend/cash_flow/outputs/plots
+mkdir -p /app/main_app/data/legal_documents
+
+# Restore bundled ML models if volume is empty (Northflank mounts override Docker COPY)
+if [ ! -f /app/main_app/classifier_model/category_classifier.pkl ]; then
+    echo "[accfino] ML models not found on volume — restoring bundled models..."
+    if [ -f /app/main_app/classifier_model_bundled/category_classifier.pkl ]; then
+        cp /app/main_app/classifier_model_bundled/*.pkl /app/main_app/classifier_model/
+        echo "[accfino] ML models restored from bundle."
+    else
+        echo "[accfino] WARNING: No bundled models found — auto-classify will be skipped."
+    fi
+fi
 
 # Init DB schema (idempotent — safe to run every start)
 echo "[accfino] Initialising database schema..."
