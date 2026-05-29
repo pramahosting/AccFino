@@ -173,8 +173,7 @@ def normalize_transactions(df: pd.DataFrame, bank_name: str, account_number: str
         df_out["date"] = pd.to_datetime(
             df_local[date_col],
             dayfirst=True,
-            errors="coerce",
-            infer_datetime_format=True
+            errors="coerce"
         ).dt.strftime("%d/%m/%Y")
     else:
         df_out["date"] = None
