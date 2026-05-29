@@ -502,3 +502,22 @@ select.select-compact { padding: 4px 26px 4px 8px; font-size: .78rem; border-rad
 @media (max-width: 680px) {
   .mkt-nav-links { display: none !important; }
 }
+
+/* ── Inline editable table cells ────────────────────────────── */
+input.cell-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-family: inherit;
+  color: inherit;
+  outline: none;
+  transition: border-color .12s, background .12s;
+  max-width: 100%;
+}
+input.cell-input:hover { border-color: var(--border-dark); background: var(--surface-2); }
+input.cell-input:focus { border-color: var(--brand); background: var(--surface); box-shadow: 0 0 0 2px rgba(200,150,62,.12); }
+
+/* Rows with pending inline edits */
+tr.row-edited { background: rgba(200,150,62,.06) !important; }
+tr.row-edited input.cell-input { border-color: rgba(200,150,62,.25); }
