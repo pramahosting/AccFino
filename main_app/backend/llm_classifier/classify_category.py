@@ -269,7 +269,7 @@ def ollama_classify_gl_account(
         },
     }
 
-    r = requests.post(base_url, json=payload, timeout=3)
+    r = requests.post(base_url, json=payload, timeout=120)
     r.raise_for_status()
     data = r.json()
 
@@ -313,7 +313,7 @@ def ollama_predict_gst(
         },
     }
 
-    r = requests.post(base_url, json=payload, timeout=3)
+    r = requests.post(base_url, json=payload, timeout=120)
     r.raise_for_status()
     data = r.json()
 
