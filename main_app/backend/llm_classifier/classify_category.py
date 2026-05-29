@@ -44,17 +44,24 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_TXN_PROMPT = "Classify this transaction description:"
 _DEFAULT_GST_PROMPT = "Given the category and transaction description, return the GST category label:"
 
-CATEGORY_ENUM = [
-    "Revenue",
-    "Direct Costs",
-    "Expense",
-    "Inventory",
-    "Fixed Asset",
-    "GST",
-    "Equity",
-    "Transfer",
-    "Liability",
-]
+def _load_coa_names() -> list:
+    """Load GL account names from ChartOfAccounts.csv — Name column is the GL Account."""
+    import csv as _csv_coa
+    from pathlib import Path as _Path
+    coa = _Path(__file__).resolve().parents[2] / "data" / "ChartOfAccounts.csv"
+    if not coa.exists():
+        # fallback
+        return ["Revenue","Direct Costs","Expense","Inventory","Fixed Asset","GST","Equity","Transfer","Liability"]
+    names = []
+    with open(coa, newline="", encoding="utf-8-sig") as f:
+        reader = _csv_coa.DictReader(f)
+        for row in reader:
+            name = row.get("*Name") or row.get("Name") or ""
+            if name.strip():
+                names.append(name.strip())
+    return names if names else ["Revenue","Direct Costs","Expense","Inventory","Fixed Asset","GST","Equity","Transfer","Liability"]
+
+CATEGORY_ENUM = _load_coa_names()
 
 GST_ENUM = [
     "GST on Expenses",
@@ -105,16 +112,21 @@ WHO_BANK_PATTERNS = [
     ("Other/Unknown", []),
 ]
 
-GL_SYSTEM_MSG = (
-    "You are a strict classifier for bank transactions. "
-    "Return ONLY the category label as plain text. "
-    "No explanations, no extra keys, no markdown. "
-    "Rules: common merchant purchases (shops, restaurants, fuel, convenience) -> "
-    "category=Expense. "
-    "Use Revenue only for income/credits/sales. "
-    "Use Transfer only for internal transfers between accounts. "
-    "Use GST only for tax payment transactions."
-)
+def _build_gl_system_msg() -> str:
+    accounts = ", ".join(CATEGORY_ENUM[:30])  # first 30 to keep prompt concise
+    return (
+        "You are a strict GL account classifier for Australian business bank transactions. "
+        "Return ONLY the exact account name from the chart of accounts — no explanation, no markdown. "
+        f"Valid GL accounts: {accounts}. "
+        "Rules: "
+        "- Income/sales/revenue credits -> match closest Revenue account (e.g. Services, Product Sales). "
+        "- Business expenses, merchant purchases, bills -> match closest Expense account. "
+        "- Asset purchases (equipment, vehicle) -> match closest Fixed Asset or Direct Costs account. "
+        "- Internal bank transfers -> Suspense or Transfer if available, else Expense. "
+        "- If unsure, return the single best matching account name from the list above."
+    )
+
+GL_SYSTEM_MSG = _build_gl_system_msg()
 
 GST_SYSTEM_MSG = (
     "You are a strict Australian GST classifier for bank transactions. "
