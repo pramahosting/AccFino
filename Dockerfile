@@ -29,10 +29,14 @@ COPY . .
 RUN rm -rf react_frontend/node_modules react_frontend/src react_frontend/public
 # Copy the Vite build output from Stage 1
 COPY --from=frontend-build /build/dist ./react_frontend/dist
+# Bundle ML models to a safe location volumes cannot override
+RUN cp -r main_app/classifier_model main_app/classifier_model_bundled
+
 # Ensure runtime directories exist (persistent volumes will mount here)
 RUN mkdir -p \
         db_app/data \
         main_app/data \
+        main_app/data/legal_documents \
         main_app/classifier_model \
         main_app/backend/cash_flow/outputs/plots
 RUN chmod +x /app/entrypoint.sh
