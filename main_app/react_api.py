@@ -534,7 +534,24 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
                 if key not in seen:
                     seen.add(key)
                     try:
-                        prediction_by_key[key] = classify_transaction(desc, debit=debit, credit=credit)
+                        # Call sklearn models directly — never Ollama during reconciliation
+                        from backend.transaction_classifier.transaction_classify import (
+                            _category_model as _cm, _gst_model as _gm, _rdr_apply
+                        )
+                        if _cm is not None and _gm is not None:
+                            forced = _rdr_apply(desc, debit=debit, credit=credit)
+                            if forced:
+                                prediction_by_key[key] = {
+                                    "gl_account":   forced.get("gl_account") or _cm.predict([desc])[0],
+                                    "gst_category": forced.get("gst_category") or _gm.predict([desc])[0],
+                                }
+                            else:
+                                prediction_by_key[key] = {
+                                    "gl_account":   _cm.predict([desc])[0],
+                                    "gst_category": _gm.predict([desc])[0],
+                                }
+                        else:
+                            prediction_by_key[key] = {}
                     except Exception:
                         prediction_by_key[key] = {}
         except Exception:
