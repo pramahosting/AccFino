@@ -152,11 +152,31 @@ def normalize_gst_category(value) -> str:
     return "Unknown"
 
 def normalize_gl_account(value) -> str:
+    """Match value against current CATEGORY_ENUM (loaded from ChartOfAccounts Name column)."""
     text = "" if pd.isna(value) else str(value).strip()
     if not text: return ""
+    # Exact match
     for option in CATEGORY_ENUM:
         if option.lower() == text.lower(): return option
+    # Partial match — value is substring of option or vice versa
+    text_lower = text.lower()
+    for option in CATEGORY_ENUM:
+        if option.lower() in text_lower or text_lower in option.lower():
+            return option
+    # Return as-is if it looks like a valid name (don't discard user edits)
+    if len(text) > 1:
+        return text
     return ""
+
+def _reload_category_enum():
+    """Reload CATEGORY_ENUM from ChartOfAccounts.csv after upload."""
+    import csv as _csv_coa
+    from backend.llm_classifier.classify_category import _load_coa_names
+    import backend.llm_classifier.classify_category as _cat_mod
+    names = _load_coa_names()
+    _cat_mod.CATEGORY_ENUM.clear()
+    _cat_mod.CATEGORY_ENUM.extend(names)
+    return names
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -273,7 +293,11 @@ def get_banks(): return sorted(BANK_PRESETS.keys())
 def get_gst_cats(): return GST_CATEGORY_OPTIONS
 
 @app.get("/gl/accounts")
-def get_gl_accounts(): return CATEGORY_ENUM + [""]
+def get_gl_accounts():
+    """Return GL account names from ChartOfAccounts.csv Name column."""
+    from backend.llm_classifier.classify_category import _load_coa_names
+    names = _load_coa_names()
+    return names + [""]
 
 @app.get("/gst/calculate")
 def calc_gst(debit: float=0, credit: float=0, category: str="Unknown"):
@@ -519,6 +543,114 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
         parsed = pd.to_numeric(v, errors="coerce")
         return float(parsed) if pd.notnull(parsed) else 0.0
 
+    # ── Load CoA type→names mapping ───────────────────────────────────────────
+    import csv as _csv_coa
+    _coa_type_to_names: dict = {}
+    _coa_all_names: list = []
+    try:
+        _coa_file = Path(__file__).parent / "data" / "ChartOfAccounts.csv"
+        with open(_coa_file, newline="", encoding="utf-8-sig") as _f:
+            for _row in _csv_coa.DictReader(_f):
+                _n = (_row.get("*Name") or _row.get("Name") or "").strip()
+                _t = (_row.get("*Type") or _row.get("Type") or "").strip()
+                if _n:
+                    _coa_all_names.append((_n, _t))
+                    _coa_type_to_names.setdefault(_t, []).append(_n)
+    except Exception:
+        pass
+
+    def _best_gl_name(desc: str, predicted_type: str, debit: float, credit: float) -> str:
+        """Map sklearn type prediction + description to the best CoA Name using keyword matching."""
+        import re as _re2
+        dl = desc.lower()
+
+        # RDR rules first
+        try:
+            from backend.transaction_classifier.transaction_classify import _rdr_apply
+            forced = _rdr_apply(desc, debit=debit, credit=credit)
+            if forced and forced.get("gl_account"):
+                fg = forced["gl_account"]
+                for (n, t) in _coa_all_names:
+                    if n.lower() == fg.lower():
+                        return n
+                predicted_type = fg  # use as type hint
+        except Exception:
+            pass
+
+        # Keyword → specific CoA Name mapping
+        KW = [
+            (["salary","payroll","wages","pay run","payday","payg","wage payment"],     "Wages"),
+            (["interest received","interest income","term deposit"],                   "Interest Income"),
+            (["service","consulting","advisory","professional fee"],                   "Services"),
+            (["sales","product","sold","goods","merchandise","retail"],                "Product Sales"),
+            (["rent received","rental income","sublease"],                             "Other Revenue"),
+            (["bank fee","bank charge","monthly fee","account fee","dishonour"],       "Bank Fees"),
+            (["marketing","advertis","facebook","google ads","instagram","seo"],       "Marketing & Advertisement"),
+            (["recruit","seek","indeed","job","hiring","linkedin"],                    "Staff recruitment"),
+            (["fuel","petrol","bp ","caltex","ampol","shell","7-eleven","bowser"],         "Motor Vehicle Expenses"),
+            (["donation","charity","fundrais","ngo"],                                   "Donation"),
+            (["insurance","insur ","premium"],                                         "Insurance"),
+            (["telephone","mobile","phone","optus","telstra","vodafone"],              "Telephone & Internet"),
+            (["internet","broadband","nbn"],                                           "Telephone & Internet"),
+            (["electricity","energy","gas bill","power","agl","origin"],               "Utilities"),
+            (["water rate","council rate","land tax","council"],                       "Council Rates"),
+            (["rent","lease","office rent","strata"],                                  "Rent"),
+            (["subscription","saas","adobe","microsoft","xero","netflix","spotify"],   "Subscriptions"),
+            (["repair","maintenance","plumb","electri","hvac","fix "],                 "Repairs and Maintenance"),
+            (["stationery","officeworks","paper","ink","toner"],                       "Office Expenses"),
+            (["uber eats","ubereats","doordash","menulog","deliveroo"],                  "Entertainment"),
+            (["travel","uber ","taxi","flight","airbnb","hotel","accom"],                "Travel & Accommodation"),
+            (["restaurant","cafe","food court","dining","domino","mcdonald","kfc",
+              "subway","hungry","pizza","burger","sushi","thai","chinese"],             "Entertainment"),
+
+            (["vehicle","car wash","rego","registration","parking"],                  "Motor Vehicle Expenses"),
+            (["clean","cleaner","janitor","hygiene"],                                  "Cleaning"),
+            (["accounting","bookkeep","tax agent","audit","myob","quickbook"],         "Accounting & Legal Fees"),
+            (["legal","solicitor","lawyer","conveyancing","contract"],                 "Accounting & Legal Fees"),
+            (["postage","courier","freight","delivery","auspost","dhl","fedex"],       "Postage & Freight"),
+            (["training","education","course","seminar","workshop","udemy","tafe"],    "Training & Education"),
+            (["printing","print ","photocopy","signage"],                              "Printing & Stationery"),
+            (["computer","laptop","monitor","ipad","iphone","apple ","dell","lenovo"], "Computer Equipment"),
+            (["equipment","machinery","tool","hardware","fitout","office equip"],      "Office Equipment"),
+            (["depreciation","amortis"],                                               "Depreciation"),
+            (["write off","write-off","disposal"],                                     "Assets Immediate Write off"),
+            (["subcontract","contractor","labour hire","labor"],                       "Subcontractors"),
+            (["purchase order","raw material","component","wholesale"],                "Project Purchases"),
+            (["cost of goods","cogs"],                                                 "Cost of Goods Sold"),
+            (["dividend","distribution","owner draw","drawing"],                       "Dividends"),
+            (["share capital","capital contribution","equity inject"],                 "Owner A Share Capital"),
+            (["woolworth","coles","aldi","iga","supermarket","grocery"],               "Office Expenses"),
+            (["bigw","kmart","target","myer","david jones","harvey norman","jb hi"],   "Office Expenses"),
+        ]
+        for (keywords, name) in KW:
+            for kw in keywords:
+                if kw in dl:
+                    for (n, t) in _coa_all_names:
+                        if n.lower() == name.lower():
+                            return n
+                    break
+
+        # Fall back to first name of predicted type
+        if predicted_type and predicted_type in _coa_type_to_names:
+            names_for_type = _coa_type_to_names[predicted_type]
+            if names_for_type:
+                if predicted_type == "Revenue":
+                    return "Services" if credit > 0 else "Other Revenue"
+                if predicted_type == "Expense":
+                    for fb in ["Office Expenses","Expense"]:
+                        for (n, t) in _coa_all_names:
+                            if n.lower() == fb.lower():
+                                return n
+                    return names_for_type[0]
+                return names_for_type[0]
+
+        # Last resort: credit=income, debit=expense
+        if credit > 0:
+            rev = _coa_type_to_names.get("Revenue", [])
+            return rev[0] if rev else ""
+        exp = _coa_type_to_names.get("Expense", [])
+        return exp[0] if exp else ""
+
     # Build deduped prediction cache
     prediction_by_key = {}
     if models_available:
@@ -534,22 +666,17 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
                 if key not in seen:
                     seen.add(key)
                     try:
-                        # Call sklearn models directly — never Ollama during reconciliation
                         from backend.transaction_classifier.transaction_classify import (
-                            _category_model as _cm, _gst_model as _gm, _rdr_apply
+                            _category_model as _cm, _gst_model as _gm
                         )
-                        if _cm is not None and _gm is not None:
-                            forced = _rdr_apply(desc, debit=debit, credit=credit)
-                            if forced:
-                                prediction_by_key[key] = {
-                                    "gl_account":   forced.get("gl_account") or _cm.predict([desc])[0],
-                                    "gst_category": forced.get("gst_category") or _gm.predict([desc])[0],
-                                }
-                            else:
-                                prediction_by_key[key] = {
-                                    "gl_account":   _cm.predict([desc])[0],
-                                    "gst_category": _gm.predict([desc])[0],
-                                }
+                        if _cm is not None:
+                            predicted_type = _cm.predict([desc])[0]
+                            gst_cat = _gm.predict([desc])[0] if _gm is not None else "Unknown"
+                            gl_name = _best_gl_name(desc, predicted_type, debit, credit)
+                            prediction_by_key[key] = {
+                                "gl_account":   gl_name,
+                                "gst_category": gst_cat,
+                            }
                         else:
                             prediction_by_key[key] = {}
                     except Exception:
@@ -1787,6 +1914,64 @@ def pricing_update_plan(plan_id: str, body: dict = Body(...)):
     data[plan_id].update(body)
     _save_pricing(data)
     return {"ok": True, "plan": data[plan_id]}
+
+
+# ── Chart of Accounts — upload and serve ─────────────────────────────────────
+_COA_PATH = Path(__file__).parent / "data" / "ChartOfAccounts.csv"
+
+@app.get("/gl/accounts/all")
+def gl_accounts_all():
+    """Return full Chart of Accounts rows for the GL Accounts modal."""
+    import csv as _csv_coa
+    if not _COA_PATH.exists():
+        return {"columns": [], "rows": []}
+    rows, cols = [], []
+    with open(_COA_PATH, newline="", encoding="utf-8-sig") as f:
+        reader = _csv_coa.DictReader(f)
+        cols = [c.lstrip("*") for c in (reader.fieldnames or [])]
+        for row in reader:
+            rows.append({k.lstrip("*"): v for k, v in row.items()})
+    return {"columns": cols, "rows": rows}
+
+@app.post("/gl/accounts/upload")
+async def gl_accounts_upload(file: UploadFile = File(...)):
+    """Replace ChartOfAccounts.csv with uploaded file."""
+    raw = await file.read()
+    _COA_PATH.write_bytes(raw)
+    # Reload CATEGORY_ENUM from new file
+    import csv as _csv_coa
+    names = []
+    with open(_COA_PATH, newline="", encoding="utf-8-sig") as f:
+        reader = _csv_coa.DictReader(f)
+        for row in reader:
+            name = row.get("*Name") or row.get("Name") or ""
+            if name.strip():
+                names.append(name.strip())
+    # Reload CATEGORY_ENUM in memory
+    try:
+        from backend.llm_classifier.classify_category import _load_coa_names
+        import backend.llm_classifier.classify_category as _cat_mod
+        fresh = _load_coa_names()
+        _cat_mod.CATEGORY_ENUM.clear()
+        _cat_mod.CATEGORY_ENUM.extend(fresh)
+    except Exception:
+        pass
+    return {"ok": True, "count": len(names), "accounts": names}
+
+@app.post("/gl/accounts/save")
+async def gl_accounts_save(body: dict = Body(...)):
+    """Save edited Chart of Accounts rows back to CSV."""
+    import csv as _csv_coa, io as _io_coa
+    rows = body.get("rows", [])
+    if not rows:
+        raise HTTPException(400, "No rows provided")
+    cols = list(rows[0].keys())
+    out = _io_coa.StringIO()
+    writer = _csv_coa.DictWriter(out, fieldnames=cols, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    _COA_PATH.write_text(out.getvalue(), encoding="utf-8")
+    return {"ok": True, "saved": len(rows)}
 
 # ── Strip /api prefix middleware ──────────────────────────────────────────────
 # In production the React frontend calls /api/banks, /api/sessions etc.
