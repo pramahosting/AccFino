@@ -519,7 +519,7 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
         parsed = pd.to_numeric(v, errors="coerce")
         return float(parsed) if pd.notnull(parsed) else 0.0
 
-    # Build deduped prediction cache — ML models only, no Ollama LLM calls
+    # Build deduped prediction cache
     prediction_by_key = {}
     if models_available:
         try:
@@ -534,22 +534,7 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
                 if key not in seen:
                     seen.add(key)
                     try:
-                        # Use only local ML model — no network calls, no Ollama
-                        from backend.transaction_classifier.transaction_classify import (
-                            _category_model, _gst_model, _rdr_apply, load_models as _lm
-                        )
-                        _lm()
-                        forced = _rdr_apply(desc, debit=debit, credit=credit)
-                        if forced:
-                            prediction_by_key[key] = {
-                                "gl_account":   forced.get("gl_account")   or _category_model.predict([desc])[0],
-                                "gst_category": forced.get("gst_category") or _gst_model.predict([desc])[0],
-                            }
-                        else:
-                            prediction_by_key[key] = {
-                                "gl_account":   _category_model.predict([desc])[0],
-                                "gst_category": _gst_model.predict([desc])[0],
-                            }
+                        prediction_by_key[key] = classify_transaction(desc, debit=debit, credit=credit)
                     except Exception:
                         prediction_by_key[key] = {}
         except Exception:
@@ -1786,33 +1771,6 @@ def pricing_update_plan(plan_id: str, body: dict = Body(...)):
     _save_pricing(data)
     return {"ok": True, "plan": data[plan_id]}
 
-# ── Legal document routes ─────────────────────────────────────────────────────
-_LEGAL_DIR = Path(__file__).parent / "data" / "legal_documents"
-
-LEGAL_DOCS = {
-    "terms-of-service":           "terms_of_service.pdf",
-    "privacy-policy":             "privacy_policy.pdf",
-    "acceptable-use-policy":      "acceptable_use_policy.pdf",
-    "subscription-refund-policy": "subscription_refund_policy.pdf",
-    "cookie-policy":              "cookie_policy.pdf",
-    "disclaimer":                 "disclaimer.pdf",
-}
-
-@app.get("/legal/{doc_name}", include_in_schema=False)
-def serve_legal_doc(doc_name: str):
-    from fastapi.responses import FileResponse as _FR
-    filename = LEGAL_DOCS.get(doc_name)
-    if not filename:
-        raise HTTPException(404, "Document not found")
-    path = _LEGAL_DIR / filename
-    if not path.exists():
-        raise HTTPException(404, f"File not found: {path}")
-    return _FR(
-        str(path),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename={filename}"}
-    )
-
 # ── Strip /api prefix middleware ──────────────────────────────────────────────
 # In production the React frontend calls /api/banks, /api/sessions etc.
 # This middleware strips the /api prefix before FastAPI processes the request.
@@ -1898,6 +1856,36 @@ def marketing_html():
 # ── Static assets (only available in production after npm run build) ──────────
 if _DIST.exists() and (_DIST / "assets").exists():
     app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+
+
+# ── Legal document routes ─────────────────────────────────────────────────────
+_LEGAL_DIR = _ROOT / "main_app" / "data" / "legal_documents"
+
+LEGAL_DOCS = {
+    "terms-of-service":         "terms_of_service.pdf",
+    "privacy-policy":           "privacy_policy.pdf",
+    "acceptable-use-policy":    "acceptable_use_policy.pdf",
+    "subscription-refund-policy": "subscription_refund_policy.pdf",
+    "cookie-policy":            "cookie_policy.pdf",
+    "disclaimer":               "disclaimer.pdf",
+}
+
+@app.get("/legal/{doc_name}", include_in_schema=False)
+def serve_legal_doc(doc_name: str):
+    from fastapi.responses import FileResponse as _FR
+    filename = LEGAL_DOCS.get(doc_name)
+    if not filename:
+        raise HTTPException(404, "Document not found")
+    path = _LEGAL_DIR / filename
+    if not path.exists():
+        raise HTTPException(404, "Document file not found")
+    return _FR(str(path), media_type="application/pdf",
+               headers={"Content-Disposition": f"inline; filename={filename}"})
+
+@app.get("/legal", include_in_schema=False)
+def legal_index():
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"documents": list(LEGAL_DOCS.keys())})
 
 # ── Root "/" → marketing home page (top of page) ─────────────────────────────
 @app.get("/", include_in_schema=False)
