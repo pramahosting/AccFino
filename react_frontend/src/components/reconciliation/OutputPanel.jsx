@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-const GST_CATS = ['GST on Sale','GST Free Sale','GST on Purchase','Input Taxed Sales','BAS Excluded','Interest Income','Other Exempt Income','Unknown']
+const GST_CATS = ['GST on Expenses','GST on Income','GST on Capital','GST Free Expenses','GST Free Income','BAS Excluded','']
 const CLASSES  = ['🟢Internal','🔵Incoming','🟡Outgoing','⚪Unclassified']
 const PAGE_SZ  = 25
 
@@ -25,7 +25,7 @@ function ClassBadge({ val }) {
 }
 
 const BLANK = {date:'',bank:'',account:'',description:'',debit:0,credit:0,
-  classification:'🔵Incoming',pairid:'',gl_account:'',gst:0,gst_category:'Unknown',who:''}
+  classification:'🔵Incoming',pairid:'',gl_account:'',gl_type:'',gst:0,gst_category:'Unknown',who:''}
 
 function StatStrip({ stats }) {
   return (
@@ -319,10 +319,20 @@ export default function OutputPanel({
   const [glAccounts,  setGlAccounts]  = useState([
     'Revenue','Direct Costs','Expense','Inventory','Fixed Asset','GST','Equity','Transfer','Liability',''
   ])
-  // Load GL accounts from API on mount
+  // coaMap: { name -> { type, tax_code } } — used for auto-fill on GL Account change
+  const [coaMap, setCoaMap] = useState({})
+
+  // Load GL accounts + full COA map from API on mount
   React.useEffect(()=>{
     fetch('/api/gl/accounts').then(r=>r.json()).then(d=>{
       if(Array.isArray(d) && d.length) setGlAccounts(d)
+    }).catch(()=>{})
+    fetch('/api/gl/accounts/all').then(r=>r.json()).then(rows=>{
+      if(Array.isArray(rows)){
+        const map = {}
+        rows.forEach(r=>{ if(r.name) map[r.name] = {type: r.type||'', tax_code: r.tax_code||''} })
+        setCoaMap(map)
+      }
     }).catch(()=>{})
   },[])
 
@@ -667,6 +677,7 @@ export default function OutputPanel({
                 <SortTh {...thProps('Classification','classification',{})}/>
                 <SortTh {...thProps('Pair ID','pairid',{})}/>
                 <SortTh {...thProps('GL Account','gl_account',{minWidth:140})}/>
+                <SortTh {...thProps('GL Type','gl_type',{minWidth:100})}/>
                 <SortTh {...thProps('GST','gst',{textAlign:'right'})}/>
                 <SortTh {...thProps('GST Category','gst_category',{minWidth:160})}/>
                 <SortTh {...thProps('Who','who',{})}/>
@@ -741,12 +752,33 @@ export default function OutputPanel({
                       <input className="cell-input" value={v('pairid')||v('pair_id')||''} onChange={setV('pairid')}
                         style={{width:80,fontFamily:'var(--font-mono)',fontSize:'.72rem',color:'var(--text-3)'}}/>
                     </td>
-                    {/* GL Account — select from CoA */}
+                    {/* GL Account — select from CoA; auto-fills GL Type + GST Category */}
                     <td>
-                      <select value={v('gl_account')||''} onChange={e=>{ setCell(ai,'gl_account',e.target.value); updateCell(ai,'gl_account',e.target.value) }}
+                      <select value={v('gl_account')||''} onChange={e=>{
+                          const name = e.target.value
+                          setCell(ai,'gl_account', name)
+                          updateCell(ai,'gl_account', name)
+                          const coa = coaMap[name]
+                          if(coa){
+                            setCell(ai,'gl_type', coa.type||'')
+                            updateCell(ai,'gl_type', coa.type||'')
+                            if(coa.tax_code){
+                              setCell(ai,'gst_category', coa.tax_code)
+                              updateCell(ai,'gst_category', coa.tax_code)
+                            }
+                          }
+                        }}
                         className="select-compact" style={{minWidth:120}}>
                         {glAccounts.map(o=><option key={o} value={o}>{o||'—'}</option>)}
                       </select>
+                    </td>
+                    {/* GL Type — read-only, auto-populated from COA when GL Account changes */}
+                    <td>
+                      <span style={{fontSize:'.75rem',color:'var(--text-3)',padding:'0 6px',
+                        whiteSpace:'nowrap',background:'var(--surface-2)',borderRadius:4,
+                        border:'1px solid var(--border)',display:'inline-block',lineHeight:'24px'}}>
+                        {v('gl_type')||'—'}
+                      </span>
                     </td>
                     {/* GST */}
                     <td style={{textAlign:'right'}}>
@@ -770,7 +802,7 @@ export default function OutputPanel({
                 )
               })}
               {pageRows.length===0&&(
-                <tr><td colSpan={14}>
+                <tr><td colSpan={15}>
                   <div className="empty-state" style={{padding:'32px 24px'}}>
                     <p>No transactions match the current filters.</p>
                   </div>

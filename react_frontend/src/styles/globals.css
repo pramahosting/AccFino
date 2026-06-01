@@ -503,6 +503,7 @@ select.select-compact { padding: 4px 26px 4px 8px; font-size: .78rem; border-rad
   .mkt-nav-links { display: none !important; }
 }
 
+@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
 /* ── Inline editable table cells ────────────────────────────── */
 input.cell-input {
   background: transparent;
