@@ -1,0 +1,108 @@
+{
+  "base": {
+    "name": "Vault",
+    "description": "Start free \u2014 Dashboard + CSV Reconciliation included",
+    "price_monthly": 0,
+    "price_yearly": 0,
+    "badge": "Free",
+    "highlight": false,
+    "features": [
+      "Dashboard overview & stats",
+      "CSV bank reconciliation (up to 500 txns/mo)",
+      "Open Banking unlocked when you add any paid plan",
+      "6 months free access",
+      "Upgrade anytime"
+    ],
+    "modules": [
+      "dashboard",
+      "CSV reconciliation"
+    ],
+    "price_effective_from": "2026-05-18"
+  },
+  "trading": {
+    "name": "Trading",
+    "description": "Crypto & equity CGT tax reports + Open Banking",
+    "price_monthly": 1500,
+    "price_yearly": 15000,
+    "badge": "",
+    "highlight": false,
+    "features": [
+      "Crypto CGT calculation",
+      "Equity CGT reports",
+      "ATO-ready tax summaries",
+      "Multi-exchange support",
+      "Open Banking / direct bank feeds included"
+    ],
+    "modules": [
+      "dashboard",
+      "reconciliation",
+      "trading"
+    ],
+    "price_effective_from": "2026-05-18"
+  },
+  "cashflow": {
+    "name": "Cash Flow",
+    "description": "ML-powered cash flow forecasting",
+    "price_monthly": 1500,
+    "price_yearly": 15000,
+    "badge": "",
+    "highlight": false,
+    "features": [
+      "ML next-month prediction",
+      "Visual cash flow charts",
+      "Export to Excel",
+      "Historical trend analysis",
+      "Open Banking / direct bank feeds included"
+    ],
+    "modules": [
+      "dashboard",
+      "reconciliation",
+      "cash-flow"
+    ],
+    "price_effective_from": "2026-05-18"
+  },
+  "invoice": {
+    "name": "Invoice",
+    "description": "GST invoices & PDF extraction",
+    "price_monthly": 1200,
+    "price_yearly": 12000,
+    "badge": "",
+    "highlight": false,
+    "features": [
+      "Create GST-compliant invoices",
+      "Extract data from PDF invoices",
+      "Customer & business management",
+      "Invoice status tracking",
+      "Open Banking / direct bank feeds included"
+    ],
+    "modules": [
+      "dashboard",
+      "reconciliation",
+      "invoice"
+    ],
+    "price_effective_from": "2026-05-18"
+  },
+  "premium": {
+    "name": "Ultra",
+    "description": "Complete suite \u2014 best value, all modules + Open Banking",
+    "price_monthly": 2500,
+    "price_yearly": 25000,
+    "badge": "Best Value",
+    "highlight": true,
+    "features": [
+      "Everything in Full Bundle",
+      "Save $17/month vs Full Bundle",
+      "Priority support",
+      "Early access to new features",
+      "Unlimited transactions & exports"
+    ],
+    "modules": [
+      "dashboard",
+      "reconciliation",
+      "trading",
+      "cash-flow",
+      "invoice"
+    ],
+    "price_effective_from": "2026-05-18"
+  }
+}
