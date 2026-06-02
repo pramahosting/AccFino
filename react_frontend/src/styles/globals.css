@@ -236,7 +236,8 @@ select.select-compact { padding: 4px 26px 4px 8px; font-size: .78rem; border-rad
 /* ── Data table ── */
 .data-table-wrap { border-radius: var(--r-lg); overflow: hidden; border: 1px solid var(--border); box-shadow: var(--sh-sm); }
 .data-table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
-.data-table thead { position: sticky; top: 0; z-index: 2; }
+.data-table thead { position: sticky; top: 0; z-index: 10; }
+/* ColFilter dropdown uses z-index:9999 (position:fixed) so always renders above table */
 .data-table th {
   background: var(--surface-2); color: var(--text-2); padding: 10px 12px;
   text-align: left; font-size: .72rem; font-weight: 700;
