@@ -66,8 +66,8 @@ function ColFilter({ col, values, active, onChange, onClose }) {
       <input className="input input-sm" placeholder="Search…" value={search}
         onChange={e=>setSearch(e.target.value)} autoFocus/>
       <div style={{display:'flex',gap:6}}>
-        <button className="btn btn-ghost btn-xs" onClick={()=>onChange(new Set())}>All</button>
-        <button className="btn btn-ghost btn-xs" onClick={()=>onChange(new Set(unique))}>None</button>
+        <button className="btn btn-ghost btn-xs" onClick={()=>onChange(new Set())}>Show all</button>
+        <button className="btn btn-ghost btn-xs" onClick={()=>onChange(new Set(unique))}>Hide all</button>
       </div>
       <div style={{overflowY:'auto',flex:1,display:'flex',flexDirection:'column',gap:2}}>
         {shown.map(v=>{
@@ -75,10 +75,10 @@ function ColFilter({ col, values, active, onChange, onClose }) {
           return (
             <label key={v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:'.78rem',padding:'2px 4px',borderRadius:4}}>
               <input type="checkbox" checked={checked} onChange={()=>{
-                const next = new Set(active.size===0 ? [] : active)
-                if(next.has(v)) next.delete(v); else next.add(v)
-                // "active" means EXCLUDED — empty set = show all
-                const excl = new Set(unique.filter(u => !([...next].includes(u) ? false : true)))
+                // active = EXCLUDED set (empty = show all)
+                const excl = new Set(active.size===0 ? [] : active)
+                if(excl.has(v)) excl.delete(v)   // was excluded → now include
+                else            excl.add(v)       // was included → now exclude
                 onChange(excl)
               }} style={{accentColor:'var(--brand)'}}/>
               <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v||'(blank)'}</span>
@@ -112,7 +112,7 @@ return (
         </span>
         <span onClick={e=>{e.stopPropagation();setOpen(o=>!o)}}
           style={{cursor:'pointer',fontSize:'20px',lineHeight:1,padding:'0 2px',
-            color:hasFilter?'var(--brand)':'var(--text-3)',
+            color:hasFilter?'var(--warning)':'var(--text-3)',
             fontWeight:hasFilter?700:400}}>▾</span>
       </div>
       {open && values && (
@@ -338,6 +338,13 @@ export default function OutputPanel({
 
   // ── filtered + sorted rows ────────────────────────────────────────────────
   const filtered = useMemo(() => {
+    // Pre-compute per-field unique counts to detect "all excluded = show all"
+    const fieldUniques = {}
+    for (const [field, excl] of Object.entries(colFilters)) {
+      if (excl && excl.size > 0) {
+        fieldUniques[field] = new Set(transactions.map(t=>String(t[field]||'')))
+      }
+    }
     let rows = transactions.map((t,i)=>({...t,_origIdx:i})).filter(t => {
       const cl = t.classification || ''
       if (!filters.internal     && cl.includes('Internal'))    return false
@@ -345,8 +352,11 @@ export default function OutputPanel({
       if (!filters.outgoing     && cl.includes('Outgoing'))    return false
       if (!filters.unclassified && cl.includes('Unclassified')) return false
       // Column filters (excluded values)
+      // If ALL unique values for a field are excluded, treat as "show all" (reset)
       for (const [field, excl] of Object.entries(colFilters)) {
         if (excl && excl.size > 0) {
+          const allUniq = fieldUniques[field]
+          if (allUniq && excl.size >= allUniq.size) continue  // all excluded = show all
           const v = String(t[field]||'')
           if (excl.has(v)) return false
         }
@@ -393,8 +403,10 @@ export default function OutputPanel({
   }, [filtered])
 
   // values for column filter dropdowns
+  // colVals reads from filtered (not transactions) so options update when
+  // other column filters or chip filters are active — cascading filter behaviour
   const colVals = useCallback((field) =>
-    transactions.map(t=>String(t[field]||'')), [transactions])
+    filtered.map(t=>String(t[field]||'')), [filtered])
 
   // ── inline edit helpers ───────────────────────────────────────────────────
   const getCell = (ai, field, fallback) => {
@@ -424,7 +436,17 @@ export default function OutputPanel({
     if (allSel) setSelected(s=>{const n=new Set(s);idxs.forEach(i=>n.delete(i));return n})
     else setSelected(s=>{const n=new Set(s);idxs.forEach(i=>n.add(i));return n})
   }
-  const toggleF = k => { setFilters(f=>({...f,[k]:!f[k]})); setPage(1) }
+  const toggleF = k => {
+    setFilters(f=>({...f,[k]:!f[k]}))
+    // Clear column filter on 'classification' when chip changes — prevents conflicts
+    setColFilters(cf => {
+      if (!cf.classification || cf.classification.size === 0) return cf
+      const next = {...cf}
+      delete next.classification
+      return next
+    })
+    setPage(1)
+  }
 
   // ── direct cell update (GL/GST selects in table) ──────────────────────────
   const updateCell = useCallback((ai, field, val) => {
@@ -611,13 +633,21 @@ export default function OutputPanel({
           <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:10,justifyContent:'flex-end'}}>
             <span style={{fontSize:'.72rem',color:'var(--text-3)',marginRight:4}}>Show:</span>
             {[['internal','🟢','badge-cls-int'],['incoming','🔵','badge-cls-in'],
-              ['outgoing','🟡','badge-cls-out'],['unclassified','⚪','badge-neutral']].map(([k,emoji,cls])=>(
-              <button key={k} onClick={()=>toggleF(k)}
-                className={`chip${filters[k]?` ${k==='internal'?'active-int':k==='incoming'?'active-in':k==='outgoing'?'active-out':''}`:''}`}
-                style={{opacity:filters[k]?1:.4,transition:'opacity .15s',fontSize:'.75rem',padding:'4px 10px'}}>
-                {emoji} {k.charAt(0).toUpperCase()+k.slice(1)}
-              </button>
-            ))}
+              ['outgoing','🟡','badge-cls-out'],['unclassified','⚪','badge-neutral']].map(([k,emoji,cls])=>{
+              // Show orange dot on chip if any column filter is active while this chip is ON
+              const hasColFilter = filters[k] && Object.values(colFilters).some(v=>v&&v.size>0)
+              return (
+                <button key={k} onClick={()=>toggleF(k)}
+                  className={`chip${filters[k]?` ${k==='internal'?'active-int':k==='incoming'?'active-in':k==='outgoing'?'active-out':''}`:''}`}
+                  style={{opacity:filters[k]?1:.4,transition:'opacity .15s',fontSize:'.75rem',padding:'4px 10px',
+                    outline: hasColFilter ? '2px solid var(--warning)' : 'none',
+                    outlineOffset: '2px',
+                    position:'relative'}}>
+                  {emoji} {k.charAt(0).toUpperCase()+k.slice(1)}
+                  {hasColFilter && <span style={{position:'absolute',top:-4,right:-4,width:8,height:8,borderRadius:'50%',background:'var(--warning)',border:'2px solid var(--surface)'}}/>}
+                </button>
+              )
+            })}
             {Object.values(colFilters).some(v=>v&&v.size>0) && (
               <button className="btn btn-ghost btn-xs" style={{marginLeft:8}} onClick={()=>setColFilters({})}>
                 <X size={11}/> Clear filters
@@ -820,10 +850,20 @@ export default function OutputPanel({
           </span>
           <div className="pagination">
             <button className="page-btn" disabled={safePage<=1} onClick={()=>setPage(p=>p-1)}><ChevronLeft size={14}/></button>
-            {[...Array(Math.min(totalPages,9))].map((_,i)=>{
-              const p=i+1
-              return <button key={p} onClick={()=>setPage(p)} className={`page-btn${p===safePage?' active':''}`}>{p}</button>
-            })}
+            {(()=>{
+              const WINDOW = 9
+              // Sliding window: centre on safePage, clamp to [1, totalPages]
+              let start = Math.max(1, safePage - Math.floor(WINDOW/2))
+              let end   = Math.min(totalPages, start + WINDOW - 1)
+              // Shift start left if window is short at the end
+              start = Math.max(1, end - WINDOW + 1)
+              const pages = []
+              if (start > 1) pages.push(<button key="first" className="page-btn" onClick={()=>setPage(1)}>1</button>, <span key="el1" style={{padding:'0 2px',color:'var(--text-3)'}}>…</span>)
+              for (let p = start; p <= end; p++)
+                pages.push(<button key={p} onClick={()=>setPage(p)} className={`page-btn${p===safePage?' active':''}`}>{p}</button>)
+              if (end < totalPages) pages.push(<span key="el2" style={{padding:'0 2px',color:'var(--text-3)'}}>…</span>, <button key="last" className="page-btn" onClick={()=>setPage(totalPages)}>{totalPages}</button>)
+              return pages
+            })()}
             <button className="page-btn" disabled={safePage>=totalPages} onClick={()=>setPage(p=>p+1)}><ChevronRight size={14}/></button>
           </div>
         </div>
