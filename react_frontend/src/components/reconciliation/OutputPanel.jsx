@@ -51,42 +51,108 @@ function StatStrip({ stats }) {
 }
 
 // ── Column filter popover ─────────────────────────────────────────────────────
-function ColFilter({ col, values, active, onChange, onClose }) {
-  const [search, setSearch] = useState('')
-  const unique = useMemo(() => [...new Set(values.map(v => String(v||'')))].sort(), [values])
-  const shown  = search ? unique.filter(v => v.toLowerCase().includes(search.toLowerCase())) : unique
-  const all    = active.size === 0 || active.size === unique.length
+function ColFilter({ col, values, active, onChange, onClose, anchorRef }) {
+  // active = INCLUDED set (empty = show all = no filter)
+  // staged = local selection before Apply is clicked
+  const allUnique = useMemo(() => [...new Set(values.map(v => String(v||'')))].sort(), [values])
+  const [search,  setSearch]  = useState('')
+  const [staged,  setStaged]  = useState(() =>
+    active.size === 0 ? new Set(allUnique) : new Set(active)
+  )
+  const shown = search
+    ? allUnique.filter(v => v.toLowerCase().includes(search.toLowerCase()))
+    : allUnique
+
+  // Position: fixed so it escapes overflow:hidden containers
+  const [pos, setPos] = React.useState({top:0, left:0, openUp:false})
+  React.useEffect(() => {
+    if (!anchorRef?.current) return
+    const r  = anchorRef.current.getBoundingClientRect()
+    const vh = window.innerHeight
+    const dropH = Math.min(360, allUnique.length * 26 + 120)
+    const openUp = r.bottom + dropH > vh - 20
+    setPos({
+      top:  openUp ? r.top - dropH - 4 : r.bottom + 4,
+      left: Math.min(r.left, window.innerWidth - 220),
+      openUp,
+    })
+  }, [anchorRef, allUnique.length])
+
+  const allChecked  = staged.size === allUnique.length
+  const noneChecked = staged.size === 0
+
+  const toggle = v => setStaged(s => {
+    const n = new Set(s)
+    n.has(v) ? n.delete(v) : n.add(v)
+    return n
+  })
+
+  const apply = () => {
+    // Empty set = no filter (show all), otherwise filter to included set
+    onChange(staged.size === allUnique.size ? new Set() : new Set(staged))
+    onClose()
+  }
+
+  const matchCount = values.filter(v => staged.size===0 || staged.has(String(v||''))).length
+
   return (
-    <div onClick={e=>e.stopPropagation()} style={{
-      position:'absolute',top:'100%',left:0,zIndex:200,
-      background:'var(--surface)',border:'1px solid var(--border)',
-      borderRadius:'var(--r-md)',boxShadow:'var(--sh-lg)',
-      padding:'10px',minWidth:180,maxHeight:280,display:'flex',flexDirection:'column',gap:6,
-    }}>
-      <input className="input input-sm" placeholder="Search…" value={search}
-        onChange={e=>setSearch(e.target.value)} autoFocus/>
-      <div style={{display:'flex',gap:6}}>
-        <button className="btn btn-ghost btn-xs" onClick={()=>onChange(new Set())}>Show all</button>
-        <button className="btn btn-ghost btn-xs" onClick={()=>onChange(new Set(unique))}>Hide all</button>
+    <div onClick={e=>e.stopPropagation()}
+      style={{
+        position:'fixed', top:pos.top, left:pos.left,
+        zIndex:9999,
+        background:'var(--surface)', border:'1px solid var(--border)',
+        borderRadius:'var(--r-md)', boxShadow:'var(--sh-lg)',
+        padding:'10px', minWidth:200, maxWidth:280,
+        display:'flex', flexDirection:'column', gap:6,
+      }}>
+      {/* Search */}
+      <input className="input input-sm" placeholder={`Search ${allUnique.length} options…`}
+        value={search} onChange={e=>setSearch(e.target.value)} autoFocus/>
+      {/* Select / Clear all */}
+      <div style={{display:'flex',gap:6,alignItems:'center'}}>
+        <button className="btn btn-ghost btn-xs"
+          onClick={()=>setStaged(new Set(allUnique))}
+          style={{fontWeight: allChecked?700:400}}>
+          ✓ All
+        </button>
+        <button className="btn btn-ghost btn-xs"
+          onClick={()=>setStaged(new Set())}
+          style={{fontWeight: noneChecked?700:400}}>
+          ✕ None
+        </button>
+        <span style={{marginLeft:'auto',fontSize:'.72rem',color:'var(--text-3)'}}>
+          {staged.size}/{allUnique.length}
+        </span>
       </div>
-      <div style={{overflowY:'auto',flex:1,display:'flex',flexDirection:'column',gap:2}}>
-        {shown.map(v=>{
-          const checked = active.size===0 || !active.has(v)
-          return (
-            <label key={v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:'.78rem',padding:'2px 4px',borderRadius:4}}>
-              <input type="checkbox" checked={checked} onChange={()=>{
-                // active = EXCLUDED set (empty = show all)
-                const excl = new Set(active.size===0 ? [] : active)
-                if(excl.has(v)) excl.delete(v)   // was excluded → now include
-                else            excl.add(v)       // was included → now exclude
-                onChange(excl)
-              }} style={{accentColor:'var(--brand)'}}/>
-              <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v||'(blank)'}</span>
-            </label>
-          )
-        })}
+      {/* Options list — always shows ALL options, never hides them */}
+      <div style={{overflowY:'auto',maxHeight:220,display:'flex',flexDirection:'column',gap:1}}>
+        {shown.map(v => (
+          <label key={v} style={{
+            display:'flex',alignItems:'center',gap:7,cursor:'pointer',
+            fontSize:'.78rem',padding:'3px 4px',borderRadius:4,
+            background: staged.has(v) ? 'var(--brand-xlight)' : 'transparent',
+            transition:'background .1s',
+          }}>
+            <input type="checkbox" checked={staged.has(v)} onChange={()=>toggle(v)}
+              style={{accentColor:'var(--brand)',flexShrink:0}}/>
+            <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>
+              {v||'(blank)'}
+            </span>
+          </label>
+        ))}
+        {shown.length === 0 && (
+          <div style={{padding:'8px 4px',color:'var(--text-3)',fontSize:'.75rem',textAlign:'center'}}>
+            No options match
+          </div>
+        )}
       </div>
-      <button className="btn btn-primary btn-xs" onClick={onClose}>Apply</button>
+      {/* Apply / Cancel */}
+      <div style={{display:'flex',gap:6,borderTop:'1px solid var(--border)',paddingTop:6}}>
+        <button className="btn btn-ghost btn-xs" onClick={onClose} style={{flex:1}}>Cancel</button>
+        <button className="btn btn-primary btn-xs" onClick={apply} style={{flex:2}}>
+          Apply ({matchCount} rows)
+        </button>
+      </div>
     </div>
   )
 }
@@ -94,11 +160,23 @@ function ColFilter({ col, values, active, onChange, onClose }) {
 // ── Sort/Filter header cell ───────────────────────────────────────────────────
 function SortTh({ label, field, sort, setSort, colFilters, setColFilters, values, style }) {
   const [open, setOpen] = useState(false)
+  const anchorRef = React.useRef(null)
   const isAsc  = sort.field===field && sort.dir==='asc'
   const isDesc = sort.field===field && sort.dir==='desc'
   const hasFilter = colFilters[field] && colFilters[field].size > 0
-return (
-    <th style={{position:'relative',userSelect:'none',whiteSpace:'nowrap',...style}}>
+
+  // Close popover when clicking outside
+  React.useEffect(() => {
+    if (!open) return
+    const handler = e => {
+      if (anchorRef.current && !anchorRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <th ref={anchorRef} style={{position:'relative',userSelect:'none',whiteSpace:'nowrap',...style}}>
       <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
         <span style={{fontSize:'.82rem',fontWeight:600,cursor:'pointer'}}
           onClick={()=>setSort(s=>s.field===field ? {field,dir:s.dir==='asc'?'desc':'asc'} : {field,dir:'asc'})}>
@@ -119,7 +197,8 @@ return (
         <ColFilter col={field} values={values}
           active={colFilters[field]||new Set()}
           onChange={v=>setColFilters(f=>({...f,[field]:v}))}
-          onClose={()=>setOpen(false)}/>
+          onClose={()=>setOpen(false)}
+          anchorRef={anchorRef}/>
       )}
     </th>
   )
@@ -338,27 +417,17 @@ export default function OutputPanel({
 
   // ── filtered + sorted rows ────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    // Pre-compute per-field unique counts to detect "all excluded = show all"
-    const fieldUniques = {}
-    for (const [field, excl] of Object.entries(colFilters)) {
-      if (excl && excl.size > 0) {
-        fieldUniques[field] = new Set(transactions.map(t=>String(t[field]||'')))
-      }
-    }
     let rows = transactions.map((t,i)=>({...t,_origIdx:i})).filter(t => {
       const cl = t.classification || ''
       if (!filters.internal     && cl.includes('Internal'))    return false
       if (!filters.incoming     && cl.includes('Incoming'))    return false
       if (!filters.outgoing     && cl.includes('Outgoing'))    return false
       if (!filters.unclassified && cl.includes('Unclassified')) return false
-      // Column filters (excluded values)
-      // If ALL unique values for a field are excluded, treat as "show all" (reset)
-      for (const [field, excl] of Object.entries(colFilters)) {
-        if (excl && excl.size > 0) {
-          const allUniq = fieldUniques[field]
-          if (allUniq && excl.size >= allUniq.size) continue  // all excluded = show all
+      // Column filters — included-set model (empty = show all, non-empty = show only included)
+      for (const [field, included] of Object.entries(colFilters)) {
+        if (included && included.size > 0) {
           const v = String(t[field]||'')
-          if (excl.has(v)) return false
+          if (!included.has(v)) return false
         }
       }
       return true
