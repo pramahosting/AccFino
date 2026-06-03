@@ -79,6 +79,7 @@ _TRANSFER_PATTERNS: Tuple[str, ...] = (
 _TRANSFER_GL_FRAGMENTS: Tuple[str, ...] = (
     "owner", "equity", "loan - director",
     "inter-entity", "intercompany", "clearing", "suspense",
+    "internal transfer",   # matches new COA row "Internal Transfer"
 )
 
 
