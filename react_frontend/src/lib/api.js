@@ -43,7 +43,8 @@ export const calcGST         = (d,c,cat)     => http.get('/gst/calculate', { par
 
 // ── Reconciliation ────────────────────────────────────────────────────────────
 export const processFiles  = (fd)            => http.post('/reconcile/process', fd, { headers:{'Content-Type':'multipart/form-data'} })
-export const classifyGL    = (sid, u)        => http.post('/reconcile/classify', { session_id:sid, username:u })
+export const classifyGL    = (sid, u)        => http.post('/reconcile/classify',   { session_id:sid, username:u })
+export const reclassifyGL  = (sid, u)        => http.post('/reconcile/reclassify', { session_id:sid, username:u })
 export const exportExcel   = (txns)          => http.post('/reconcile/export', { transactions:txns }, { responseType:'blob' })
 
 // ── Transactions (DB) ─────────────────────────────────────────────────────────
