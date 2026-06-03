@@ -5,7 +5,7 @@ import { licenceMyModules, getMyPlan } from '../lib/api'
 import InputPanel       from '../components/reconciliation/InputPanel.jsx'
 import OpenBankingInput from '../components/reconciliation/OpenBankingInput.jsx'
 import OutputPanel      from '../components/reconciliation/OutputPanel.jsx'
-import { processFiles, getSession } from '../lib/api.js'
+import { processFiles, getSession, getBanks } from '../lib/api.js'
 import toast from 'react-hot-toast'
 
 export default function ReconciliationPage() {
@@ -66,6 +66,14 @@ export default function ReconciliationPage() {
     } catch (e) {
       toast.error('Failed to load session')
     }
+  }
+
+  const handleResetSession = () => {
+    setTransactions(null)
+    setMonthlySummary([])
+    setSessionId(null)
+    setAccounts([])
+    setMainTab('input')
   }
 
   const handleLoadSession = (txns, summary, sid, accountsMeta) => {
@@ -216,7 +224,7 @@ export default function ReconciliationPage() {
 
             <AccountsReady accounts={accounts} setAccounts={setAccounts}/>
 
-            <PastSessions username={username} onLoadSession={handleLoadSession}/>
+            <PastSessions username={username} onLoadSession={handleLoadSession} onDeleteSession={handleResetSession}/>
           </div>
         )}
 
@@ -255,7 +263,7 @@ function CSVAddAccount({ accounts, setAccounts }) {
   const fileRef = React.useRef()
 
   useEffect(() => {
-    import('../lib/api.js').then(m => m.getBanks().then(r => setBanks(r.data||[])).catch(()=>{}))
+    getBanks().then(r => setBanks(r.data||[])).catch(()=>{})
   }, [])
 
   const addFiles = fs => setPending(p=>[...p,...Array.from(fs).filter(f=>f.name.endsWith('.csv'))])
@@ -364,7 +372,7 @@ function AccountsReady({ accounts, setAccounts }) {
 }
 
 // ── Past Sessions ────────────────────────────────────────────────────────────
-function PastSessions({ username, onLoadSession }) {
+function PastSessions({ username, onLoadSession, onDeleteSession }) {
   const [sessions,   setSessions]   = useState([])
   const [loadingSid, setLoadingSid] = useState(null)
 
@@ -391,7 +399,12 @@ function PastSessions({ username, onLoadSession }) {
     try {
       const api = await import('../lib/api.js')
       await api.deleteSession(username, sid)
-      setSessions(s=>s.filter(x=>x.session_id!==sid))
+      setSessions(s => {
+        const next = s.filter(x => x.session_id !== sid)
+        // Reset input + output panels — deleted session may have been loaded
+        if (onDeleteSession) onDeleteSession()
+        return next
+      })
     } catch {}
   }
 

@@ -154,10 +154,19 @@ export default function DashboardPage() {
   const outgoing = stats?.outgoing  || 0
   const net      = totalIn - totalOut
 
+  const ZERO_STATS = {total_in:0,total_out:0,total_gst:0,internal:0,incoming:0,outgoing:0,net:0,session_count:0}
+
   const delSession = async (sid) => {
     const uname = usernameRef.current
     await apiDeleteSession(uname, sid).catch(() => {})
-    setSessions(prev => prev.filter(x => x.session_id !== sid))
+    setSessions(prev => {
+      const next = prev.filter(x => x.session_id !== sid)
+      // Reset stats immediately if no sessions remain
+      if (next.length === 0) setStats(ZERO_STATS)
+      // Otherwise refresh stats from server to reflect the new latest session
+      else getDashboardStats(uname).then(r => setStats(r.data)).catch(() => {})
+      return next
+    })
   }
 
   return (
