@@ -51,7 +51,7 @@ function StatStrip({ stats }) {
 }
 
 // ── Column filter popover ─────────────────────────────────────────────────────
-function ColFilter({ col, values, active, onChange, onClose }) {
+function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
   // selected = set of values user has ticked. Empty = no filter = show all rows.
   // "All" and "None" both clear selection → show all rows.
   // Ticking any option = filter to only ticked rows.
@@ -76,10 +76,11 @@ function ColFilter({ col, values, active, onChange, onClose }) {
 
   return (
     <div onClick={e=>e.stopPropagation()} style={{
-      position:'absolute',top:'100%',left:0,zIndex:9999,
+      position:'fixed', top:anchorPos.top, left:anchorPos.left, zIndex:99999,
       background:'var(--surface)',border:'1px solid var(--border)',
       borderRadius:'var(--r-md)',boxShadow:'var(--sh-lg)',
-      padding:'10px',minWidth:200,maxHeight:340,display:'flex',flexDirection:'column',gap:6,
+      padding:'10px',minWidth:200,maxHeight:anchorPos.maxH,
+      display:'flex',flexDirection:'column',gap:6,
     }}>
       {/* All / None — both clear selection (show all rows) */}
       <div style={{display:'flex',gap:6,alignItems:'center'}}>
@@ -97,20 +98,33 @@ function ColFilter({ col, values, active, onChange, onClose }) {
       </div>
       {/* Divider */}
       <div style={{borderTop:'1px solid var(--border)',margin:'0 -4px'}}/>
-      {/* All options always visible */}
+      {/* Selected group first (asc), then unselected (asc), divider between */}
       <div style={{overflowY:'auto',flex:1,display:'flex',flexDirection:'column',gap:1}}>
-        {unique.map(v => (
-          <label key={v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',
-            fontSize:'.78rem',padding:'3px 6px',borderRadius:4,
-            background: selected.has(v) ? 'var(--brand-xlight)' : 'transparent',
-            transition:'background .1s'}}>
-            <input type="checkbox" checked={selected.has(v)} onChange={()=>toggle(v)}
-              style={{accentColor:'var(--brand)',flexShrink:0}}/>
-            <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>
-              {v||'(blank)'}
-            </span>
-          </label>
-        ))}
+        {(()=>{
+          const sel   = unique.filter(v =>  selected.has(v)).sort()
+          const unsel = unique.filter(v => !selected.has(v)).sort()
+          const row = v => (
+            <label key={v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',
+              fontSize:'.78rem',padding:'3px 6px',borderRadius:4,
+              background:selected.has(v)?'var(--brand-xlight)':'transparent',
+              transition:'background .1s'}}>
+              <input type="checkbox" checked={selected.has(v)} onChange={()=>toggle(v)}
+                style={{accentColor:'var(--brand)',flexShrink:0}}/>
+              <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>
+                {v||'(blank)'}
+              </span>
+            </label>
+          )
+          return <>
+            {sel.map(row)}
+            {sel.length>0 && unsel.length>0 && (
+              <div key="__div" style={{borderTop:'1px dashed var(--border)',
+                margin:'3px 0',fontSize:'.68rem',color:'var(--text-3)',
+                paddingLeft:4,paddingTop:3}}>— unselected —</div>
+            )}
+            {unsel.map(row)}
+          </>
+        })()}
       </div>
       {/* Apply */}
       <button className="btn btn-primary btn-xs" onClick={apply}>
@@ -123,11 +137,37 @@ function ColFilter({ col, values, active, onChange, onClose }) {
 // ── Sort/Filter header cell ───────────────────────────────────────────────────
 function SortTh({ label, field, sort, setSort, colFilters, setColFilters, values, style }) {
   const [open, setOpen] = useState(false)
+  const thRef  = React.useRef(null)
   const isAsc  = sort.field===field && sort.dir==='asc'
   const isDesc = sort.field===field && sort.dir==='desc'
   const hasFilter = colFilters[field] && colFilters[field].size > 0
-return (
-    <th style={{position:'relative',userSelect:'none',whiteSpace:'nowrap',...style}}>
+
+  const [anchorPos, setAnchorPos] = React.useState({top:0,left:0,maxH:360})
+
+  // Close on outside click
+  React.useEffect(()=>{
+    if (!open) return
+    const handler = e => { if (thRef.current && !thRef.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return ()=>document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const openFilter = e => {
+    e.stopPropagation()
+    if (!thRef.current) { setOpen(o=>!o); return }
+    // Compute position fresh from the <th> rect at click time
+    const r  = thRef.current.getBoundingClientRect()
+    const vh = window.innerHeight
+    setAnchorPos({
+      top:  r.bottom + 4,
+      left: Math.min(r.left, window.innerWidth - 216),
+      maxH: Math.max(120, vh - r.bottom - 20),
+    })
+    setOpen(o=>!o)
+  }
+
+  return (
+    <th ref={thRef} style={{position:'relative',userSelect:'none',whiteSpace:'nowrap',...style}}>
       <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
         <span style={{fontSize:'.82rem',fontWeight:600,cursor:'pointer'}}
           onClick={()=>setSort(s=>s.field===field ? {field,dir:s.dir==='asc'?'desc':'asc'} : {field,dir:'asc'})}>
@@ -139,7 +179,7 @@ return (
           :isDesc ? <ArrowDown size={15} color="var(--brand)"/>
           :         <ArrowUpDown size={15} color="var(--text-3)" opacity={0.5}/>}
         </span>
-        <span onClick={e=>{e.stopPropagation();setOpen(o=>!o)}}
+        <span onClick={openFilter}
           style={{cursor:'pointer',fontSize:'20px',lineHeight:1,padding:'0 2px',
             color:hasFilter?'var(--warning)':'var(--text-3)',
             fontWeight:hasFilter?700:400}}>▾</span>
@@ -148,7 +188,8 @@ return (
         <ColFilter col={field} values={values}
           active={colFilters[field]||new Set()}
           onChange={v=>setColFilters(f=>({...f,[field]:v}))}
-          onClose={()=>setOpen(false)}/>
+          onClose={()=>setOpen(false)}
+          anchorPos={anchorPos}/>
       )}
     </th>
   )
@@ -471,9 +512,9 @@ export default function OutputPanel({
     }
   }, [filtered])
 
-  // values for column filter dropdowns
+  // colVals reads ALL transactions so options never disappear when filter is active
   const colVals = useCallback((field) =>
-    filtered.map(t=>String(t[field]||'')), [filtered])
+    transactions.map(t=>String(t[field]||'')), [transactions])
 
   // ── inline edit helpers ───────────────────────────────────────────────────
   const getCell = (ai, field, fallback) => {
@@ -776,7 +817,7 @@ export default function OutputPanel({
       )}
 
       {/* Data Table with sort + filter headers + inline editing */}
-      <div className="data-table-wrap">
+      <div className="data-table-wrap" style={{minWidth:'max-content'}}>
         <div style={{overflowX:'auto'}}>
           <table className="data-table">
             <thead>
