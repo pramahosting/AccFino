@@ -51,7 +51,7 @@ function StatStrip({ stats }) {
 }
 
 // ── Column filter popover ─────────────────────────────────────────────────────
-function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
+function ColFilter({ col, values, active, onChange, onClose }) {
   // selected = set of values user has ticked. Empty = no filter = show all rows.
   // "All" and "None" both clear selection → show all rows.
   // Ticking any option = filter to only ticked rows.
@@ -76,11 +76,10 @@ function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
 
   return (
     <div onClick={e=>e.stopPropagation()} style={{
-      position:'fixed', top:anchorPos.top, left:anchorPos.left, zIndex:99999,
+      position:'absolute',top:'100%',left:0,zIndex:9999,
       background:'var(--surface)',border:'1px solid var(--border)',
       borderRadius:'var(--r-md)',boxShadow:'var(--sh-lg)',
-      padding:'10px',minWidth:200,maxHeight:anchorPos.maxH,
-      display:'flex',flexDirection:'column',gap:6,
+      padding:'10px',minWidth:200,maxHeight:340,display:'flex',flexDirection:'column',gap:6,
     }}>
       {/* All / None — both clear selection (show all rows) */}
       <div style={{display:'flex',gap:6,alignItems:'center'}}>
@@ -137,37 +136,11 @@ function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
 // ── Sort/Filter header cell ───────────────────────────────────────────────────
 function SortTh({ label, field, sort, setSort, colFilters, setColFilters, values, style }) {
   const [open, setOpen] = useState(false)
-  const thRef  = React.useRef(null)
   const isAsc  = sort.field===field && sort.dir==='asc'
   const isDesc = sort.field===field && sort.dir==='desc'
   const hasFilter = colFilters[field] && colFilters[field].size > 0
-
-  const [anchorPos, setAnchorPos] = React.useState({top:0,left:0,maxH:360})
-
-  // Close on outside click
-  React.useEffect(()=>{
-    if (!open) return
-    const handler = e => { if (thRef.current && !thRef.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return ()=>document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  const openFilter = e => {
-    e.stopPropagation()
-    if (!thRef.current) { setOpen(o=>!o); return }
-    // Compute position fresh from the <th> rect at click time
-    const r  = thRef.current.getBoundingClientRect()
-    const vh = window.innerHeight
-    setAnchorPos({
-      top:  r.bottom + 4,
-      left: Math.min(r.left, window.innerWidth - 216),
-      maxH: Math.max(120, vh - r.bottom - 20),
-    })
-    setOpen(o=>!o)
-  }
-
-  return (
-    <th ref={thRef} style={{position:'relative',userSelect:'none',whiteSpace:'nowrap',...style}}>
+return (
+    <th style={{position:'relative',userSelect:'none',whiteSpace:'nowrap',...style}}>
       <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
         <span style={{fontSize:'.82rem',fontWeight:600,cursor:'pointer'}}
           onClick={()=>setSort(s=>s.field===field ? {field,dir:s.dir==='asc'?'desc':'asc'} : {field,dir:'asc'})}>
@@ -179,7 +152,7 @@ function SortTh({ label, field, sort, setSort, colFilters, setColFilters, values
           :isDesc ? <ArrowDown size={15} color="var(--brand)"/>
           :         <ArrowUpDown size={15} color="var(--text-3)" opacity={0.5}/>}
         </span>
-        <span onClick={openFilter}
+        <span onClick={e=>{e.stopPropagation();setOpen(o=>!o)}}
           style={{cursor:'pointer',fontSize:'20px',lineHeight:1,padding:'0 2px',
             color:hasFilter?'var(--warning)':'var(--text-3)',
             fontWeight:hasFilter?700:400}}>▾</span>
@@ -188,8 +161,7 @@ function SortTh({ label, field, sort, setSort, colFilters, setColFilters, values
         <ColFilter col={field} values={values}
           active={colFilters[field]||new Set()}
           onChange={v=>setColFilters(f=>({...f,[field]:v}))}
-          onClose={()=>setOpen(false)}
-          anchorPos={anchorPos}/>
+          onClose={()=>setOpen(false)}/>
       )}
     </th>
   )
@@ -817,7 +789,7 @@ export default function OutputPanel({
       )}
 
       {/* Data Table with sort + filter headers + inline editing */}
-      <div className="data-table-wrap" style={{minWidth:'max-content'}}>
+      <div className="data-table-wrap">
         <div style={{overflowX:'auto'}}>
           <table className="data-table">
             <thead>
