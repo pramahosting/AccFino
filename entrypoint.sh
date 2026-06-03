@@ -10,6 +10,7 @@ echo "[accfino] PYTHONPATH=$PYTHONPATH"
 # ── Diagnose DATABASE_URL ──────────────────────────────────────────────────
 if [ -n "$DATABASE_URL" ]; then
     echo "[accfino] DATABASE_URL is set (Postgres mode)"
+    echo "[accfino] DATABASE_URL value: ${DATABASE_URL:0:30}..."
 else
     echo "[accfino] WARNING: DATABASE_URL is not set — falling back to SQLite"
     echo "[accfino] Set DATABASE_URL in Northflank environment variables"
