@@ -49,16 +49,16 @@ from backend.cash_flow.pipeline import (
 )
 
 from backend.transaction_classifier.train_model import train_from_df, DEFAULT_MODEL_DIR
-from backend.classifier.engine import classify as _engine_classify, warm as _engine_warm
+from backend.classifier.engine import classify as _engine_classify, warm as _engine_warm, DEFAULT_COA_PATH as _DEFAULT_COA_PATH
 
 # ── COA name/type lookup — built once at startup ──────────────────────────────
-def _load_coa_names() -> tuple:
+def _load_coa_names(path=None) -> tuple:
     """Return (sorted *Name list, {name: type} dict) from ChartOfAccounts.csv."""
     import csv
     from backend.classifier.engine import DEFAULT_COA_PATH
     names, name_to_type = [], {}
     try:
-        with open(DEFAULT_COA_PATH, newline="", encoding="utf-8-sig") as f:
+        with open(path or DEFAULT_COA_PATH, newline="", encoding="utf-8-sig") as f:
             for row in csv.DictReader(f):
                 name = (row.get("*Name") or "").strip()
                 atype = (row.get("*Type") or "").strip()
@@ -70,6 +70,7 @@ def _load_coa_names() -> tuple:
     return sorted(names), name_to_type
 
 _COA_NAMES, _COA_NAME_TO_TYPE = _load_coa_names()
+_ACTIVE_COA_PATH = None   # tracks which COA file is in use; None = DEFAULT
 
 # Import the EXACT enums used in the original output UI
 from backend.llm_classifier.classify_category import (
@@ -286,22 +287,78 @@ def get_gst_cats(): return GST_CATEGORY_OPTIONS
 @app.get("/gl/accounts")
 def get_gl_accounts(): return _COA_NAMES + [""]
 
+@app.post("/gl/accounts/upload")
+async def upload_gl_accounts(file: UploadFile = File(...)):
+    """Save uploaded ChartOfAccounts.csv to disk and rebuild classifier index.
+    Uses temp-file + replace to avoid locking errors on Windows."""
+    import shutil, tempfile
+    from backend.classifier.engine import rebuild as _engine_rebuild, evict as _engine_evict, warm as _engine_warm_path
+    content = await file.read()
+
+    coa_path = _DEFAULT_COA_PATH          # target path
+    tmp_path  = coa_path.parent / ("ChartOfAccounts.tmp")
+    alt_path  = coa_path.parent / "ChartOfAccounts_updated.csv"
+
+    # Step 1: write to temp file
+    try:
+        tmp_path.write_bytes(content)
+    except Exception as e:
+        raise HTTPException(500, f"COA write failed: {e}")
+
+    # Step 2: atomic replace — may fail on Windows if file is open in Excel
+    saved_path = coa_path
+    try:
+        if coa_path.exists():
+            coa_path.unlink()
+        shutil.move(str(tmp_path), str(coa_path))
+    except PermissionError:
+        # File locked — save to alternate and use that for this session
+        shutil.move(str(tmp_path), str(alt_path))
+        saved_path = alt_path
+        logger.warning("ChartOfAccounts.csv locked — saved to ChartOfAccounts_updated.csv")
+    finally:
+        if tmp_path.exists():
+            try: tmp_path.unlink()
+            except: pass
+
+    # Step 3: rebuild engine index from saved file
+    _engine_evict()
+    _engine_warm_path(coa_path=saved_path)
+
+    # Step 4: reload name/type map
+    global _COA_NAMES, _COA_NAME_TO_TYPE, _ACTIVE_COA_PATH
+    _COA_NAMES, _COA_NAME_TO_TYPE = _load_coa_names(saved_path)
+    _ACTIVE_COA_PATH = saved_path
+
+    msg = f"COA saved and index rebuilt ({len(_COA_NAMES)} accounts)"
+    if saved_path != coa_path:
+        msg += " — NOTE: original file was locked (close Excel). Saved as ChartOfAccounts_updated.csv. Restart app to make permanent."
+    return {"ok": True, "message": msg}
+
 @app.get("/gl/accounts/all")
 def get_gl_accounts_all():
-    """Return full COA rows: [{name, type, tax_code, code}] for frontend coaMap."""
+    """Return full COA rows with all columns for the GL Accounts modal and coaMap."""
     import csv
     from backend.classifier.engine import DEFAULT_COA_PATH
     rows = []
     try:
-        with open(DEFAULT_COA_PATH, newline="", encoding="utf-8-sig") as f:
+        _read_path = _ACTIVE_COA_PATH or DEFAULT_COA_PATH
+        with open(_read_path, newline="", encoding="utf-8-sig") as f:
             for r in csv.DictReader(f):
-                name = (r.get("*Name") or "").strip()
+                name = (r.get("*Name") or r.get("Name") or "").strip()
                 if name:
                     rows.append({
-                        "name":     name,
-                        "type":     (r.get("*Type")     or "").strip(),
-                        "tax_code": (r.get("*Tax Code") or "").strip(),
-                        "code":     (r.get("*Code")     or "").strip(),
+                        # Keys the modal uses for its table columns
+                        "Code":        (r.get("*Code")        or r.get("Code")        or "").strip(),
+                        "Name":        name,
+                        "Type":        (r.get("*Type")        or r.get("Type")        or "").strip(),
+                        "TaxCode":     (r.get("*Tax Code")    or r.get("Tax Code")    or "").strip(),
+                        "Description": (r.get("Description")  or "").strip(),
+                        "Dashboard":   (r.get("Dashboard")    or "").strip(),
+                        # Also snake_case for coaMap usage
+                        "name":        name,
+                        "type":        (r.get("*Type")        or r.get("Type")        or "").strip(),
+                        "tax_code":    (r.get("*Tax Code")    or r.get("Tax Code")    or "").strip(),
                     })
     except Exception as e:
         logger.warning(f"COA read failed: {e}")
@@ -433,6 +490,10 @@ def get_session(username: str, sid: str):
         # Ensure all required columns exist
         for col, default in [("GL Account",""),("GL Type",""),("GST Category",""),("GST",0.0),("Who",""),("PairID","")]:
             if col not in df.columns: df[col] = default
+        # Internal transfer rows — blank GL Account, GL Type, GST Category
+        if "Classification" in df.columns:
+            _int_mask = df["Classification"].str.contains("Internal", na=False)
+            df.loc[_int_mask, ["GL Account","GL Type","GST Category"]] = ""
         monthly = _build_monthly_summary(df)
         txns = _to_frontend(df)
     # accounts from load_session_data is the accounts.json list
@@ -548,7 +609,7 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
         parsed = pd.to_numeric(v, errors="coerce")
         return float(parsed) if pd.notnull(parsed) else 0.0
 
-    _engine_warm()
+    _engine_warm(coa_path=_ACTIVE_COA_PATH)
 
     for idx in df.index:
         desc = str(df.at[idx, "Description"]) if pd.notnull(df.at[idx, "Description"]) else ""
@@ -556,12 +617,10 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
 
         # Internal transfers: equity account / BAS Excluded / $0 GST
         if "Internal" in cl:
-            if not normalize_gl_account(df.at[idx, "GL Account"]):
-                df.at[idx, "GL Account"] = "Owner A Share Capital"
-                df.at[idx, "GL Type"]    = "Equity"
-            elif not df.at[idx, "GL Type"]:
-                df.at[idx, "GL Type"]    = _COA_NAME_TO_TYPE.get(df.at[idx, "GL Account"], "Equity")
-            df.at[idx, "GST Category"] = "BAS Excluded"
+            # Internal transfers — always blank GL Account, GL Type, GST Category
+            df.at[idx, "GL Account"]   = ""
+            df.at[idx, "GL Type"]      = ""
+            df.at[idx, "GST Category"] = ""
             df.at[idx, "GST"]          = 0.0
             df.at[idx, "Who"]          = extract_who_bank(desc)
             continue
@@ -595,12 +654,36 @@ class ClassifyReq(BaseModel):
 
 @app.post("/reconcile/classify")
 def reconcile_classify(body: ClassifyReq):
+    """Classify empty GL/GST cells only — preserves manual edits."""
     username = norm_username(body.username)
     d = session_manager.load_session_data(username, body.session_id)
     if not d or d.get("results") is None:
         raise HTTPException(404, "Session not found")
 
     df = _norm_cols(d["results"].copy())
+    df = _run_classify_gl(df)
+    monthly = _build_monthly_summary(df)
+    session_manager.save_output_data(username, body.session_id, df, {}, set(), 1)
+    return {"transactions": _to_frontend(df), "monthly_summary": monthly}
+
+
+@app.post("/reconcile/reclassify")
+def reconcile_reclassify(body: ClassifyReq):
+    """Force full reclassification of ALL rows using the current COA.
+    Clears GL Account, GL Type and GST Category before running the engine
+    so updated COA changes are applied to every row."""
+    username = norm_username(body.username)
+    d = session_manager.load_session_data(username, body.session_id)
+    if not d or d.get("results") is None:
+        raise HTTPException(404, "Session not found")
+
+    df = _norm_cols(d["results"].copy())
+
+    # Wipe classification columns so _run_classify_gl re-runs on everything
+    for col in ["GL Account", "GL Type", "GST Category", "GST"]:
+        if col in df.columns:
+            df[col] = "" if col != "GST" else 0.0
+
     df = _run_classify_gl(df)
     monthly = _build_monthly_summary(df)
     session_manager.save_output_data(username, body.session_id, df, {}, set(), 1)
@@ -630,52 +713,56 @@ def reconcile_export(body: ExportReq):
 @app.get("/dashboard/stats")
 def dashboard_stats(username: str):
     """
-    Aggregate totals across ALL reconciliation sessions for this user.
-    Does NOT require Save-to-DB — reads session pickle files directly.
+    Stats from the LATEST session only.
+    Returns all-zero totals if no sessions exist.
     """
     username = norm_username(username)
-    sessions = session_manager.get_all_sessions(username)
-    totals = {
-        "total_in":   0.0,
-        "total_out":  0.0,
-        "total_gst":  0.0,
-        "internal":   0,
-        "incoming":   0,
-        "outgoing":   0,
-        "txn_count":  0,
+    ZERO = {
+        "total_in":0.0,"total_out":0.0,"total_gst":0.0,
+        "internal":0,"incoming":0,"outgoing":0,
+        "txn_count":0,"net":0.0,"session_count":0,
     }
 
-    for s in sessions:
-        if not s.get("has_results"):
-            continue
-        try:
-            d = session_manager.load_session_data(username, s["session_id"])
-            df = d.get("results")
-            if df is None or df.empty:
-                continue
-            # Normalise column names
-            df = _norm_cols(df)
-            for _, row in df.iterrows():
-                cl = str(row.get("Classification") or row.get("classification") or "")
-                db = float(row.get("Debit",0) or row.get("debit",0) or 0)
-                cr = float(row.get("Credit",0) or row.get("credit",0) or 0)
-                gst= float(row.get("GST",0)   or row.get("gst",0)   or 0)
-                if "Incoming" in cl:
-                    totals["total_in"]  += cr
-                    totals["total_gst"] += gst
-                    totals["incoming"]  += 1
-                elif "Outgoing" in cl:
-                    totals["total_out"] += db
-                    totals["total_gst"] += gst
-                    totals["outgoing"]  += 1
-                elif "Internal" in cl:
-                    totals["internal"]  += 1
-                totals["txn_count"] += 1
-        except Exception:
-            continue
+    sessions = session_manager.get_all_sessions(username)
+    if not sessions:
+        return ZERO
 
-    totals["net"] = totals["total_in"] - totals["total_out"]
-    totals["session_count"] = len(sessions)
+    # Sort by datetime descending — pick the most recent session with results
+    def _sess_dt(s):
+        try: return str(s.get("datetime") or s.get("session_id") or "")
+        except: return ""
+
+    sorted_sessions = sorted(sessions, key=_sess_dt, reverse=True)
+    latest = next((s for s in sorted_sessions if s.get("has_results")), None)
+    if not latest:
+        return {**ZERO, "session_count": len(sessions)}
+
+    totals = {**ZERO, "session_count": len(sessions)}
+    try:
+        d  = session_manager.load_session_data(username, latest["session_id"])
+        df = d.get("results")
+        if df is None or df.empty:
+            return totals
+        df = _norm_cols(df)
+        for _, row in df.iterrows():
+            cl  = str(row.get("Classification") or row.get("classification") or "")
+            db  = float(row.get("Debit",0)  or row.get("debit",0)  or 0)
+            cr  = float(row.get("Credit",0) or row.get("credit",0) or 0)
+            gst = float(row.get("GST",0)    or row.get("gst",0)    or 0)
+            if "Incoming" in cl:
+                totals["total_in"]  += cr
+                totals["total_gst"] += gst
+                totals["incoming"]  += 1
+            elif "Outgoing" in cl:
+                totals["total_out"] += db
+                totals["total_gst"] += gst
+                totals["outgoing"]  += 1
+            elif "Internal" in cl:
+                totals["internal"]  += 1
+            totals["txn_count"] += 1
+        totals["net"] = totals["total_in"] - totals["total_out"]
+    except Exception:
+        pass
     return totals
 
 # ══════════════════════════════════════════════════════════════════════════════
