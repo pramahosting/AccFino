@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react'
-import { saveSession, saveToDB, classifyGL, exportExcel } from '../../lib/api.js'
+import { saveSession, saveToDB, classifyGL, reclassifyGL, exportExcel } from '../../lib/api.js'
 import {
   Download, Trash2, Pencil, X, Check, ChevronLeft, ChevronRight,
   BookOpen, Database, Plus, ChevronDown, ChevronUp,
@@ -51,108 +51,71 @@ function StatStrip({ stats }) {
 }
 
 // ── Column filter popover ─────────────────────────────────────────────────────
-function ColFilter({ col, values, active, onChange, onClose, anchorRef }) {
-  // active = INCLUDED set (empty = show all = no filter)
-  // staged = local selection before Apply is clicked
-  const allUnique = useMemo(() => [...new Set(values.map(v => String(v||'')))].sort(), [values])
-  const [search,  setSearch]  = useState('')
-  const [staged,  setStaged]  = useState(() =>
-    active.size === 0 ? new Set(allUnique) : new Set(active)
+function ColFilter({ col, values, active, onChange, onClose }) {
+  // selected = set of values user has ticked. Empty = no filter = show all rows.
+  // "All" and "None" both clear selection → show all rows.
+  // Ticking any option = filter to only ticked rows.
+  const unique = useMemo(() => [...new Set(values.map(v => String(v||'')))].sort(), [values])
+  // Start with all options checked (no filter). If a filter was previously
+  // applied (active non-empty), restore that selection.
+  const [selected, setSelected] = useState(() =>
+    active.size > 0 ? new Set(active) : new Set(unique)
   )
-  const shown = search
-    ? allUnique.filter(v => v.toLowerCase().includes(search.toLowerCase()))
-    : allUnique
 
-  // Position: fixed so it escapes overflow:hidden containers
-  const [pos, setPos] = React.useState({top:0, left:0, openUp:false})
-  React.useEffect(() => {
-    if (!anchorRef?.current) return
-    const r  = anchorRef.current.getBoundingClientRect()
-    const vh = window.innerHeight
-    const dropH = Math.min(360, allUnique.length * 26 + 120)
-    const openUp = r.bottom + dropH > vh - 20
-    setPos({
-      top:  openUp ? r.top - dropH - 4 : r.bottom + 4,
-      left: Math.min(r.left, window.innerWidth - 220),
-      openUp,
-    })
-  }, [anchorRef, allUnique.length])
+  const hasSelection = selected.size > 0 && selected.size < unique.length
 
-  const allChecked  = staged.size === allUnique.length
-  const noneChecked = staged.size === 0
-
-  const toggle = v => setStaged(s => {
-    const n = new Set(s)
-    n.has(v) ? n.delete(v) : n.add(v)
-    return n
+  const toggle = v => setSelected(s => {
+    const n = new Set(s); n.has(v) ? n.delete(v) : n.add(v); return n
   })
 
   const apply = () => {
-    // Empty set = no filter (show all), otherwise filter to included set
-    onChange(staged.size === allUnique.size ? new Set() : new Set(staged))
+    // All selected = no filter (pass empty set). Subset = filter to that subset.
+    onChange(selected.size === unique.length ? new Set() : new Set(selected))
     onClose()
   }
 
-  const matchCount = values.filter(v => staged.size===0 || staged.has(String(v||''))).length
-
   return (
-    <div onClick={e=>e.stopPropagation()}
-      style={{
-        position:'fixed', top:pos.top, left:pos.left,
-        zIndex:9999,
-        background:'var(--surface)', border:'1px solid var(--border)',
-        borderRadius:'var(--r-md)', boxShadow:'var(--sh-lg)',
-        padding:'10px', minWidth:200, maxWidth:280,
-        display:'flex', flexDirection:'column', gap:6,
-      }}>
-      {/* Search */}
-      <input className="input input-sm" placeholder={`Search ${allUnique.length} options…`}
-        value={search} onChange={e=>setSearch(e.target.value)} autoFocus/>
-      {/* Select / Clear all */}
+    <div onClick={e=>e.stopPropagation()} style={{
+      position:'absolute',top:'100%',left:0,zIndex:9999,
+      background:'var(--surface)',border:'1px solid var(--border)',
+      borderRadius:'var(--r-md)',boxShadow:'var(--sh-lg)',
+      padding:'10px',minWidth:200,maxHeight:340,display:'flex',flexDirection:'column',gap:6,
+    }}>
+      {/* All / None — both clear selection (show all rows) */}
       <div style={{display:'flex',gap:6,alignItems:'center'}}>
         <button className="btn btn-ghost btn-xs"
-          onClick={()=>setStaged(new Set(allUnique))}
-          style={{fontWeight: allChecked?700:400}}>
-          ✓ All
-        </button>
+          style={{fontWeight: selected.size===unique.length ? 700 : 400, color: selected.size===unique.length ? 'var(--brand)' : undefined}}
+          onClick={()=>setSelected(new Set(unique))}>All</button>
         <button className="btn btn-ghost btn-xs"
-          onClick={()=>setStaged(new Set())}
-          style={{fontWeight: noneChecked?700:400}}>
-          ✕ None
-        </button>
-        <span style={{marginLeft:'auto',fontSize:'.72rem',color:'var(--text-3)'}}>
-          {staged.size}/{allUnique.length}
-        </span>
+          style={{fontWeight: selected.size===0 ? 700 : 400}}
+          onClick={()=>setSelected(new Set())}>None</button>
+        {hasSelection && (
+          <span style={{fontSize:'.72rem',color:'var(--warning)',marginLeft:'auto'}}>
+            {selected.size} selected
+          </span>
+        )}
       </div>
-      {/* Options list — always shows ALL options, never hides them */}
-      <div style={{overflowY:'auto',maxHeight:220,display:'flex',flexDirection:'column',gap:1}}>
-        {shown.map(v => (
-          <label key={v} style={{
-            display:'flex',alignItems:'center',gap:7,cursor:'pointer',
-            fontSize:'.78rem',padding:'3px 4px',borderRadius:4,
-            background: staged.has(v) ? 'var(--brand-xlight)' : 'transparent',
-            transition:'background .1s',
-          }}>
-            <input type="checkbox" checked={staged.has(v)} onChange={()=>toggle(v)}
+      {/* Divider */}
+      <div style={{borderTop:'1px solid var(--border)',margin:'0 -4px'}}/>
+      {/* All options always visible */}
+      <div style={{overflowY:'auto',flex:1,display:'flex',flexDirection:'column',gap:1}}>
+        {unique.map(v => (
+          <label key={v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',
+            fontSize:'.78rem',padding:'3px 6px',borderRadius:4,
+            background: selected.has(v) ? 'var(--brand-xlight)' : 'transparent',
+            transition:'background .1s'}}>
+            <input type="checkbox" checked={selected.has(v)} onChange={()=>toggle(v)}
               style={{accentColor:'var(--brand)',flexShrink:0}}/>
             <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>
               {v||'(blank)'}
             </span>
           </label>
         ))}
-        {shown.length === 0 && (
-          <div style={{padding:'8px 4px',color:'var(--text-3)',fontSize:'.75rem',textAlign:'center'}}>
-            No options match
-          </div>
-        )}
       </div>
-      {/* Apply / Cancel */}
-      <div style={{display:'flex',gap:6,borderTop:'1px solid var(--border)',paddingTop:6}}>
-        <button className="btn btn-ghost btn-xs" onClick={onClose} style={{flex:1}}>Cancel</button>
-        <button className="btn btn-primary btn-xs" onClick={apply} style={{flex:2}}>
-          Apply ({matchCount} rows)
-        </button>
-      </div>
+      {/* Apply */}
+      <button className="btn btn-primary btn-xs" onClick={apply}>
+        Apply{hasSelection ? ` (${selected.size})` : ' (all)'}
+      </button>
     </div>
   )
 }
@@ -160,23 +123,11 @@ function ColFilter({ col, values, active, onChange, onClose, anchorRef }) {
 // ── Sort/Filter header cell ───────────────────────────────────────────────────
 function SortTh({ label, field, sort, setSort, colFilters, setColFilters, values, style }) {
   const [open, setOpen] = useState(false)
-  const anchorRef = React.useRef(null)
   const isAsc  = sort.field===field && sort.dir==='asc'
   const isDesc = sort.field===field && sort.dir==='desc'
   const hasFilter = colFilters[field] && colFilters[field].size > 0
-
-  // Close popover when clicking outside
-  React.useEffect(() => {
-    if (!open) return
-    const handler = e => {
-      if (anchorRef.current && !anchorRef.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  return (
-    <th ref={anchorRef} style={{position:'relative',userSelect:'none',whiteSpace:'nowrap',...style}}>
+return (
+    <th style={{position:'relative',userSelect:'none',whiteSpace:'nowrap',...style}}>
       <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
         <span style={{fontSize:'.82rem',fontWeight:600,cursor:'pointer'}}
           onClick={()=>setSort(s=>s.field===field ? {field,dir:s.dir==='asc'?'desc':'asc'} : {field,dir:'asc'})}>
@@ -197,38 +148,36 @@ function SortTh({ label, field, sort, setSort, colFilters, setColFilters, values
         <ColFilter col={field} values={values}
           active={colFilters[field]||new Set()}
           onChange={v=>setColFilters(f=>({...f,[field]:v}))}
-          onClose={()=>setOpen(false)}
-          anchorRef={anchorRef}/>
+          onClose={()=>setOpen(false)}/>
       )}
     </th>
   )
 }
 
 // ── Chart of Accounts Modal ───────────────────────────────────────────────────
-function ChartOfAccountsModal({ onClose, glAccounts, setGlAccounts }) {
+function ChartOfAccountsModal({ onClose, glAccounts, setGlAccounts, onSaveAndReclassify, onCoaMapUpdate }) {
   const [rows,    setRows]    = useState([])
   const [loading, setLoading] = useState(true)
 
   React.useEffect(()=>{
     fetch('/api/gl/accounts/all').then(r=>r.json()).then(d=>{
-      if (d.rows && d.rows.length) {
-        // Strip leading * from keys
-        const cleaned = d.rows.map((row,i)=>({
-          id: i,
-          Code:        row.Code        || row['Code']        || '',
-          Name:        row.Name        || row['Name']        || '',
-          Type:        row.Type        || row['Type']        || '',
-          TaxCode:     row['Tax Code'] || row.TaxCode        || '',
-          Description: row.Description|| row.Description     || '',
+      // API returns plain array of rows
+      const arr = Array.isArray(d) ? d : (d.rows || [])
+      if (arr.length) {
+        setRows(arr.map((row,i)=>({
+          id:          i,
+          Code:        row.Code        || '',
+          Name:        row.Name        || '',
+          Type:        row.Type        || '',
+          TaxCode:     row.TaxCode     || row['Tax Code'] || '',
+          Description: row.Description || '',
           Dashboard:   row.Dashboard   || '',
-        }))
-        setRows(cleaned)
+        })))
       } else {
-        // Fallback to current glAccounts list
-        setRows(glAccounts.map((name,i)=>({id:i,Code:'',Name:name,Type:'',TaxCode:'',Description:''})))
+        setRows(glAccounts.map((name,i)=>({id:i,Code:'',Name:name,Type:'',TaxCode:'',Description:'',Dashboard:''})))
       }
     }).catch(()=>{
-      setRows(glAccounts.map((name,i)=>({id:i,Code:'',Name:name,Type:'',TaxCode:'',Description:''})))
+      setRows(glAccounts.map((name,i)=>({id:i,Code:'',Name:name,Type:'',TaxCode:'',Description:'',Dashboard:''})))
     }).finally(()=>setLoading(false))
   }, [])
   const [editIdx, setEditIdx] = useState(null)
@@ -240,19 +189,45 @@ function ChartOfAccountsModal({ onClose, glAccounts, setGlAccounts }) {
 
   const COLS = ['Code','Name','Type','TaxCode','Description','Dashboard']
 
+  const parseCSV = (text) => {
+    // Proper CSV parser — handles quoted fields with commas inside
+    const rows = []
+    const lines = text.replace(/\r/g,'').split('\n')
+    for (const line of lines) {
+      if (!line.trim()) continue
+      const cols = []; let cur = ''; let inQ = false
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i]
+        if (ch === '"') {
+          if (inQ && line[i+1] === '"') { cur += '"'; i++ }  // escaped quote
+          else inQ = !inQ
+        } else if (ch === ',' && !inQ) { cols.push(cur); cur = '' }
+        else cur += ch
+      }
+      cols.push(cur)
+      rows.push(cols.map(v=>v.trim()))
+    }
+    return rows
+  }
+
   const handleUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return
     const text = await file.text()
-    const lines = text.split('\n').filter(l=>l.trim())
-    const header = lines[0].split(',').map(h=>h.replace(/^\*|"/g,'').trim())
-    const parsed = lines.slice(1).map((line,i)=>{
-      const vals = line.split(',').map(v=>v.replace(/"/g,'').trim())
-      const obj = {id:i}
-      header.forEach((h,j)=>{ obj[h]=vals[j]||'' })
-      if (!obj.Name && !obj['*Name']) return null
-      return { id:i, Code:obj.Code||obj['*Code']||'', Name:obj.Name||obj['*Name']||'',
-               Type:obj.Type||obj['*Type']||'', TaxCode:obj['Tax Code']||obj['*Tax Code']||'',
-               Description:obj.Description||'' }
+    const allRows = parseCSV(text)
+    if (allRows.length < 2) { toast.error('CSV appears empty'); return }
+    const header = allRows[0].map(h=>h.replace(/^\*/,'').trim())
+    const parsed = allRows.slice(1).map((vals,i)=>{
+      const obj = {}; header.forEach((h,j)=>{ obj[h]=vals[j]||'' })
+      const name = obj.Name || obj['*Name'] || ''
+      if (!name) return null
+      return { id:i,
+        Code:        obj.Code        || obj['*Code']        || '',
+        Name:        name,
+        Type:        obj.Type        || obj['*Type']        || '',
+        TaxCode:     obj['Tax Code'] || obj['*Tax Code']    || obj.TaxCode || '',
+        Description: obj.Description || '',
+        Dashboard:   obj.Dashboard   || '',
+      }
     }).filter(Boolean)
     setRows(parsed)
     toast.success(`Loaded ${parsed.length} accounts from CSV`)
@@ -261,25 +236,42 @@ function ChartOfAccountsModal({ onClose, glAccounts, setGlAccounts }) {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const names = rows.map(r=>r.Name).filter(Boolean)
-      setGlAccounts(names)
-      // Save back to server via filemanager save
-      const csvContent = ['*Code,*Name,*Type,*Tax Code,Description',
-        ...rows.map(r=>`${r.Code},${r.Name},${r.Type},${r.TaxCode},${r.Description}`)
+      // Build CSV with all columns — quote all text fields to handle commas
+      const q = v => `"${(v||'').replace(/"/g,'""')}"`
+      const csvContent = ['*Code,*Name,*Type,*Tax Code,Description,Dashboard',
+        ...rows.map(r=>[q(r.Code),q(r.Name),q(r.Type),q(r.TaxCode),q(r.Description),q(r.Dashboard||'')].join(','))
       ].join('\n')
       const blob = new Blob([csvContent], {type:'text/csv'})
-      // POST to backend to save
       const fd = new FormData()
       fd.append('file', blob, 'ChartOfAccounts.csv')
-      await fetch('/api/gl/accounts/upload', {method:'POST', body:fd})
-      toast.success(`Saved ${names.length} accounts`)
-      onClose()
-    } catch {
-      // Even if server save fails, update local GL list
-      const names = rows.map(r=>r.Name).filter(Boolean)
+
+      // Upload and wait for server to confirm rebuild
+      const resp = await fetch('/api/gl/accounts/upload', {method:'POST', body:fd})
+      if (!resp.ok) throw new Error(await resp.text())
+      const result = await resp.json()
+
+      // Refresh GL accounts dropdown and coaMap from server
+      const allResp = await fetch('/api/gl/accounts/all')
+      const allRows = await allResp.json()
+      const arr = Array.isArray(allRows) ? allRows : (allRows.rows||[])
+      const names = arr.map(r=>r.Name||r.name).filter(Boolean)
       setGlAccounts(names)
-      toast.success(`Updated ${names.length} GL accounts locally`)
+
+      // Rebuild coaMap so auto-fill picks up new accounts immediately
+      if (typeof onCoaMapUpdate === 'function') {
+        const map = {}
+        arr.forEach(r=>{
+          const name = r.Name||r.name
+          if(name) map[name]={type:r.Type||r.type||'', tax_code:r.TaxCode||r.tax_code||''}
+        })
+        onCoaMapUpdate(map)
+      }
+
+      toast.success(`${result.message || `Saved ${names.length} accounts`} — re-classifying…`)
       onClose()
+      if (onSaveAndReclassify) onSaveAndReclassify()
+    } catch(err) {
+      toast.error(`Save failed: ${err.message}`)
     } finally { setSaving(false) }
   }
 
@@ -301,7 +293,7 @@ function ChartOfAccountsModal({ onClose, glAccounts, setGlAccounts }) {
         onClick={e=>e.stopPropagation()}>
         <div className="modal-header" style={{flexShrink:0}}>
           <BookOpen size={18} color="var(--brand)"/>
-          <h3>GL Accounts — Chart of Accounts</h3>
+          <h3>Chart of Accounts (COA)</h3>
           <div style={{marginLeft:'auto',display:'flex',gap:8}}>
             <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}} onChange={handleUpload}/>
             <button className="btn btn-outline btn-sm" onClick={()=>fileRef.current.click()}>
@@ -339,7 +331,9 @@ function ChartOfAccountsModal({ onClose, glAccounts, setGlAccounts }) {
           <table className="data-table" style={{fontSize:'.78rem',display:loading?'none':'table'}}>
             <thead>
               <tr>
-                {COLS.map(c=><th key={c}>{c}</th>)}
+                {[['Code','Code'],['Name','Account Name'],['Type','Type'],['TaxCode','Tax Code'],['Description','Description'],['Dashboard','Dashboard']].map(([k,lbl])=>(
+                  <th key={k} style={{whiteSpace:'nowrap'}}>{lbl}</th>
+                ))}
                 <th style={{width:70}}>Actions</th>
               </tr>
             </thead>
@@ -398,18 +392,24 @@ export default function OutputPanel({
   const [glAccounts,  setGlAccounts]  = useState([
     'Revenue','Direct Costs','Expense','Inventory','Fixed Asset','GST','Equity','Transfer','Liability',''
   ])
-  // coaMap: { name -> { type, tax_code } } — used for auto-fill on GL Account change
   const [coaMap, setCoaMap] = useState({})
 
-  // Load GL accounts + full COA map from API on mount
   React.useEffect(()=>{
     fetch('/api/gl/accounts').then(r=>r.json()).then(d=>{
       if(Array.isArray(d) && d.length) setGlAccounts(d)
     }).catch(()=>{})
-    fetch('/api/gl/accounts/all').then(r=>r.json()).then(rows=>{
-      if(Array.isArray(rows)){
+    fetch('/api/gl/accounts/all').then(r=>r.json()).then(d=>{
+      const rows = Array.isArray(d) ? d : (d.rows||[])
+      if(rows.length){
         const map = {}
-        rows.forEach(r=>{ if(r.name) map[r.name] = {type: r.type||'', tax_code: r.tax_code||''} })
+        // API row has both PascalCase (for modal) and snake_case (for coaMap)
+        rows.forEach(r=>{
+          const name = r.Name || r.name
+          if(name) map[name] = {
+            type:     r.Type     || r.type     || '',
+            tax_code: r.TaxCode  || r.tax_code || r['Tax Code'] || '',
+          }
+        })
         setCoaMap(map)
       }
     }).catch(()=>{})
@@ -423,7 +423,7 @@ export default function OutputPanel({
       if (!filters.incoming     && cl.includes('Incoming'))    return false
       if (!filters.outgoing     && cl.includes('Outgoing'))    return false
       if (!filters.unclassified && cl.includes('Unclassified')) return false
-      // Column filters — included-set model (empty = show all, non-empty = show only included)
+      // Column filters (excluded values)
       for (const [field, included] of Object.entries(colFilters)) {
         if (included && included.size > 0) {
           const v = String(t[field]||'')
@@ -472,8 +472,6 @@ export default function OutputPanel({
   }, [filtered])
 
   // values for column filter dropdowns
-  // colVals reads from filtered (not transactions) so options update when
-  // other column filters or chip filters are active — cascading filter behaviour
   const colVals = useCallback((field) =>
     filtered.map(t=>String(t[field]||'')), [filtered])
 
@@ -507,7 +505,6 @@ export default function OutputPanel({
   }
   const toggleF = k => {
     setFilters(f=>({...f,[k]:!f[k]}))
-    // Clear column filter on 'classification' when chip changes — prevents conflicts
     setColFilters(cf => {
       if (!cf.classification || cf.classification.size === 0) return cf
       const next = {...cf}
@@ -548,6 +545,23 @@ export default function OutputPanel({
         toast.success('GL & GST classification complete')
       }
     } catch (e) { toast.error(e.response?.data?.detail||'Classification failed') }
+  }
+
+  // Full reclassify — clears existing GL/GST and re-runs from current COA
+  const handleReclassify = async () => {
+    if (!sessionId) { toast.error('Process files first'); return }
+    try { await saveSession({session_id:sessionId,username,transactions,pending_changes:{},page_number:safePage}) } catch {}
+    try {
+      toast.loading('Reclassifying all rows…', {id:'reclassify'})
+      const { data } = await reclassifyGL(sessionId, username)
+      if (data?.transactions) {
+        setTransactions(data.transactions)
+        if (data.monthly_summary) setMonthlySummary(data.monthly_summary)
+        toast.success('Reclassification complete', {id:'reclassify'})
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail||'Reclassification failed', {id:'reclassify'})
+    }
   }
 
   // ── save session ──────────────────────────────────────────────────────────
@@ -608,6 +622,8 @@ export default function OutputPanel({
           onClose={()=>setShowCoA(false)}
           glAccounts={glAccounts}
           setGlAccounts={setGlAccounts}
+          onSaveAndReclassify={handleReclassify}
+          onCoaMapUpdate={setCoaMap}
         />
       )}
 
@@ -681,7 +697,11 @@ export default function OutputPanel({
             <div style={{flex:1}}/>
             <button className="btn btn-outline btn-sm" onClick={()=>setShowAdd(s=>!s)}><Plus size={13}/> Add Row</button>
             <button className="btn btn-outline btn-sm" onClick={()=>setShowCoA(true)}>
-              <BookOpen size={13}/> GL Accounts
+              <BookOpen size={13}/> COA
+            </button>
+            <button className="btn btn-accent btn-sm" onClick={handleReclassify}
+              title="Re-classify all rows using current Chart of Accounts (COA)">
+              <RefreshCw size={13}/> Reclassify
             </button>
             {hasEdits && (
               <button className="btn btn-warning btn-sm" onClick={commitEdits}>
@@ -703,15 +723,13 @@ export default function OutputPanel({
             <span style={{fontSize:'.72rem',color:'var(--text-3)',marginRight:4}}>Show:</span>
             {[['internal','🟢','badge-cls-int'],['incoming','🔵','badge-cls-in'],
               ['outgoing','🟡','badge-cls-out'],['unclassified','⚪','badge-neutral']].map(([k,emoji,cls])=>{
-              // Show orange dot on chip if any column filter is active while this chip is ON
               const hasColFilter = filters[k] && Object.values(colFilters).some(v=>v&&v.size>0)
               return (
                 <button key={k} onClick={()=>toggleF(k)}
                   className={`chip${filters[k]?` ${k==='internal'?'active-int':k==='incoming'?'active-in':k==='outgoing'?'active-out':''}`:''}`}
                   style={{opacity:filters[k]?1:.4,transition:'opacity .15s',fontSize:'.75rem',padding:'4px 10px',
                     outline: hasColFilter ? '2px solid var(--warning)' : 'none',
-                    outlineOffset: '2px',
-                    position:'relative'}}>
+                    outlineOffset: '2px', position:'relative'}}>
                   {emoji} {k.charAt(0).toUpperCase()+k.slice(1)}
                   {hasColFilter && <span style={{position:'absolute',top:-4,right:-4,width:8,height:8,borderRadius:'50%',background:'var(--warning)',border:'2px solid var(--surface)'}}/>}
                 </button>
@@ -871,7 +889,7 @@ export default function OutputPanel({
                         {glAccounts.map(o=><option key={o} value={o}>{o||'—'}</option>)}
                       </select>
                     </td>
-                    {/* GL Type — read-only, auto-populated from COA when GL Account changes */}
+                    {/* GL Type — read-only, auto-populated from COA */}
                     <td>
                       <span style={{fontSize:'.75rem',color:'var(--text-3)',padding:'0 6px',
                         whiteSpace:'nowrap',background:'var(--surface-2)',borderRadius:4,
@@ -885,12 +903,15 @@ export default function OutputPanel({
                         value={v('gst')||''} onChange={e=>setCell(ai,'gst',parseFloat(e.target.value)||0)}
                         style={{width:80,textAlign:'right',fontFamily:'var(--font-mono)',fontSize:'.78rem',color:'var(--brand)'}}/>
                     </td>
-                    {/* GST Category */}
+                    {/* GST Category — blank for internal transfers */}
                     <td>
-                      <select value={v('gst_category')||'Unknown'} onChange={e=>{ setCell(ai,'gst_category',e.target.value); updateCell(ai,'gst_category',e.target.value) }}
-                        className="select-compact" style={{minWidth:142}}>
-                        {GST_CATS.map(o=><option key={o}>{o}</option>)}
-                      </select>
+                      {(v('classification')||'').includes('Internal')
+                        ? <span style={{color:'var(--text-3)',fontSize:'.75rem',padding:'0 4px'}}>—</span>
+                        : <select value={v('gst_category')||''} onChange={e=>{ setCell(ai,'gst_category',e.target.value); updateCell(ai,'gst_category',e.target.value) }}
+                            className="select-compact" style={{minWidth:142}}>
+                            {GST_CATS.map(o=><option key={o}>{o}</option>)}
+                          </select>
+                      }
                     </td>
                     {/* Who */}
                     <td>
@@ -921,10 +942,8 @@ export default function OutputPanel({
             <button className="page-btn" disabled={safePage<=1} onClick={()=>setPage(p=>p-1)}><ChevronLeft size={14}/></button>
             {(()=>{
               const WINDOW = 9
-              // Sliding window: centre on safePage, clamp to [1, totalPages]
               let start = Math.max(1, safePage - Math.floor(WINDOW/2))
               let end   = Math.min(totalPages, start + WINDOW - 1)
-              // Shift start left if window is short at the end
               start = Math.max(1, end - WINDOW + 1)
               const pages = []
               if (start > 1) pages.push(<button key="first" className="page-btn" onClick={()=>setPage(1)}>1</button>, <span key="el1" style={{padding:'0 2px',color:'var(--text-3)'}}>…</span>)
