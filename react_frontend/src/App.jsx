@@ -50,6 +50,7 @@ import FileManagerPage       from './pages/FileManagerPage.jsx'
 import LicencePage           from './pages/LicencePage.jsx'
 import PricingAdminPage      from './pages/PricingAdminPage.jsx'
 import ResetPasswordPage     from './pages/ResetPasswordPage.jsx'
+import SetupPage             from './pages/SetupPage.jsx'
 
 function Guard({ children, adminOnly }) {
   const { user } = useAuth()
@@ -72,6 +73,7 @@ function AppRoutes() {
         <Route path="trading"           element={<TradingPage />} />
         <Route path="cash-flow"         element={<CashFlowPage />} />
         <Route path="invoice"           element={<InvoicePage />} />
+        <Route path="setup"             element={<SetupPage />} />
         <Route path="admin"             element={<Guard adminOnly><AdminPage /></Guard>} />
         <Route path="file-manager"      element={<Guard adminOnly><FileManagerPage /></Guard>} />
         <Route path="licence"           element={<Guard adminOnly><LicencePage /></Guard>} />
