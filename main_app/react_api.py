@@ -187,6 +187,7 @@ def _norm_cols(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={
         "date":         "Date",
         "bank":         "Bank",
+        "account_name": "Account Name",
         "account":      "Account",
         "description":  "Description",
         "debit":        "Debit",
@@ -215,8 +216,9 @@ def _to_frontend(df: pd.DataFrame) -> list:
     df2 = df.copy()
     # Rename Title Case back to lowercase for consistent frontend keys
     df2 = df2.rename(columns={
-        "Date": "date", "Bank": "bank", "Account": "account",
-        "Description": "description", "Debit": "debit", "Credit": "credit",
+        "Date": "date", "Bank": "bank", "Account Name": "account_name",
+        "Account": "account", "Description": "description",
+        "Debit": "debit", "Credit": "credit",
         "Classification": "classification", "PairID": "pairid",
         "GL Account": "gl_account", "GL Type": "gl_type", "GST": "gst",
         "GST Category": "gst_category", "Who": "who",
@@ -529,19 +531,24 @@ async def reconcile_process(
     files: List[UploadFile]=File(...),
     bank_names: List[str]=Form(...),
     account_numbers: List[str]=Form(...),
+    account_names:   Optional[List[str]]=Form(default=None),
     username: str=Form(...),
 ):
     normed = []
     # Track filenames per (bank, account) as we read — files can only be read once
     _acc_files: dict = {}   # (bank, account) -> [filename, ...]
     for i, upload in enumerate(files):
-        bank    = bank_names[i]      if i < len(bank_names)      else "Unknown"
-        account = account_numbers[i] if i < len(account_numbers) else "Unknown"
-        fname   = upload.filename or f"file_{i}.csv"
-        _acc_files.setdefault((bank, account), []).append(fname)
+        bank         = bank_names[i]      if i < len(bank_names)      else "Unknown"
+        account      = account_numbers[i] if i < len(account_numbers) else "Unknown"
+        account_name = (account_names or [])[i] if account_names and i < len(account_names) else ""
+        fname        = upload.filename or f"file_{i}.csv"
+        _acc_files.setdefault((bank, account), []).append((fname, account_name))
         try:
             df = pd.read_csv(io.BytesIO(await upload.read()))
-            normed.append(normalize_transactions(df, bank, account))
+            normalized = normalize_transactions(df, bank, account)
+            if account_name:
+                normalized["account_name"] = account_name
+            normed.append(normalized)
         except Exception as e:
             logger.warning(f"Skip {upload.filename}: {e}")
     if not normed: raise HTTPException(400, "No valid CSVs")
@@ -568,8 +575,13 @@ async def reconcile_process(
     # and so session restore can repopulate the Input panel
     import json as _json
     accounts_meta = [
-        {"bank_name": bank, "account_number": account, "files": fnames}
-        for (bank, account), fnames in _acc_files.items()
+        {
+            "bank_name":    bank,
+            "account_number": account,
+            "account_name": tuples[0][1] if tuples else "",
+            "files":        [t[0] for t in tuples],
+        }
+        for (bank, account), tuples in _acc_files.items()
     ]
 
     try:
