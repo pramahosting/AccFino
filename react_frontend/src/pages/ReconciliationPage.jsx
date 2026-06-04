@@ -6,6 +6,7 @@ import InputPanel       from '../components/reconciliation/InputPanel.jsx'
 import OpenBankingInput from '../components/reconciliation/OpenBankingInput.jsx'
 import OutputPanel      from '../components/reconciliation/OutputPanel.jsx'
 import { processFiles, getSession, getBanks } from '../lib/api.js'
+import { ReconciliationContext } from '../components/layout/Layout.jsx'
 import toast from 'react-hot-toast'
 
 export default function ReconciliationPage() {
@@ -30,12 +31,20 @@ export default function ReconciliationPage() {
   const location   = useLocation()
   const navigate   = useNavigate()
 
-  const [mainTab,        setMainTab]        = useState('input')
+  // ── Pull persistent state from Layout context ───────────────────────────
+  const recon = React.useContext(ReconciliationContext)
+  const transactions    = recon.transactions
+  const setTransactions = recon.setTransactions
+  const monthlySummary  = recon.monthlySummary
+  const setMonthlySummary = recon.setMonthlySummary
+  const sessionId       = recon.sessionId
+  const setSessionId    = recon.setSessionId
+  const accounts        = recon.accounts
+  const setAccounts     = recon.setAccounts
+  const mainTab         = recon.mainTab
+  const setMainTab      = recon.setMainTab
+
   const [inputMode,      setInputMode]      = useState('csv')
-  const [accounts,       setAccounts]       = useState([])
-  const [transactions,   setTransactions]   = useState(null)
-  const [monthlySummary, setMonthlySummary] = useState([])
-  const [sessionId,      setSessionId]      = useState(null)
   const [running,        setRunning]        = useState(false)
 
   const username = user?.username || user?.email || 'default_user'
@@ -55,6 +64,7 @@ export default function ReconciliationPage() {
       setSessionId(sid)
       const restored = (data.accounts_meta || []).map(a => ({
         bankName:      a.bank_name || a.bankName || '',
+        accountName:   a.account_name || a.accountName || '',
         accountNumber: a.account_number || a.accountNumber || '',
         files:         [],
         fileNames:     a.files || [],
@@ -92,9 +102,10 @@ export default function ReconciliationPage() {
   }
 
   const handleProcess = useCallback(async () => {
-    const active = accounts.filter(a => !a.restored || a.files.length > 0)
+    // Include ALL accounts that have files — both new and restored with new files
+    const active = accounts.filter(a => a.files.length > 0)
     if (!active.length) {
-      toast.error('Add at least one bank account with a CSV file'); return
+      toast.error('Add at least one CSV file'); return
     }
     setRunning(true)
     try {
@@ -104,6 +115,7 @@ export default function ReconciliationPage() {
           fd.append('files',           f, f.name)
           fd.append('bank_names',      acc.bankName)
           fd.append('account_numbers', acc.accountNumber)
+          fd.append('account_names',   acc.accountName || '')
         })
       })
       fd.append('username', username)
@@ -180,7 +192,14 @@ export default function ReconciliationPage() {
             </button>
           ))}
         </div>
-        <div style={{display:'flex',alignItems:'center',paddingRight:8}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,paddingRight:8}}>
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={handleResetSession}
+            style={{height:34}}
+            title="Clear all input and output — start a fresh session">
+            ✦ New Session
+          </button>
           <button
             className="btn btn-primary btn-sm"
             onClick={handleProcess}
@@ -255,10 +274,11 @@ export default function ReconciliationPage() {
 
 // ── CSV Add Account ──────────────────────────────────────────────────────────
 function CSVAddAccount({ accounts, setAccounts }) {
-  const [banks,    setBanks]   = useState([])
-  const [bankName, setBankName]= useState('')
-  const [accNum,   setAccNum]  = useState('')
-  const [pending,  setPending] = useState([])
+  const [banks,       setBanks]      = useState([])
+  const [bankName,    setBankName]   = useState('')
+  const [accNum,      setAccNum]     = useState('')
+  const [accountName, setAccountName]= useState('')
+  const [pending,     setPending]    = useState([])
   const [dragging, setDragging]= useState(false)
   const fileRef = React.useRef()
 
@@ -272,8 +292,8 @@ function CSVAddAccount({ accounts, setAccounts }) {
     if (!bankName || !accNum || !pending.length) {
       alert('Select a bank, enter account number, and upload at least one CSV'); return
     }
-    setAccounts(a=>[...a,{bankName,accountNumber:accNum,files:pending,fileNames:pending.map(f=>f.name),restored:false}])
-    setBankName(''); setAccNum(''); setPending([])
+    setAccounts(a=>[...a,{bankName,accountNumber:accNum,accountName,files:pending,fileNames:pending.map(f=>f.name),restored:false}])
+    setBankName(''); setAccNum(''); setAccountName(''); setPending([])
   }
 
   return (
@@ -284,6 +304,10 @@ function CSVAddAccount({ accounts, setAccounts }) {
           <option value="">Select bank…</option>
           {banks.map(b=><option key={b} value={b}>{b}</option>)}
         </select>
+      </div>
+      <div className="input-group">
+        <label>Account Name</label>
+        <input className="input" value={accountName} onChange={e=>setAccountName(e.target.value)} placeholder="e.g. Business Cheque"/>
       </div>
       <div className="input-group">
         <label>Account Number</label>
