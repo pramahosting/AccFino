@@ -51,7 +51,7 @@ function StatStrip({ stats }) {
 }
 
 // ── Column filter popover ─────────────────────────────────────────────────────
-function ColFilter({ col, values, active, onChange, onClose }) {
+function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
   // selected = set of values user has ticked. Empty = no filter = show all rows.
   // "All" and "None" both clear selection → show all rows.
   // Ticking any option = filter to only ticked rows.
@@ -76,10 +76,11 @@ function ColFilter({ col, values, active, onChange, onClose }) {
 
   return (
     <div onClick={e=>e.stopPropagation()} style={{
-      position:'absolute',top:'100%',left:0,zIndex:9999,
+      position:'fixed', top:anchorPos.top, left:anchorPos.left, zIndex:99999,
       background:'var(--surface)',border:'1px solid var(--border)',
       borderRadius:'var(--r-md)',boxShadow:'var(--sh-lg)',
-      padding:'10px',minWidth:200,maxHeight:340,display:'flex',flexDirection:'column',gap:6,
+      padding:'10px',minWidth:200,maxHeight:anchorPos.maxH,
+      display:'flex',flexDirection:'column',gap:6,
     }}>
       {/* All / None — both clear selection (show all rows) */}
       <div style={{display:'flex',gap:6,alignItems:'center'}}>
@@ -134,14 +135,56 @@ function ColFilter({ col, values, active, onChange, onClose }) {
 }
 
 // ── Sort/Filter header cell ───────────────────────────────────────────────────
-function SortTh({ label, field, sort, setSort, colFilters, setColFilters, values, style }) {
+function SortTh({ label, field, sort, setSort, colFilters, setColFilters, values, style, onResize, colWidth }) {
   const [open, setOpen] = useState(false)
+  const thRef  = React.useRef(null)
   const isAsc  = sort.field===field && sort.dir==='asc'
   const isDesc = sort.field===field && sort.dir==='desc'
   const hasFilter = colFilters[field] && colFilters[field].size > 0
-return (
-    <th style={{position:'relative',userSelect:'none',whiteSpace:'nowrap',...style}}>
-      <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
+
+  const [anchorPos, setAnchorPos] = React.useState({top:0,left:0,maxH:360})
+
+  // Close on outside click
+  React.useEffect(()=>{
+    if (!open) return
+    const handler = e => { if (thRef.current && !thRef.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return ()=>document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  // ── Resize handle drag logic ────────────────────────────────────────────
+  const startResize = e => {
+    e.preventDefault(); e.stopPropagation()
+    const startX   = e.clientX
+    const startW   = thRef.current ? thRef.current.getBoundingClientRect().width : (colWidth || 100)
+    const onMove   = mv => { if (onResize) onResize(Math.max(40, startW + mv.clientX - startX)) }
+    const onUp     = ()  => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup',   onUp)
+  }
+
+  const openFilter = e => {
+    e.stopPropagation()
+    if (!thRef.current) { setOpen(o=>!o); return }
+    // Compute position fresh from the <th> rect at click time
+    const r  = thRef.current.getBoundingClientRect()
+    const vh = window.innerHeight
+    setAnchorPos({
+      top:  r.bottom + 4,
+      left: Math.min(r.left, window.innerWidth - 216),
+      maxH: Math.max(120, vh - r.bottom - 20),
+    })
+    setOpen(o=>!o)
+  }
+
+  const thStyle = {
+    position:'relative', userSelect:'none', whiteSpace:'nowrap',
+    ...(colWidth ? {width:colWidth, minWidth:colWidth} : {}),
+    ...style,
+  }
+  return (
+    <th ref={thRef} style={thStyle}>
+      <div style={{display:'inline-flex',alignItems:'center',gap:4,width:'100%'}}>
         <span style={{fontSize:'.82rem',fontWeight:600,cursor:'pointer'}}
           onClick={()=>setSort(s=>s.field===field ? {field,dir:s.dir==='asc'?'desc':'asc'} : {field,dir:'asc'})}>
           {label}
@@ -152,7 +195,7 @@ return (
           :isDesc ? <ArrowDown size={15} color="var(--brand)"/>
           :         <ArrowUpDown size={15} color="var(--text-3)" opacity={0.5}/>}
         </span>
-        <span onClick={e=>{e.stopPropagation();setOpen(o=>!o)}}
+        <span onClick={openFilter}
           style={{cursor:'pointer',fontSize:'20px',lineHeight:1,padding:'0 2px',
             color:hasFilter?'var(--warning)':'var(--text-3)',
             fontWeight:hasFilter?700:400}}>▾</span>
@@ -161,8 +204,22 @@ return (
         <ColFilter col={field} values={values}
           active={colFilters[field]||new Set()}
           onChange={v=>setColFilters(f=>({...f,[field]:v}))}
-          onClose={()=>setOpen(false)}/>
+          onClose={()=>setOpen(false)}
+          anchorPos={anchorPos}/>
       )}
+      {/* Resize handle — drag right edge to resize column */}
+      <div
+        onMouseDown={startResize}
+        style={{
+          position:'absolute', right:0, top:0, bottom:0, width:5,
+          cursor:'col-resize', userSelect:'none',
+          background:'transparent',
+          borderRight:'2px solid transparent',
+          transition:'border-color .15s',
+        }}
+        onMouseEnter={e=>e.currentTarget.style.borderRightColor='var(--brand)'}
+        onMouseLeave={e=>e.currentTarget.style.borderRightColor='transparent'}
+      />
     </th>
   )
 }
@@ -401,7 +458,6 @@ export default function OutputPanel({
   const [saving,      setSaving]      = useState(false)
   const [showSummary, setShowSummary] = useState(true)
   const [showTxn,     setShowTxn]     = useState(true)
-  const [showCoA,     setShowCoA]     = useState(false)
   const [glAccounts,  setGlAccounts]  = useState([
     'Revenue','Direct Costs','Expense','Inventory','Fixed Asset','GST','Equity','Transfer','Liability',''
   ])
@@ -455,11 +511,21 @@ export default function OutputPanel({
       )
     }
     if (sort.field) {
+      const parseVal = (v, field) => {
+        if (field === 'date') {
+          // Parse dd/mm/yyyy or ISO date for correct year-month-day comparison
+          const s = String(v||'').trim()
+          const dm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+          if (dm) return new Date(+dm[3], +dm[2]-1, +dm[1]).getTime()
+          const iso = Date.parse(s)
+          return isNaN(iso) ? 0 : iso
+        }
+        const n = parseFloat(v)
+        return isNaN(n) ? String(v??'').toLowerCase() : n
+      }
       rows = [...rows].sort((a,b)=>{
-        let av = a[sort.field]??'', bv = b[sort.field]??''
-        const an = parseFloat(av), bn = parseFloat(bv)
-        if (!isNaN(an) && !isNaN(bn)) { av=an; bv=bn }
-        else { av=String(av).toLowerCase(); bv=String(bv).toLowerCase() }
+        const av = parseVal(a[sort.field], sort.field)
+        const bv = parseVal(b[sort.field], sort.field)
         if (av < bv) return sort.dir==='asc' ? -1 : 1
         if (av > bv) return sort.dir==='asc' ?  1 : -1
         return 0
@@ -577,6 +643,27 @@ export default function OutputPanel({
     }
   }
 
+  // ── manual pair ──────────────────────────────────────────────────────────
+  const handleManualPair = () => {
+    if (selected.size < 2) { toast.error('Select 2 or more transactions to pair'); return }
+    const idxs = [...selected].sort((a,b)=>a-b)
+    const pid  = `MANUAL${Date.now()}`
+    setTransactions(prev => prev.map((t,i) => {
+      if (!selected.has(i)) return t
+      return {
+        ...t,
+        classification: '🟢Internal',
+        pairid:         pid,
+        gl_account:     '',
+        gl_type:        '',
+        gst_category:   '',
+        gst:            0,
+      }
+    }))
+    setSelected(new Set())
+    toast.success(`${idxs.length} transactions paired as Internal (${pid})`)
+  }
+
   // ── save session ──────────────────────────────────────────────────────────
   const handleSaveSession = async () => {
     if (!sessionId) { toast.error('No active session'); return }
@@ -618,27 +705,32 @@ export default function OutputPanel({
   }
 
   const SH = {field:sort.field, dir:sort.dir}
+  // Column widths — default + user-draggable
+  const DEFAULT_WIDTHS = {
+    date:90,           // 10 chars: dd/mm/yyyy
+    bank:80, account_name:100, account:88,
+    description:220,   // user can drag to expand
+    debit:90, credit:90,
+    classification:105, // 10 chars: 🔵Incoming
+    pairid:80,
+    gl_account:150, gl_type:90, gst:80, gst_category:140, who:90,
+  }
+  const [colWidths, setColWidths] = useState(DEFAULT_WIDTHS)
+  const setColWidth = (field, w) => setColWidths(prev => ({...prev, [field]: w}))
+
   const thProps = (label, field, style) => ({
-    label, field, style,
+    label, field,
+    style: {textAlign: style?.textAlign},
     sort:SH, setSort,
     colFilters, setColFilters,
-    values: colVals(field),
+    values:   colVals(field),
+    colWidth: colWidths[field] || undefined,
+    onResize: w => setColWidth(field, w),
   })
 
   return (
     <div>
       <StatStrip stats={stats} />
-
-      {/* Chart of Accounts Modal */}
-      {showCoA && (
-        <ChartOfAccountsModal
-          onClose={()=>setShowCoA(false)}
-          glAccounts={glAccounts}
-          setGlAccounts={setGlAccounts}
-          onSaveAndReclassify={handleReclassify}
-          onCoaMapUpdate={setCoaMap}
-        />
-      )}
 
       {/* Monthly Summary */}
       {monthlySummary?.length > 0 && (
@@ -702,6 +794,10 @@ export default function OutputPanel({
 
           {/* Toolbar */}
           <div style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap',alignItems:'center'}}>
+            <button className="btn btn-ghost btn-xs" onClick={()=>setColWidths(DEFAULT_WIDTHS)}
+              title="Reset all column widths to default" style={{padding:'4px 8px',fontSize:'.72rem'}}>
+              ⊞ Reset cols
+            </button>
             <div className="search-wrap" style={{flex:'none'}}>
               <svg className="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
               <input className="input input-sm" style={{width:220,paddingLeft:34}} placeholder="Search description, bank, who…"
@@ -709,9 +805,14 @@ export default function OutputPanel({
             </div>
             <div style={{flex:1}}/>
             <button className="btn btn-outline btn-sm" onClick={()=>setShowAdd(s=>!s)}><Plus size={13}/> Add Row</button>
-            <button className="btn btn-outline btn-sm" onClick={()=>setShowCoA(true)}>
-              <BookOpen size={13}/> COA
-            </button>
+            {selected.size >= 2 && (
+              <button className="btn btn-outline btn-sm" onClick={handleManualPair}
+                style={{borderColor:'var(--success)',color:'var(--success)'}}
+                title={`Pair ${selected.size} selected transactions as Internal transfer`}>
+                🔗 Pair ({selected.size})
+              </button>
+            )}
+
             <button className="btn btn-accent btn-sm" onClick={handleReclassify}
               title="Re-classify all rows using current Chart of Accounts (COA)">
               <RefreshCw size={13}/> Reclassify
@@ -789,28 +890,29 @@ export default function OutputPanel({
       )}
 
       {/* Data Table with sort + filter headers + inline editing */}
-      <div className="data-table-wrap">
-        <div style={{overflowX:'auto'}}>
-          <table className="data-table">
+      <div className="data-table-wrap" style={{width:'100%'}}>
+        <div style={{overflowX:'auto',width:'100%'}}>
+          <table className="data-table" style={{width:'100%',tableLayout:'fixed'}}>
             <thead>
               <tr>
                 <th style={{width:36,paddingLeft:14}}>
                   <input type="checkbox" style={{cursor:'pointer',accentColor:'var(--brand)'}}
                     checked={pageRows.length>0 && pageRows.every(r=>selected.has(r._origIdx))} onChange={toggleAll}/>
                 </th>
-                <SortTh {...thProps('Date','date',{minWidth:90})}/>
-                <SortTh {...thProps('Bank','bank',{})}/>
-                <SortTh {...thProps('Account','account',{})}/>
-                <SortTh {...thProps('Description','description',{minWidth:200})}/>
-                <SortTh {...thProps('Debit','debit',{textAlign:'right'})}/>
-                <SortTh {...thProps('Credit','credit',{textAlign:'right'})}/>
-                <SortTh {...thProps('Classification','classification',{})}/>
-                <SortTh {...thProps('Pair ID','pairid',{})}/>
-                <SortTh {...thProps('GL Account','gl_account',{minWidth:140})}/>
-                <SortTh {...thProps('GL Type','gl_type',{minWidth:100})}/>
-                <SortTh {...thProps('GST','gst',{textAlign:'right'})}/>
-                <SortTh {...thProps('GST Category','gst_category',{minWidth:160})}/>
-                <SortTh {...thProps('Who','who',{})}/>
+                <SortTh {...thProps('Date',        'date',           {})}/>
+                <SortTh {...thProps('Bank',        'bank',           {})}/>
+                <SortTh {...thProps('Acc Name',    'account_name',   {})}/>
+                <SortTh {...thProps('Account',     'account',        {})}/>
+                <SortTh {...thProps('Description', 'description',    {})}/>
+                <SortTh {...thProps('Debit',       'debit',          {textAlign:'right'})}/>
+                <SortTh {...thProps('Credit',      'credit',         {textAlign:'right'})}/>
+                <SortTh {...thProps('Class',       'classification', {})}/>
+                <SortTh {...thProps('Pair ID',     'pairid',         {})}/>
+                <SortTh {...thProps('GL Account',  'gl_account',     {})}/>
+                <SortTh {...thProps('GL Type',     'gl_type',        {})}/>
+                <SortTh {...thProps('GST',         'gst',            {textAlign:'right'})}/>
+                <SortTh {...thProps('GST Cat',     'gst_category',   {})}/>
+                <SortTh {...thProps('Who',         'who',            {})}/>
               </tr>
             </thead>
             <tbody>
@@ -836,27 +938,34 @@ export default function OutputPanel({
                     <td style={{paddingLeft:14}}>
                       <input type="checkbox" checked={sel} onChange={()=>toggleS(ai)} style={{cursor:'pointer',accentColor:'var(--brand)'}}/>
                     </td>
-                    {/* Date — text input keeps dd/mm/yyyy format */}
-                    <td>
+                    {/* Date */}
+                    <td style={{overflow:'hidden'}}>
                       <input className="cell-input" type="text"
                         value={v('date')||''} onChange={setV('date')}
-                        placeholder="dd/mm/yyyy"
-                        style={{width:90,fontFamily:'var(--font-mono)',fontSize:'.78rem',whiteSpace:'nowrap'}}/>
+                        title={v('date')||''} placeholder="dd/mm/yyyy"
+                        style={{width:'100%',fontFamily:'var(--font-mono)',fontSize:'.78rem'}}/>
                     </td>
                     {/* Bank */}
-                    <td>
+                    <td style={{overflow:'hidden'}}>
                       <input className="cell-input" value={v('bank')||''} onChange={setV('bank')}
-                        style={{width:90,fontSize:'.8rem',fontWeight:500}}/>
+                        title={v('bank')||''} style={{width:'100%',fontSize:'.8rem',fontWeight:500}}/>
+                    </td>
+                    {/* Account Name */}
+                    <td style={{overflow:'hidden'}}>
+                      <input className="cell-input" value={v('account_name')||''} onChange={setV('account_name')}
+                        title={v('account_name')||''} style={{width:'100%',fontSize:'.8rem'}}/>
                     </td>
                     {/* Account */}
-                    <td>
+                    <td style={{overflow:'hidden'}}>
                       <input className="cell-input" value={v('account')||''} onChange={setV('account')}
-                        style={{width:80,fontFamily:'var(--font-mono)',fontSize:'.75rem'}}/>
+                        title={v('account')||''} style={{width:'100%',fontFamily:'var(--font-mono)',fontSize:'.75rem'}}/>
                     </td>
-                    {/* Description */}
-                    <td>
+                    {/* Description — full value, truncated display, hover shows full */}
+                    <td style={{overflow:'hidden'}}>
                       <input className="cell-input" value={v('description')||''} onChange={setV('description')}
-                        title={row.description} style={{width:220,minWidth:220,fontSize:'.8rem'}}/>
+                        title={v('description')||''}
+                        style={{width:'100%',fontSize:'.8rem',overflow:'hidden',
+                          textOverflow:'ellipsis',whiteSpace:'nowrap'}}/>
                     </td>
                     {/* Debit */}
                     <td style={{textAlign:'right'}}>
@@ -898,7 +1007,7 @@ export default function OutputPanel({
                             }
                           }
                         }}
-                        className="select-compact" style={{minWidth:120}}>
+                        title={v('gl_account')||''} className="select-compact" style={{width:'100%'}}>
                         {glAccounts.map(o=><option key={o} value={o}>{o||'—'}</option>)}
                       </select>
                     </td>
@@ -927,15 +1036,15 @@ export default function OutputPanel({
                       }
                     </td>
                     {/* Who */}
-                    <td>
+                    <td style={{overflow:'hidden'}}>
                       <input className="cell-input" value={v('who')||''} onChange={setV('who')}
-                        style={{width:100,fontSize:'.78rem',color:'var(--text-2)'}}/>
+                        title={v('who')||''} style={{width:'100%',fontSize:'.78rem',color:'var(--text-2)'}}/>
                     </td>
                   </tr>
                 )
               })}
               {pageRows.length===0&&(
-                <tr><td colSpan={15}>
+                <tr><td colSpan={16}>
                   <div className="empty-state" style={{padding:'32px 24px'}}>
                     <p>No transactions match the current filters.</p>
                   </div>
