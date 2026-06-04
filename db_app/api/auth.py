@@ -168,13 +168,15 @@ def register(
         end_date = today + timedelta(days=183)  # ~6 months
         # Set modules based on selected plan
         PLAN_MODULES = {
-            "base":    ["dashboard", "reconciliation"],
+            "base":           ["dashboard", "reconciliation"],
+            "vault":          ["dashboard", "reconciliation"],  # Vault = base free plan
             "reconciliation": ["dashboard", "reconciliation"],
-            "trading": ["dashboard", "trading"],
-            "cashflow":["dashboard", "cash-flow"],
-            "invoice": ["dashboard", "invoice"],
-            "basic":   ["dashboard", "reconciliation", "trading", "cash-flow", "invoice"],
-            "premium": ["dashboard", "reconciliation", "trading", "cash-flow", "invoice"],
+            "trading":        ["dashboard", "trading"],         # trading only — no reconciliation
+            "cashflow":       ["dashboard", "cash-flow"],
+            "invoice":        ["dashboard", "invoice"],
+            "basic":          ["dashboard", "reconciliation", "trading", "cash-flow", "invoice"],
+            "premium":        ["dashboard", "reconciliation", "trading", "cash-flow", "invoice"],
+            "ultra":          ["dashboard", "reconciliation", "trading", "cash-flow", "invoice"],
         }
         selected_plan = getattr(request, 'plan_id', 'base') or 'base'
         plan_modules  = PLAN_MODULES.get(selected_plan, PLAN_MODULES["base"])
