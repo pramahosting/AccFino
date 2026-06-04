@@ -4,7 +4,10 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.jsx'
 import UpgradeBanner from '../UpgradeBanner.jsx'
 import { licenceMyModules, getMyPlan } from '../../lib/api.js'
-import { LayoutDashboard, ArrowLeftRight, TrendingUp, BarChart2, FileText, ShieldCheck, ChevronLeft, ChevronRight, FolderOpen, BadgeCheck } from 'lucide-react'
+import { LayoutDashboard, ArrowLeftRight, TrendingUp, BarChart2, FileText, ShieldCheck, ChevronLeft, ChevronRight, FolderOpen, BadgeCheck, Settings } from 'lucide-react'
+
+// ── Reconciliation session context — persists across route navigation ─────────
+export const ReconciliationContext = React.createContext(null)
 
 const NAV = [
   { to:'/',               icon:LayoutDashboard, label:'Dashboard',       sub:'Overview',                key:'dashboard',      adminOnly:false },
@@ -12,6 +15,7 @@ const NAV = [
   { to:'/trading',        icon:TrendingUp,      label:'Trading',         sub:'Crypto & Equity CGT',     key:'trading',        adminOnly:false },
   { to:'/cash-flow',      icon:BarChart2,       label:'Cash Flow',       sub:'ML forecast',             key:'cash-flow',      adminOnly:false },
   { to:'/invoice',        icon:FileText,        label:'Invoice',         sub:'Generate & extract',      key:'invoice',        adminOnly:false },
+  { to:'/setup',          icon:Settings,        label:'Setup',           sub:'COA & configuration',     key:'setup',          adminOnly:false },
   { to:'/admin',          icon:ShieldCheck,     label:'ML Classifier',   sub:'Training & RDR rules',    key:'admin',          adminOnly:true  },
   { to:'/file-manager',   icon:FolderOpen,      label:'File Manager',    sub:'Files, tables, data',     key:'file-manager',   adminOnly:true  },
   { to:'/licence',        icon:BadgeCheck,      label:'Admin & Licence', sub:'Users, roles & licences', key:'licence',        adminOnly:true  },
@@ -56,6 +60,7 @@ export default function Layout() {
   const isAdmin = Array.isArray(user?.roles) && user.roles.includes('admin')
 
   const canAccess = (moduleKey) => {
+    if (moduleKey === 'setup') return true   // Setup always accessible — all users
     if (isAdmin) return true
     if (allowedModules === null) return false   // still loading
     if (allowedModules === 'all') return true
@@ -65,6 +70,20 @@ export default function Layout() {
   const initials = (user?.name || user?.email || 'U').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()
   const userName = user?.name || user?.email || ''
   const pageName = loc.pathname === '/' ? 'Dashboard' : loc.pathname.slice(1).replace(/-/g,' ').replace(/\b\w/g, c => c.toUpperCase())
+
+  // ── Reconciliation state — kept in Layout so it survives navigation ──────
+  const [reconTransactions,   setReconTransactions]   = useState(null)
+  const [reconSummary,        setReconSummary]        = useState([])
+  const [reconSessionId,      setReconSessionId]      = useState(null)
+  const [reconAccounts,       setReconAccounts]       = useState([])
+  const [reconMainTab,        setReconMainTab]        = useState('input')
+  const reconCtx = {
+    transactions:    reconTransactions,  setTransactions:   setReconTransactions,
+    monthlySummary:  reconSummary,       setMonthlySummary: setReconSummary,
+    sessionId:       reconSessionId,     setSessionId:      setReconSessionId,
+    accounts:        reconAccounts,      setAccounts:       setReconAccounts,
+    mainTab:         reconMainTab,       setMainTab:        setReconMainTab,
+  }
 
   const handleLogout = () => {
     try { logout(); nav('/login') }
@@ -157,7 +176,7 @@ export default function Layout() {
           userName={userName}
           onLogout={handleLogout}
         />
-        <main style={{flex:1, padding:'24px 28px', overflowY:'auto'}}><Outlet/></main>
+        <main style={{flex:1, padding:'24px 28px', overflowY:'auto'}}><ReconciliationContext.Provider value={reconCtx}><Outlet/></ReconciliationContext.Provider></main>
       </div>
     </div>
     </>
