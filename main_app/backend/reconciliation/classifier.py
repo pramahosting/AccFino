@@ -32,6 +32,9 @@ _TRANSFER_KW = [
     "remittance","remit","bpay transfer","online transfer","account transfer",
     "internal transfer","own account","self transfer","sweep","redraw",
     "linked account",
+    # FIX 6: directional patterns were being missed
+    "transfer to","transfer from","tfr to","tfr from","trf to","trf from",
+    "fast transfer","osko","pay anyone","ib transfer",
 ]
 _EXCLUDE_KW = [
     "salary","wages","payroll","pay run","payg","superannuation","super",
@@ -51,6 +54,20 @@ def _is_transfer(desc: str) -> bool:
     if any(k in dl for k in _EXCLUDE_KW):
         return False
     return any(k in dl for k in _TRANSFER_KW)
+
+
+import re as _re
+
+def _extract_who(desc: str) -> str:
+    """FIX 6: Extract To/From counterparty from transfer description.
+    'Transfer to SAVINGS 12345' -> 'To: SAVINGS 12345'
+    'TFR FROM CBA 9999'         -> 'From: CBA 9999'
+    """
+    m = _re.search(r"\b(?:transfer|tfr|trf)\s+to\s+([\w\s]{2,30})", desc, _re.IGNORECASE)
+    if m: return f"To: {m.group(1).strip()}"
+    m = _re.search(r"\b(?:transfer|tfr|trf)\s+from\s+([\w\s]{2,30})", desc, _re.IGNORECASE)
+    if m: return f"From: {m.group(1).strip()}"
+    return ""
 
 
 def _parse_date(v):
@@ -219,9 +236,20 @@ def classify_transactions(
 
     df["classification"] = df["classification"].fillna("⚪Unclassified")
 
+    # FIX 6: Populate Who field for auto-matched internal pairs from description
+    if "Who" not in df.columns:
+        df["Who"] = ""
+    for idx in df.index:
+        if df.at[idx, "classification"] == "🟢Internal":
+            desc = str(df.at[idx, "description"]) if "description" in df.columns else ""
+            who  = _extract_who(desc)
+            if who:
+                df.at[idx, "Who"] = who
+
     # ── 4. Date parts ────────────────────────────────────────────────────
     if has_date:
         df["Month"] = df["date"].apply(lambda x: getattr(x, "month", None))
         df["Year"]  = df["date"].apply(lambda x: getattr(x, "year",  None))
 
     return df
+
