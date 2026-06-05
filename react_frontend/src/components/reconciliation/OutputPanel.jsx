@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react'
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { saveSession, saveToDB, classifyGL, reclassifyGL, exportExcel } from '../../lib/api.js'
 import {
   Download, Trash2, Pencil, X, Check, ChevronLeft, ChevronRight,
@@ -51,16 +52,15 @@ function StatStrip({ stats }) {
 }
 
 // ── Column filter popover ─────────────────────────────────────────────────────
+// Rendered via React portal into document.body so it is never clipped by
+// overflow:auto/hidden on ancestor table containers, and always appears
+// directly below the column header that triggered it.
 function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
-  // selected = set of values user has ticked. Empty = no filter = show all rows.
-  // "All" and "None" both clear selection → show all rows.
-  // Ticking any option = filter to only ticked rows.
   const unique = useMemo(() => [...new Set(values.map(v => String(v||'')))].sort(), [values])
-  // Start with all options checked (no filter). If a filter was previously
-  // applied (active non-empty), restore that selection.
   const [selected, setSelected] = useState(() =>
     active.size > 0 ? new Set(active) : new Set(unique)
   )
+  const popRef = useRef(null)
 
   const hasSelection = selected.size > 0 && selected.size < unique.length
 
@@ -69,26 +69,54 @@ function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
   })
 
   const apply = () => {
-    // All selected = no filter (pass empty set). Subset = filter to that subset.
+    // onChange closes the filter (parent sets activeFilter=null after updating colFilters)
     onChange(selected.size === unique.length ? new Set() : new Set(selected))
-    onClose()
   }
 
-  return (
-    <div onClick={e=>e.stopPropagation()} style={{
-      position:'fixed', top:anchorPos.top, left:anchorPos.left, zIndex:99999,
-      background:'var(--surface)',border:'1px solid var(--border)',
-      borderRadius:'var(--r-md)',boxShadow:'var(--sh-lg)',
-      padding:'10px',minWidth:200,maxHeight:anchorPos.maxH,
-      display:'flex',flexDirection:'column',gap:6,
-    }}>
-      {/* All / None — both clear selection (show all rows) */}
+  // Close on outside click — must be on document to catch clicks anywhere
+  useEffect(() => {
+    const handler = e => {
+      if (popRef.current && !popRef.current.contains(e.target)) onClose()
+    }
+    // Use capture so we catch clicks before they hit stopPropagation in table cells
+    document.addEventListener('mousedown', handler, true)
+    return () => document.removeEventListener('mousedown', handler, true)
+  }, [onClose])
+
+  const popW = 220
+  const top  = anchorPos.top   // = th.bottom (flush)
+  const left = anchorPos.left  // = th.left (flush) — clamped in style below
+
+  const popover = (
+    <div
+      ref={popRef}
+      onClick={e => e.stopPropagation()}
+      style={{
+        position:'fixed',
+        top,
+        left: Math.min(left, window.innerWidth - popW - 4),
+        zIndex:999999,
+        width: popW,
+        maxHeight: anchorPos.maxH,
+        background:'var(--surface)',
+        border:'1px solid var(--border)',
+        borderRadius:'0 0 var(--r-md) var(--r-md)',  // flat top — sits flush under header
+        boxShadow:'0 6px 20px rgba(0,0,0,.15)',
+        padding:'10px',
+        display:'flex',
+        flexDirection:'column',
+        gap:6,
+        overflowY:'auto',
+      }}
+    >
+      {/* All / None */}
       <div style={{display:'flex',gap:6,alignItems:'center'}}>
         <button className="btn btn-ghost btn-xs"
-          style={{fontWeight: selected.size===unique.length ? 700 : 400, color: selected.size===unique.length ? 'var(--brand)' : undefined}}
+          style={{fontWeight: selected.size===unique.length?700:400,
+            color: selected.size===unique.length?'var(--brand)':undefined}}
           onClick={()=>setSelected(new Set(unique))}>All</button>
         <button className="btn btn-ghost btn-xs"
-          style={{fontWeight: selected.size===0 ? 700 : 400}}
+          style={{fontWeight: selected.size===0?700:400}}
           onClick={()=>setSelected(new Set())}>None</button>
         {hasSelection && (
           <span style={{fontSize:'.72rem',color:'var(--warning)',marginLeft:'auto'}}>
@@ -96,9 +124,7 @@ function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
           </span>
         )}
       </div>
-      {/* Divider */}
       <div style={{borderTop:'1px solid var(--border)',margin:'0 -4px'}}/>
-      {/* Selected group first (asc), then unselected (asc), divider between */}
       <div style={{overflowY:'auto',flex:1,display:'flex',flexDirection:'column',gap:1}}>
         {(()=>{
           const sel   = unique.filter(v =>  selected.has(v)).sort()
@@ -126,55 +152,49 @@ function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
           </>
         })()}
       </div>
-      {/* Apply */}
       <button className="btn btn-primary btn-xs" onClick={apply}>
         Apply{hasSelection ? ` (${selected.size})` : ' (all)'}
       </button>
     </div>
   )
+
+  // Portal renders directly into <body>, escaping all overflow containers
+  return createPortal(popover, document.body)
 }
 
 // ── Sort/Filter header cell ───────────────────────────────────────────────────
-function SortTh({ label, field, sort, setSort, colFilters, setColFilters, values, style, onResize, colWidth }) {
-  const [open, setOpen] = useState(false)
-  const thRef  = React.useRef(null)
-  const isAsc  = sort.field===field && sort.dir==='asc'
-  const isDesc = sort.field===field && sort.dir==='desc'
+// onOpenFilter(field, anchorPos) is called on ▾ click — ColFilter is rendered
+// at the OutputPanel level (outside all scroll containers) to avoid z-index and
+// getBoundingClientRect issues with sticky/overflow ancestors.
+function SortTh({ label, field, sort, setSort, colFilters, onOpenFilter, values, style, onResize, colWidth }) {
+  const thRef     = React.useRef(null)
+  const isAsc     = sort.field===field && sort.dir==='asc'
+  const isDesc    = sort.field===field && sort.dir==='desc'
   const hasFilter = colFilters[field] && colFilters[field].size > 0
 
-  const [anchorPos, setAnchorPos] = React.useState({top:0,left:0,maxH:360})
-
-  // Close on outside click
-  React.useEffect(()=>{
-    if (!open) return
-    const handler = e => { if (thRef.current && !thRef.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return ()=>document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  // ── Resize handle drag logic ────────────────────────────────────────────
+  // ── Resize handle drag logic ──────────────────────────────────────────────
   const startResize = e => {
     e.preventDefault(); e.stopPropagation()
-    const startX   = e.clientX
-    const startW   = thRef.current ? thRef.current.getBoundingClientRect().width : (colWidth || 100)
-    const onMove   = mv => { if (onResize) onResize(Math.max(40, startW + mv.clientX - startX)) }
-    const onUp     = ()  => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+    const startX = e.clientX
+    const startW = thRef.current ? thRef.current.getBoundingClientRect().width : (colWidth || 100)
+    const onMove = mv => { if (onResize) onResize(Math.max(40, startW + mv.clientX - startX)) }
+    const onUp   = ()  => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup',   onUp)
   }
 
-  const openFilter = e => {
+  const handleFilterClick = e => {
     e.stopPropagation()
-    if (!thRef.current) { setOpen(o=>!o); return }
-    // Compute position fresh from the <th> rect at click time
+    if (!thRef.current) return
+    // getBoundingClientRect on a sticky <th> returns correct VIEWPORT coords.
+    // We pass these up to OutputPanel which renders the portal outside the table.
     const r  = thRef.current.getBoundingClientRect()
     const vh = window.innerHeight
-    setAnchorPos({
-      top:  r.bottom + 4,
-      left: Math.min(r.left, window.innerWidth - 216),
-      maxH: Math.max(120, vh - r.bottom - 20),
+    onOpenFilter(field, {
+      top:  r.bottom,                           // flush below column header
+      left: r.left,                             // flush with column left edge
+      maxH: Math.max(160, vh - r.bottom - 8),
     })
-    setOpen(o=>!o)
   }
 
   const thStyle = {
@@ -195,19 +215,12 @@ function SortTh({ label, field, sort, setSort, colFilters, setColFilters, values
           :isDesc ? <ArrowDown size={15} color="var(--brand)"/>
           :         <ArrowUpDown size={15} color="var(--text-3)" opacity={0.5}/>}
         </span>
-        <span onClick={openFilter}
+        <span onClick={handleFilterClick}
           style={{cursor:'pointer',fontSize:'20px',lineHeight:1,padding:'0 2px',
             color:hasFilter?'var(--warning)':'var(--text-3)',
             fontWeight:hasFilter?700:400}}>▾</span>
       </div>
-      {open && values && (
-        <ColFilter col={field} values={values}
-          active={colFilters[field]||new Set()}
-          onChange={v=>setColFilters(f=>({...f,[field]:v}))}
-          onClose={()=>setOpen(false)}
-          anchorPos={anchorPos}/>
-      )}
-      {/* Resize handle — drag right edge to resize column */}
+      {/* Resize handle */}
       <div
         onMouseDown={startResize}
         style={{
@@ -643,25 +656,68 @@ export default function OutputPanel({
     }
   }
 
-  // ── manual pair ──────────────────────────────────────────────────────────
+  // ── manual pair ── FIX 3 (unique ID) + FIX 4 (validation) ──────────────────
   const handleManualPair = () => {
     if (selected.size < 2) { toast.error('Select 2 or more transactions to pair'); return }
+
+    // FIX 4a: must be even number of rows
+    if (selected.size % 2 !== 0) {
+      toast.error(`Selected ${selected.size} rows — pairing requires an even number. Please select ${selected.size + 1} or ${selected.size - 1} rows.`)
+      return
+    }
+
     const idxs = [...selected].sort((a,b)=>a-b)
-    const pid  = `MANUAL${Date.now()}`
+    const selRows = idxs.map(i => transactions[i])
+
+    // FIX 4b: debit total must equal credit total (within $0.01)
+    const totalDebit  = selRows.reduce((s,t) => s + (parseFloat(t.debit)  || 0), 0)
+    const totalCredit = selRows.reduce((s,t) => s + (parseFloat(t.credit) || 0), 0)
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      toast.error(
+        `Debit total ($${totalDebit.toFixed(2)}) ≠ credit total ($${totalCredit.toFixed(2)}). ` +
+        `Difference: $${Math.abs(totalDebit - totalCredit).toFixed(2)}. ` +
+        `Internal transfers must balance.`
+      )
+      return
+    }
+
+    // FIX 4c: credit date must not be earlier than debit date
+    const parseDate = s => {
+      if (!s) return null
+      const dm = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+      if (dm) return new Date(+dm[3], +dm[2]-1, +dm[1])
+      const d = new Date(s); return isNaN(d) ? null : d
+    }
+    const debitRows  = selRows.filter(t => (parseFloat(t.debit)  || 0) > 0)
+    const creditRows = selRows.filter(t => (parseFloat(t.credit) || 0) > 0)
+    if (debitRows.length && creditRows.length) {
+      const minDebitDate  = debitRows.reduce((m,t)  => { const d=parseDate(t.date); return d&&(!m||d<m)?d:m }, null)
+      const minCreditDate = creditRows.reduce((m,t) => { const d=parseDate(t.date); return d&&(!m||d<m)?d:m }, null)
+      if (minDebitDate && minCreditDate && minCreditDate < minDebitDate) {
+        toast.error(
+          `Credit date (${minCreditDate.toLocaleDateString('en-AU')}) is earlier than ` +
+          `debit date (${minDebitDate.toLocaleDateString('en-AU')}). ` +
+          `The receiving transaction cannot precede the sending transaction.`
+        )
+        return
+      }
+    }
+
+    // FIX 3: Generate unique PairID per pairing action
+    const now = new Date()
+    const pad = n => String(n).padStart(2,'0')
+    const datePart = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`
+    const timePart = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+    const randPart = Math.random().toString(16).slice(2,8)
+    const pid = `MPAIR-${datePart}-${timePart}-${randPart}`
+
     setTransactions(prev => prev.map((t,i) => {
       if (!selected.has(i)) return t
-      return {
-        ...t,
-        classification: '🟢Internal',
-        pairid:         pid,
-        gl_account:     '',
-        gl_type:        '',
-        gst_category:   '',
-        gst:            0,
-      }
+      return { ...t, classification: '🟢Internal', pairid: pid,
+               gl_account: '', gl_type: '', gst_category: '', gst: 0 }
     }))
     setSelected(new Set())
-    toast.success(`${idxs.length} transactions paired as Internal (${pid})`)
+    toast.success(`${idxs.length} transactions paired (${pid})`)
   }
 
   // ── save session ──────────────────────────────────────────────────────────
@@ -718,11 +774,27 @@ export default function OutputPanel({
   const [colWidths, setColWidths] = useState(DEFAULT_WIDTHS)
   const setColWidth = (field, w) => setColWidths(prev => ({...prev, [field]: w}))
 
+  // ── Single shared filter popover state — rendered OUTSIDE the table ────────
+  // This is the fix for the dropdown not appearing below the column header.
+  // Previously ColFilter was a child of <th> in the JSX tree. Even with a portal
+  // it shared React's event propagation with the <th>, causing outside-click
+  // handlers to fire immediately and the anchor position to be unreliable.
+  // Now: SortTh calls onOpenFilter(field, rect) → state lives here in OutputPanel
+  // → ONE ColFilter portal renders after the table, with no scroll-container ancestors.
+  const [activeFilter, setActiveFilter] = useState(null)  // {field, anchorPos} | null
+
+  const openFilterFor = useCallback((field, anchorPos) => {
+    setActiveFilter(prev => (prev && prev.field === field) ? null : { field, anchorPos })
+  }, [])
+
+  const closeFilter = useCallback(() => setActiveFilter(null), [])
+
   const thProps = (label, field, style) => ({
     label, field,
     style: {textAlign: style?.textAlign},
     sort:SH, setSort,
-    colFilters, setColFilters,
+    colFilters,
+    onOpenFilter: openFilterFor,   // replaces setColFilters in SortTh — filter state stays here
     values:   colVals(field),
     colWidth: colWidths[field] || undefined,
     onResize: w => setColWidth(field, w),
@@ -832,31 +904,35 @@ export default function OutputPanel({
             )}
           </div>
 
-          {/* Filter chips */}
-          <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:10,justifyContent:'flex-end'}}>
-            <span style={{fontSize:'.72rem',color:'var(--text-3)',marginRight:4}}>Show:</span>
-            {[['internal','🟢','badge-cls-int'],['incoming','🔵','badge-cls-in'],
-              ['outgoing','🟡','badge-cls-out'],['unclassified','⚪','badge-neutral']].map(([k,emoji,cls])=>{
-              const hasColFilter = filters[k] && Object.values(colFilters).some(v=>v&&v.size>0)
-              return (
-                <button key={k} onClick={()=>toggleF(k)}
-                  className={`chip${filters[k]?` ${k==='internal'?'active-int':k==='incoming'?'active-in':k==='outgoing'?'active-out':''}`:''}`}
-                  style={{opacity:filters[k]?1:.4,transition:'opacity .15s',fontSize:'.75rem',padding:'4px 10px',
-                    outline: hasColFilter ? '2px solid var(--warning)' : 'none',
-                    outlineOffset: '2px', position:'relative'}}>
-                  {emoji} {k.charAt(0).toUpperCase()+k.slice(1)}
-                  {hasColFilter && <span style={{position:'absolute',top:-4,right:-4,width:8,height:8,borderRadius:'50%',background:'var(--warning)',border:'2px solid var(--surface)'}}/>}
-                </button>
-              )
-            })}
-            {Object.values(colFilters).some(v=>v&&v.size>0) && (
-              <button className="btn btn-ghost btn-xs" style={{marginLeft:8}} onClick={()=>setColFilters({})}>
-                <X size={11}/> Clear filters
-              </button>
-            )}
-          </div>
-
         </div>}
+      </div>
+
+      {/* FIX 2: Filter chips — outside the collapsible section, always visible,
+          positioned flush below the Transaction Details header, not inside overflow */}
+      <div style={{display:'flex',alignItems:'center',gap:4,margin:'6px 0 8px',
+        padding:'6px 10px',background:'var(--surface-2)',borderRadius:'var(--r-md)',
+        border:'1px solid var(--border)',flexWrap:'wrap'}}>
+        <span style={{fontSize:'.72rem',color:'var(--text-3)',marginRight:4,fontWeight:600}}>Show:</span>
+        {[['internal','🟢','active-int'],['incoming','🔵','active-in'],
+          ['outgoing','🟡','active-out'],['unclassified','⚪','']].map(([k,emoji,activeClass])=>{
+          const hasColFilter = Object.values(colFilters).some(v=>v&&v.size>0)
+          return (
+            <button key={k} onClick={()=>toggleF(k)}
+              className={`chip${filters[k] && activeClass ? ` ${activeClass}` : ''}`}
+              style={{opacity:filters[k]?1:.4,transition:'opacity .15s',fontSize:'.75rem',
+                padding:'4px 10px',position:'relative'}}>
+              {emoji} {k.charAt(0).toUpperCase()+k.slice(1)}
+            </button>
+          )
+        })}
+        {Object.values(colFilters).some(v=>v&&v.size>0) && (
+          <button className="btn btn-ghost btn-xs" style={{marginLeft:'auto'}} onClick={()=>setColFilters({})}>
+            <X size={11}/> Clear col filters
+          </button>
+        )}
+        <span style={{marginLeft:'auto',fontSize:'.72rem',color:'var(--text-3)'}}>
+          {filtered.length} row{filtered.length!==1?'s':''}
+        </span>
       </div>
 
       {/* Add Row panel */}
@@ -887,6 +963,21 @@ export default function OutputPanel({
             <button className="btn btn-ghost btn-sm" onClick={()=>setShowAdd(false)}>Cancel</button>
           </div>
         </div>
+      )}
+
+      {/* ── Column filter portal — rendered HERE, outside all scroll containers ── */}
+      {activeFilter && (
+        <ColFilter
+          col={activeFilter.field}
+          values={colVals(activeFilter.field)}
+          active={colFilters[activeFilter.field] || new Set()}
+          onChange={v => {
+            setColFilters(f => ({...f, [activeFilter.field]: v}))
+            closeFilter()
+          }}
+          onClose={closeFilter}
+          anchorPos={activeFilter.anchorPos}
+        />
       )}
 
       {/* Data Table with sort + filter headers + inline editing */}
@@ -979,9 +1070,35 @@ export default function OutputPanel({
                         value={v('credit')||''} onChange={e=>setCell(ai,'credit',parseFloat(e.target.value)||0)}
                         style={{width:90,textAlign:'right',fontFamily:'var(--font-mono)',fontSize:'.8rem',color:'var(--info)',fontWeight:600}}/>
                     </td>
-                    {/* Classification */}
+                    {/* Classification — FIX 5: recalc GST on change */}
                     <td>
-                      <select value={v('classification')||''} onChange={setV('classification')}
+                      <select value={v('classification')||''} onChange={e => {
+                          const cls = e.target.value
+                          setCell(ai, 'classification', cls)
+                          updateCell(ai, 'classification', cls)
+                          // Recalculate GST based on new classification + existing GL
+                          const glName = v('gl_account') || ''
+                          const coa    = coaMap[glName]
+                          if (coa && coa.tax_code) {
+                            const tc     = (coa.tax_code || '').toLowerCase()
+                            const debit  = parseFloat(v('debit'))  || 0
+                            const credit = parseFloat(v('credit')) || 0
+                            let   gst    = 0
+                            if (tc.includes('gst on') && !cls.includes('Internal')) {
+                              if (credit > 0) gst = Math.round(credit * 10 / 110 * 100) / 100
+                              else if (debit > 0) gst = Math.round(debit * 10 / 110 * 100) / 100
+                            }
+                            setCell(ai,'gst', gst)
+                            updateCell(ai,'gst', gst)
+                          }
+                          // Internal transfers always have $0 GST
+                          if (cls.includes('Internal')) {
+                            setCell(ai,'gst', 0)
+                            updateCell(ai,'gst', 0)
+                            setCell(ai,'gst_category', '')
+                            updateCell(ai,'gst_category', '')
+                          }
+                        }}
                         className="select-compact">
                         {CLASSES.map(o=><option key={o}>{o}</option>)}
                       </select>
@@ -991,19 +1108,43 @@ export default function OutputPanel({
                       <input className="cell-input" value={v('pairid')||v('pair_id')||''} onChange={setV('pairid')}
                         style={{width:80,fontFamily:'var(--font-mono)',fontSize:'.72rem',color:'var(--text-3)'}}/>
                     </td>
-                    {/* GL Account — select from CoA; auto-fills GL Type + GST Category */}
+                    {/* GL Account — select from CoA; FIX 1 warning + FIX 5 auto GST */}
                     <td>
                       <select value={v('gl_account')||''} onChange={e=>{
                           const name = e.target.value
+                          const coa  = coaMap[name]
+                          const cls  = v('classification') || ''
+
+                          // FIX 1: warn (don't block) if user manually picks wrong direction GL
+                          if (coa && coa.type) {
+                            const t = (coa.type || '').toLowerCase()
+                            const expenseTypes = ['expense','direct costs','overhead']
+                            const incomeTypes  = ['revenue','income','other income','sales']
+                            if (cls.includes('Incoming') && expenseTypes.includes(t))
+                              toast(`⚠️ "${name}" is an Expense account — Incoming rows usually use Income accounts.`, {icon:'⚠️', duration:4000})
+                            if (cls.includes('Outgoing') && incomeTypes.includes(t))
+                              toast(`⚠️ "${name}" is an Income account — Outgoing rows usually use Expense accounts.`, {icon:'⚠️', duration:4000})
+                          }
+
                           setCell(ai,'gl_account', name)
                           updateCell(ai,'gl_account', name)
-                          const coa = coaMap[name]
-                          if(coa){
+                          if (coa) {
                             setCell(ai,'gl_type', coa.type||'')
                             updateCell(ai,'gl_type', coa.type||'')
-                            if(coa.tax_code){
+                            if (coa.tax_code) {
                               setCell(ai,'gst_category', coa.tax_code)
                               updateCell(ai,'gst_category', coa.tax_code)
+                              // FIX 5: recalculate GST amount immediately from new tax code
+                              const debit  = parseFloat(v('debit'))  || 0
+                              const credit = parseFloat(v('credit')) || 0
+                              const tc     = (coa.tax_code || '').toLowerCase()
+                              let   gst    = 0
+                              if (tc.includes('gst on')) {
+                                if (credit > 0) gst = Math.round(credit * 10 / 110 * 100) / 100
+                                else if (debit > 0) gst = Math.round(debit * 10 / 110 * 100) / 100
+                              }
+                              setCell(ai,'gst', gst)
+                              updateCell(ai,'gst', gst)
                             }
                           }
                         }}
