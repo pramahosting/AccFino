@@ -223,7 +223,13 @@ class _Index:
         norms[norms == 0] = 1.0
         self._mat = mat.multiply(1.0 / norms[:, None])
 
-    def query(self, desc: str) -> Tuple[Optional[_Row], float]:
+    def query(self, desc: str, restrict_types: Optional[frozenset] = None,
+              ) -> Tuple[Optional[_Row], float]:
+        """TF-IDF cosine similarity match.
+        restrict_types: FIX 1 — if set, only COA rows whose atype is in this
+        frozenset are considered. Allows direction-aware re-query without
+        hardcoding any account names.
+        """
         if not self._rows or not self._mat.shape[0]:
             return None, 0.0
         tokens = _tokenise(desc) + _acronyms(_tokenise(desc))
@@ -240,7 +246,16 @@ class _Index:
         if qn == 0:
             return None, 0.0
         q /= qn
-        sims     = self._mat.dot(q)
+        sims = self._mat.dot(q)
+        # FIX 1: zero out wrong-direction rows if restrict_types given
+        if restrict_types:
+            type_mask = np.array(
+                [(r.atype or "").lower() in restrict_types for r in self._rows],
+                dtype=float,
+            )
+            sims = sims * type_mask
+            if sims.max() == 0:
+                return None, 0.0
         best_idx = int(np.argmax(sims))
         score    = float(sims[best_idx])
         return (self._rows[best_idx], score) if score >= MIN_SIMILARITY else (None, score)
@@ -529,6 +544,32 @@ def classify(
     if desc:
         row, score = index.query(desc)
         if row:
+            # FIX 1: Direction guard — during auto-allocation, do not assign an
+            # Expense-type GL to an Incoming row, or Income-type GL to Outgoing.
+            # If mismatch: re-query the index restricted to the correct direction,
+            # so the result still comes from COA — not hardcoded.
+            _row_type = (row.atype or "").lower()
+            _income_mismatch  = credit > 0 and debit == 0 and _row_type in _EXPENSE_TYPES
+            _expense_mismatch = debit  > 0 and credit == 0 and _row_type in _INCOME_TYPES
+            if _income_mismatch or _expense_mismatch:
+                # Find best match among correctly-typed COA rows only
+                _target_types = _INCOME_TYPES if (credit > 0 and debit == 0) else _EXPENSE_TYPES
+                _fb = index.first_of_type(_target_types)
+                # Try a typed query first — if a better match exists in correct type, prefer it
+                _typed_row, _typed_score = index.query(desc, restrict_types=_target_types)
+                if _typed_row:
+                    row, score = _typed_row, _typed_score
+                elif _fb:
+                    # Fallback to first matching type from COA
+                    return ClassifyResult(
+                        gl_account   = _fb.name,
+                        gl_type      = _fb.atype,
+                        gst_category = _fb.tax_code,
+                        gst_amount   = _calc_gst(debit, credit, _fb.tax_code),
+                        matched      = False,
+                        score        = 0.0,
+                        source       = "fallback",
+                    )
             return ClassifyResult(
                 gl_account   = row.name,
                 gl_type      = row.atype,
@@ -623,3 +664,4 @@ def gst_category_options(coa_path: Optional[Path] = None) -> List[str]:
     except Exception:
         pass
     return sorted(options)
+
