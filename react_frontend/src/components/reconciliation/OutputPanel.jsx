@@ -56,36 +56,50 @@ function StatStrip({ stats }) {
 // overflow:auto/hidden on ancestor table containers, and always appears
 // directly below the column header that triggered it.
 function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
-  const unique = useMemo(() => [...new Set(values.map(v => String(v||'')))].sort(), [values])
+  const unique   = useMemo(() => [...new Set(values.map(v => String(v||'')))].sort(), [values])
   const [selected, setSelected] = useState(() =>
     active.size > 0 ? new Set(active) : new Set(unique)
   )
-  const popRef = useRef(null)
+  const [search, setSearch] = useState('')   // search box state
+  const searchRef = useRef(null)
+  const popRef    = useRef(null)
 
   const hasSelection = selected.size > 0 && selected.size < unique.length
+
+  // Filter unique values by search term
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return q ? unique.filter(v => v.toLowerCase().includes(q)) : unique
+  }, [unique, search])
 
   const toggle = v => setSelected(s => {
     const n = new Set(s); n.has(v) ? n.delete(v) : n.add(v); return n
   })
 
+  // Select / deselect only the currently visible (search-filtered) options
+  const selectVisible   = () => setSelected(s => { const n = new Set(s); visible.forEach(v => n.add(v));    return n })
+  const deselectVisible = () => setSelected(s => { const n = new Set(s); visible.forEach(v => n.delete(v)); return n })
+  const allVisibleSel   = visible.length > 0 && visible.every(v => selected.has(v))
+
   const apply = () => {
-    // onChange closes the filter (parent sets activeFilter=null after updating colFilters)
     onChange(selected.size === unique.length ? new Set() : new Set(selected))
   }
 
-  // Close on outside click — must be on document to catch clicks anywhere
+  // Auto-focus search box when popover opens
+  useEffect(() => { searchRef.current?.focus() }, [])
+
+  // Close on outside click
   useEffect(() => {
     const handler = e => {
       if (popRef.current && !popRef.current.contains(e.target)) onClose()
     }
-    // Use capture so we catch clicks before they hit stopPropagation in table cells
     document.addEventListener('mousedown', handler, true)
     return () => document.removeEventListener('mousedown', handler, true)
   }, [onClose])
 
-  const popW = 220
-  const top  = anchorPos.top   // = th.bottom (flush)
-  const left = anchorPos.left  // = th.left (flush) — clamped in style below
+  const popW = 240
+  const top  = anchorPos.top
+  const left = anchorPos.left
 
   const popover = (
     <div
@@ -100,35 +114,82 @@ function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
         maxHeight: anchorPos.maxH,
         background:'var(--surface)',
         border:'1px solid var(--border)',
-        borderRadius:'0 0 var(--r-md) var(--r-md)',  // flat top — sits flush under header
+        borderRadius:'0 0 var(--r-md) var(--r-md)',
         boxShadow:'0 6px 20px rgba(0,0,0,.15)',
-        padding:'10px',
+        padding:'8px',
         display:'flex',
         flexDirection:'column',
-        gap:6,
-        overflowY:'auto',
+        gap:5,
+        overflow:'hidden',
       }}
     >
-      {/* All / None */}
-      <div style={{display:'flex',gap:6,alignItems:'center'}}>
+      {/* Search box */}
+      <div style={{position:'relative'}}>
+        <svg style={{position:'absolute',left:7,top:'50%',transform:'translateY(-50%)',
+          pointerEvents:'none',opacity:.45}}
+          width="12" height="12" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.5">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input
+          ref={searchRef}
+          type="text"
+          placeholder="Search…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Escape') { if (search) setSearch(''); else onClose() } }}
+          style={{
+            width:'100%', boxSizing:'border-box',
+            padding:'4px 8px 4px 24px',
+            fontSize:'.78rem', border:'1px solid var(--border)',
+            borderRadius:'var(--r-sm,4px)', background:'var(--surface-2)',
+            color:'var(--text-1)', outline:'none',
+            fontFamily:'inherit',
+          }}
+          onFocus={e => e.target.style.borderColor='var(--brand)'}
+          onBlur={e  => e.target.style.borderColor='var(--border)'}
+        />
+        {search && (
+          <button onClick={() => setSearch('')}
+            style={{position:'absolute',right:5,top:'50%',transform:'translateY(-50%)',
+              background:'none',border:'none',cursor:'pointer',padding:2,
+              color:'var(--text-3)',lineHeight:1,fontSize:12}}>✕</button>
+        )}
+      </div>
+
+      {/* All / None — operate on visible (search-filtered) items */}
+      <div style={{display:'flex',gap:4,alignItems:'center'}}>
         <button className="btn btn-ghost btn-xs"
-          style={{fontWeight: selected.size===unique.length?700:400,
-            color: selected.size===unique.length?'var(--brand)':undefined}}
-          onClick={()=>setSelected(new Set(unique))}>All</button>
+          style={{fontWeight: allVisibleSel?700:400,
+            color: allVisibleSel?'var(--brand)':undefined}}
+          onClick={selectVisible}>
+          {search ? 'Select shown' : 'All'}
+        </button>
         <button className="btn btn-ghost btn-xs"
-          style={{fontWeight: selected.size===0?700:400}}
-          onClick={()=>setSelected(new Set())}>None</button>
+          onClick={deselectVisible}>
+          {search ? 'Deselect shown' : 'None'}
+        </button>
         {hasSelection && (
-          <span style={{fontSize:'.72rem',color:'var(--warning)',marginLeft:'auto'}}>
-            {selected.size} selected
+          <span style={{fontSize:'.7rem',color:'var(--warning)',marginLeft:'auto',whiteSpace:'nowrap'}}>
+            {selected.size}/{unique.length}
           </span>
         )}
       </div>
-      <div style={{borderTop:'1px solid var(--border)',margin:'0 -4px'}}/>
-      <div style={{overflowY:'auto',flex:1,display:'flex',flexDirection:'column',gap:1}}>
+
+      <div style={{borderTop:'1px solid var(--border)',margin:'0 -8px'}}/>
+
+      {/* Option list — only shows items matching search */}
+      <div style={{overflowY:'auto',flex:1,display:'flex',flexDirection:'column',gap:1,
+        maxHeight: Math.min(260, anchorPos.maxH - 130)}}>
+        {visible.length === 0 && (
+          <div style={{padding:'8px 6px',fontSize:'.75rem',color:'var(--text-3)',textAlign:'center'}}>
+            No matches for "{search}"
+          </div>
+        )}
         {(()=>{
-          const sel   = unique.filter(v =>  selected.has(v)).sort()
-          const unsel = unique.filter(v => !selected.has(v)).sort()
+          // Selected items first, then unselected — both filtered by search
+          const sel   = visible.filter(v =>  selected.has(v))
+          const unsel = visible.filter(v => !selected.has(v))
           const row = v => (
             <label key={v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',
               fontSize:'.78rem',padding:'3px 6px',borderRadius:4,
@@ -136,8 +197,9 @@ function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
               transition:'background .1s'}}>
               <input type="checkbox" checked={selected.has(v)} onChange={()=>toggle(v)}
                 style={{accentColor:'var(--brand)',flexShrink:0}}/>
-              <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>
-                {v||'(blank)'}
+              <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}
+                title={v}>
+                {v||('(blank)')}
               </span>
             </label>
           )
@@ -145,20 +207,30 @@ function ColFilter({ col, values, active, onChange, onClose, anchorPos }) {
             {sel.map(row)}
             {sel.length>0 && unsel.length>0 && (
               <div key="__div" style={{borderTop:'1px dashed var(--border)',
-                margin:'3px 0',fontSize:'.68rem',color:'var(--text-3)',
-                paddingLeft:4,paddingTop:3}}>— unselected —</div>
+                margin:'2px 0',fontSize:'.68rem',color:'var(--text-3)',
+                paddingLeft:4,paddingTop:2}}>— unselected —</div>
             )}
             {unsel.map(row)}
           </>
         })()}
       </div>
-      <button className="btn btn-primary btn-xs" onClick={apply}>
-        Apply{hasSelection ? ` (${selected.size})` : ' (all)'}
-      </button>
+
+      <div style={{borderTop:'1px solid var(--border)',margin:'0 -8px',marginTop:2}}/>
+
+      {/* Footer: result count + Apply */}
+      <div style={{display:'flex',alignItems:'center',gap:6,paddingTop:2}}>
+        <span style={{fontSize:'.7rem',color:'var(--text-3)',flex:1}}>
+          {search
+            ? `${visible.length} of ${unique.length} shown`
+            : `${unique.length} value${unique.length!==1?'s':''}`}
+        </span>
+        <button className="btn btn-primary btn-xs" onClick={apply}>
+          Apply{hasSelection ? ` (${selected.size})` : ' (all)'}
+        </button>
+      </div>
     </div>
   )
 
-  // Portal renders directly into <body>, escaping all overflow containers
   return createPortal(popover, document.body)
 }
 
@@ -568,12 +640,37 @@ export default function OutputPanel({
     transactions.map(t=>String(t[field]||'')), [transactions])
 
   // ── inline edit helpers ───────────────────────────────────────────────────
+  // originalVals stores the transaction snapshot BEFORE any edits on a row,
+  // so Cancel can restore the exact previous state.
+  const [originalVals, setOriginalVals] = useState({})  // {absIdx: {field: originalVal}}
+
   const getCell = (ai, field, fallback) => {
     return inlineEdits[ai]?.[field] !== undefined ? inlineEdits[ai][field] : fallback
   }
+
   const setCell = (ai, field, val) => {
+    // Snapshot original value the FIRST time this row is edited
+    setOriginalVals(prev => {
+      if (prev[ai]?.[field] !== undefined) return prev   // already saved
+      const orig = transactions[ai]?.[field]
+      return {...prev, [ai]: {...(prev[ai]||{}), [field]: orig}}
+    })
     setInlineEdits(e=>({...e,[ai]:{...(e[ai]||{}),[field]:val}}))
   }
+
+  // Cancel all edits on one row — restores to snapshot taken before editing began
+  const cancelRowEdits = (ai) => {
+    setInlineEdits(e => { const n={...e}; delete n[ai]; return n })
+    setOriginalVals(v => { const n={...v}; delete n[ai]; return n })
+    // Also revert any direct updateCell changes on this row
+    setTransactions(prev => prev.map((t,i) => {
+      if (i !== ai) return t
+      const orig = originalVals[ai]
+      return orig ? {...t, ...orig} : t
+    }))
+    toast('Row changes cancelled', {icon:'↩️'})
+  }
+
   const hasEdits = Object.keys(inlineEdits).length > 0
 
   // Save all inline edits to transactions state
@@ -584,6 +681,7 @@ export default function OutputPanel({
       return edits ? {...t,...edits} : t
     }))
     setInlineEdits({})
+    setOriginalVals({})
     toast.success('Changes applied — click Save to DB to persist')
   }
 
@@ -830,18 +928,34 @@ export default function OutputPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {monthlySummary.map((row,i)=>(
-                    <tr key={i} style={row['Year/Month']==='Grand Total'?{fontWeight:700,background:'#FFFDE7'}:{}}>
-                      <td><span className="mono" style={{fontSize:'.8rem'}}>{row['Year/Month']}</span></td>
-                      <td>{row['🟢Internal Transfers']}</td>
-                      <td>{row['🔵Incoming Count']}</td>
-                      <td>{row['🟡Outgoing Count']}</td>
-                      <td className="num">{fmtAUD(row['Total 🔵Incoming Income'])}</td>
-                      <td className="num">{fmtAUD(row['Total 🟡Outgoing Expense'])}</td>
-                      <td className="num">{fmtAUD(row['Total 🔵Incoming GST'])}</td>
-                      <td className="num">{fmtAUD(row['Total 🟡Outgoing GST'])}</td>
-                    </tr>
-                  ))}
+                  {monthlySummary.map((row,i)=>{
+                    const rt = row['_row_type'] || (row['Year/Month']==='Grand Total' ? 'grand_total' : 'month')
+                    // Row styling by type
+                    const isYearTotal  = rt === 'year_total'
+                    const isGrandTotal = rt === 'grand_total'
+                    const rowStyle = isGrandTotal
+                      ? {fontWeight:700, background:'#FFFDE7', borderTop:'2px solid #E0C840'}
+                      : isYearTotal
+                        ? {fontWeight:600, background:'var(--surface-2)', borderTop:'1px solid var(--border)', borderBottom:'2px solid var(--border)', fontStyle:'italic'}
+                        : {}
+                    const labelStyle = isGrandTotal
+                      ? {fontSize:'.82rem', fontWeight:700, color:'var(--brand)'}
+                      : isYearTotal
+                        ? {fontSize:'.8rem', fontWeight:600, color:'var(--text-2)', paddingLeft:8}
+                        : {fontSize:'.8rem', fontFamily:'var(--font-mono)', paddingLeft:16}
+                    return (
+                      <tr key={i} style={rowStyle}>
+                        <td><span style={labelStyle}>{row['Year/Month']}</span></td>
+                        <td>{row['🟢Internal Transfers']}</td>
+                        <td>{row['🔵Incoming Count']}</td>
+                        <td>{row['🟡Outgoing Count']}</td>
+                        <td className="num">{fmtAUD(row['Total 🔵Incoming Income'])}</td>
+                        <td className="num">{fmtAUD(row['Total 🟡Outgoing Expense'])}</td>
+                        <td className="num">{fmtAUD(row['Total 🔵Incoming GST'])}</td>
+                        <td className="num">{fmtAUD(row['Total 🟡Outgoing GST'])}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1070,33 +1184,37 @@ export default function OutputPanel({
                         value={v('credit')||''} onChange={e=>setCell(ai,'credit',parseFloat(e.target.value)||0)}
                         style={{width:90,textAlign:'right',fontFamily:'var(--font-mono)',fontSize:'.8rem',color:'var(--info)',fontWeight:600}}/>
                     </td>
-                    {/* Classification — FIX 5: recalc GST on change */}
+                    {/* Classification — blank GL/GST when → Internal; recalc GST otherwise */}
                     <td>
                       <select value={v('classification')||''} onChange={e => {
-                          const cls = e.target.value
+                          const cls     = e.target.value
+                          const wasInternal = (v('classification')||'').includes('Internal')
                           setCell(ai, 'classification', cls)
                           updateCell(ai, 'classification', cls)
-                          // Recalculate GST based on new classification + existing GL
-                          const glName = v('gl_account') || ''
-                          const coa    = coaMap[glName]
-                          if (coa && coa.tax_code) {
-                            const tc     = (coa.tax_code || '').toLowerCase()
-                            const debit  = parseFloat(v('debit'))  || 0
-                            const credit = parseFloat(v('credit')) || 0
-                            let   gst    = 0
-                            if (tc.includes('gst on') && !cls.includes('Internal')) {
-                              if (credit > 0) gst = Math.round(credit * 10 / 110 * 100) / 100
-                              else if (debit > 0) gst = Math.round(debit * 10 / 110 * 100) / 100
-                            }
-                            setCell(ai,'gst', gst)
-                            updateCell(ai,'gst', gst)
-                          }
-                          // Internal transfers always have $0 GST
+
                           if (cls.includes('Internal')) {
-                            setCell(ai,'gst', 0)
-                            updateCell(ai,'gst', 0)
-                            setCell(ai,'gst_category', '')
-                            updateCell(ai,'gst_category', '')
+                            // Changing TO Internal — blank all accounting fields
+                            setCell(ai,'gl_account',  '');  updateCell(ai,'gl_account',  '')
+                            setCell(ai,'gl_type',     '');  updateCell(ai,'gl_type',     '')
+                            setCell(ai,'gst_category','');  updateCell(ai,'gst_category','')
+                            setCell(ai,'gst',          0);  updateCell(ai,'gst',          0)
+                          } else {
+                            // Changing FROM Internal (or between Incoming/Outgoing)
+                            // — recalculate GST from current GL if one is set
+                            const glName = v('gl_account') || ''
+                            const coa    = coaMap[glName]
+                            if (coa && coa.tax_code) {
+                              const tc     = (coa.tax_code || '').toLowerCase()
+                              const debit  = parseFloat(v('debit'))  || 0
+                              const credit = parseFloat(v('credit')) || 0
+                              let   gst    = 0
+                              if (tc.includes('gst on')) {
+                                if (credit > 0) gst = Math.round(credit * 10 / 110 * 100) / 100
+                                else if (debit > 0) gst = Math.round(debit * 10 / 110 * 100) / 100
+                              }
+                              setCell(ai,'gst_category', coa.tax_code); updateCell(ai,'gst_category', coa.tax_code)
+                              setCell(ai,'gst', gst);                    updateCell(ai,'gst', gst)
+                            }
                           }
                         }}
                         className="select-compact">
@@ -1176,10 +1294,33 @@ export default function OutputPanel({
                           </select>
                       }
                     </td>
-                    {/* Who */}
-                    <td style={{overflow:'hidden'}}>
+                    {/* Who + per-row Cancel button */}
+                    <td style={{overflow:'hidden',display:'flex',alignItems:'center',gap:4}}>
                       <input className="cell-input" value={v('who')||''} onChange={setV('who')}
-                        title={v('who')||''} style={{width:'100%',fontSize:'.78rem',color:'var(--text-2)'}}/>
+                        title={v('who')||''} style={{flex:1,fontSize:'.78rem',color:'var(--text-2)'}}/>
+                      {/* Cancel button — only visible when this row has unsaved edits */}
+                      {inlineEdits[ai] && (
+                        <button
+                          onClick={() => cancelRowEdits(ai)}
+                          title="Cancel changes on this row and restore original values"
+                          style={{
+                            flexShrink:0,
+                            background:'none',
+                            border:'1px solid var(--danger,#ef4444)',
+                            borderRadius:'var(--r-sm,4px)',
+                            color:'var(--danger,#ef4444)',
+                            cursor:'pointer',
+                            fontSize:'.68rem',
+                            fontWeight:600,
+                            lineHeight:1,
+                            padding:'2px 5px',
+                            whiteSpace:'nowrap',
+                            transition:'background .12s,color .12s',
+                          }}
+                          onMouseEnter={e=>{e.currentTarget.style.background='var(--danger,#ef4444)';e.currentTarget.style.color='#fff'}}
+                          onMouseLeave={e=>{e.currentTarget.style.background='none';e.currentTarget.style.color='var(--danger,#ef4444)'}}
+                        >↩ Cancel</button>
+                      )}
                     </td>
                   </tr>
                 )
