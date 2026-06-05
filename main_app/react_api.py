@@ -650,11 +650,44 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
         if not existing_gl or existing_gst in ("", "Unknown"):
             result = _engine_classify(desc, debit, credit)
             if not existing_gl:
-                df.at[idx, "GL Account"]   = result.gl_account
-                df.at[idx, "GL Type"]      = result.gl_type
+                gl_candidate = result.gl_account
+                gl_type      = result.gl_type or (_COA_NAME_TO_TYPE.get(gl_candidate, ""))
+
+                # FIX 1: During AUTO-ALLOCATION, prevent assigning an Expense-type
+                # GL to an Incoming (credit) transaction and vice versa.
+                # The user can still manually override in the UI.
+                _income_types  = {"revenue", "income", "other income", "sales"}
+                _expense_types = {"expense", "direct costs", "overhead", "other expense"}
+                _is_incoming   = "Incoming" in cl or "🔵" in cl
+                _is_outgoing   = "Outgoing" in cl or "🟡" in cl
+                _type_lower    = gl_type.lower()
+
+                _direction_ok = True
+                if _is_incoming and _type_lower in _expense_types:
+                    # Incoming row got an Expense GL — find nearest income-type account
+                    _direction_ok = False
+                    for _fallback_name, _fallback_type in _COA_NAME_TO_TYPE.items():
+                        if _fallback_type.lower() in _income_types:
+                            gl_candidate = _fallback_name
+                            gl_type      = _fallback_type
+                            break
+                elif _is_outgoing and _type_lower in _income_types:
+                    # Outgoing row got an Income GL — find nearest expense-type account
+                    _direction_ok = False
+                    for _fallback_name, _fallback_type in _COA_NAME_TO_TYPE.items():
+                        if _fallback_type.lower() in _expense_types:
+                            gl_candidate = _fallback_name
+                            gl_type      = _fallback_type
+                            break
+
+                df.at[idx, "GL Account"] = gl_candidate
+                df.at[idx, "GL Type"]    = gl_type
+
             if existing_gst in ("", "Unknown"):
                 df.at[idx, "GST Category"] = result.gst_category
-                df.at[idx, "GST"]          = result.gst_amount
+                # FIX 5: Recalculate GST amount from actual debit/credit + tax code
+                from backend.reconciliation.gst_calculator import calculate_gst_value
+                df.at[idx, "GST"] = calculate_gst_value(debit, credit, result.gst_category)
 
         df.at[idx, "Who"] = extract_who_bank(desc)
 
