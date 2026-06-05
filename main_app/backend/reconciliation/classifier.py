@@ -165,6 +165,21 @@ def classify_transactions(
 
     MAX_DAYS = 5
 
+    # ── Scoring helper ───────────────────────────────────────────────────────
+    # A pair qualifies as an internal transfer if it meets AT LEAST ONE of:
+    #   A) Both descriptions contain transfer keywords
+    #   B) One description contains a transfer keyword (the initiating side)
+    #   C) Descriptions reference each other's account/bank name
+    #   D) Different accounts/banks, same amount, debit date <= credit date,
+    #      within MAX_DAYS — structural match (no keyword needed)
+    #
+    # Issue 6 fix: the old code required BOTH rows to have transfer keywords.
+    # Many real transfers only have a keyword on one side (e.g. "TFR TO SAVINGS"
+    # on the debit row, but just "CREDIT RECEIVED" on the credit row).
+    # Now we score all viable pairs and use a minimum score threshold.
+
+    MIN_PAIR_SCORE = 5   # at least one positive signal required
+
     for amount in sorted(debit_by_amt):
         if amount not in credit_by_amt:
             continue
@@ -183,24 +198,65 @@ def classify_transactions(
         scores = []
         for i, (di, ddt, dbk, dac, dds) in enumerate(debits):
             for j, (ci, cdt, cbk, cac, cds) in enumerate(credits):
+
+                # Rule: must be different account or different bank
                 if dac == cac and dbk == cbk:
                     continue
+
+                # Rule: dates must be available
                 if pd.isna(ddt) or pd.isna(cdt):
+                    # Allow if at least one description has transfer keyword
+                    if not (_is_transfer(dds) or _is_transfer(cds)):
+                        continue
+                    # Can't apply date ordering without dates — allow with keyword
+                    sc = 0
+                    dl, cl2 = dds.lower(), cds.lower()
+                    if _is_transfer(dds): sc += 15
+                    if _is_transfer(cds): sc += 15
+                    if dac.lower() in cl2 or cac.lower() in dl: sc += 20
+                    if dbk.lower() in cl2 or cbk.lower() in dl: sc += 10
+                    if sc >= MIN_PAIR_SCORE:
+                        scores.append((sc, i, j, di, ci))
                     continue
-                day_diff = abs((ddt - cdt).days)
+
+                # Rule: credit date must NOT be earlier than debit date
+                # (money must leave before it arrives — allow same day)
+                if cdt < ddt:
+                    continue
+
+                day_diff = (cdt - ddt).days   # signed: credit is after debit
                 if day_diff > MAX_DAYS:
                     continue
-                if not _is_transfer(dds) or not _is_transfer(cds):
-                    continue
-                sc = (MAX_DAYS - day_diff) * 10
-                if dbk != cbk:
-                    sc += 5
-                dl, cl = dds.lower(), cds.lower()
-                if dac.lower() in cl or cac.lower() in dl:
-                    sc += 20
-                if dbk.lower() in cl or cbk.lower() in dl:
-                    sc += 10
-                scores.append((sc, i, j, di, ci))
+
+                sc = 0
+                dl, cl2 = dds.lower(), cds.lower()
+
+                # Keyword signals (either side counts)
+                if _is_transfer(dds): sc += 15
+                if _is_transfer(cds): sc += 15
+
+                # Cross-reference: description mentions the other account/bank
+                if dac.lower() in cl2 or cac.lower() in dl: sc += 20
+                if dbk.lower() in cl2 or cbk.lower() in dl: sc += 10
+
+                # Different bank is a stronger transfer signal
+                if dbk != cbk: sc += 8
+
+                # Closer dates = higher score
+                sc += (MAX_DAYS - day_diff) * 4
+
+                # Structural match: same amount, different accounts,
+                # debit before credit, within window — even without keywords
+                # this is a meaningful signal (score from date proximity alone
+                # will be > 0, but we also give a base structural bonus)
+                if sc == (MAX_DAYS - day_diff) * 4 + (8 if dbk != cbk else 0):
+                    # Only structural signal — require different banks to avoid
+                    # false positives on same-bank same-account-holder payments
+                    if dbk == cbk:
+                        continue   # same bank, no keywords → too risky to auto-pair
+
+                if sc >= MIN_PAIR_SCORE:
+                    scores.append((sc, i, j, di, ci))
 
         scores.sort(key=lambda x: -x[0])
         used_d, used_c = set(), set()
@@ -215,6 +271,58 @@ def classify_transactions(
             matched_debits.add(int(di))
             matched_credits.add(int(ci))
             used_d.add(i); used_c.add(j)
+
+    # ── Pass 2: fuzzy amount matching (same-direction within 0.5%) ──────────────
+    # Handles cases where a bank fee is deducted in transit:
+    # e.g. debit $1,000 → credit $999.50 (fee deducted by receiving bank)
+    # Both rows must have at least one transfer keyword to qualify.
+    TOLERANCE = 0.005
+
+    unmatched_d = [
+        (idx, dt, bk, ac, ds, amt)
+        for amt, rows in debit_by_amt.items()
+        for (idx, dt, bk, ac, ds) in rows
+        if idx not in matched_debits and _is_transfer(ds)
+    ]
+    unmatched_c = [
+        (idx, dt, bk, ac, ds, amt)
+        for amt, rows in credit_by_amt.items()
+        for (idx, dt, bk, ac, ds) in rows
+        if idx not in matched_credits and _is_transfer(ds)
+    ]
+
+    for d_idx, d_dt, d_bk, d_ac, d_ds, d_amt in unmatched_d:
+        if d_idx in matched_debits or d_amt == 0:
+            continue
+        best_ci, best_sc = None, -1
+        for c_idx, c_dt, c_bk, c_ac, c_ds, c_amt in unmatched_c:
+            if c_idx in matched_credits:
+                continue
+            if d_ac == c_ac and d_bk == c_bk:
+                continue
+            diff_pct = abs(d_amt - c_amt) / d_amt
+            if diff_pct > TOLERANCE:
+                continue
+            if pd.isna(d_dt) or pd.isna(c_dt):
+                continue
+            if c_dt < d_dt:
+                continue
+            day_diff = (c_dt - d_dt).days
+            if day_diff > MAX_DAYS:
+                continue
+            sc = 50 - day_diff * 4   # base score for fuzzy match
+            if d_bk != c_bk: sc += 8
+            dl, cl2 = d_ds.lower(), c_ds.lower()
+            if d_ac.lower() in cl2 or c_ac.lower() in dl: sc += 20
+            if sc > best_sc:
+                best_sc = sc
+                best_ci = c_idx
+        if best_ci is not None:
+            pid = f"PAIR{next(pair_counter):05d}"
+            df.loc[int(d_idx), ["classification", "pairid"]] = ["🟢Internal", pid]
+            df.loc[int(best_ci), ["classification", "pairid"]] = ["🟢Internal", pid]
+            matched_debits.add(int(d_idx))
+            matched_credits.add(int(best_ci))
 
     pb.progress(1.0, text="Transfer matching complete ✅")
 
