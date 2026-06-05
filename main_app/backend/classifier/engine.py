@@ -514,6 +514,28 @@ def classify(
                 if _r.name.lower() == gl.lower():
                     _rdr_type = _r.atype
                     break
+
+        # Direction guard for RDR results — same rule as Stage 3:
+        # a credit-only transaction must not resolve to an Expense-type GL.
+        # If the RDR rule returned a wrong-direction GL, override with the
+        # best direction-correct TF-IDF match from the COA.
+        _is_credit_only = credit > 0 and debit == 0
+        _is_debit_only  = debit  > 0 and credit == 0
+        _rdr_type_lower = _rdr_type.lower()
+        _direction_wrong = (
+            (_is_credit_only and _rdr_type_lower in _EXPENSE_TYPES) or
+            (_is_debit_only  and _rdr_type_lower in _INCOME_TYPES)
+        )
+        if _direction_wrong and gl:
+            _target = _INCOME_TYPES if _is_credit_only else _EXPENSE_TYPES
+            _fix_row, _ = index.query(gl, restrict_types=_target)
+            if not _fix_row:
+                _fix_row = index.first_of_type(_target)
+            if _fix_row:
+                gl        = _fix_row.name
+                _rdr_type = _fix_row.atype
+                gst       = _fix_row.tax_code
+
         return ClassifyResult(
             gl_account   = gl,
             gl_type      = _rdr_type,
@@ -540,36 +562,36 @@ def classify(
                     source       = "transfer",
                 )
 
-    # ── Stage 3: TF-IDF semantic match ───────────────────────────────────
+    # ── Stage 3: TF-IDF semantic match — direction-first ────────────────
     if desc:
-        row, score = index.query(desc)
+        # Determine which COA account types are valid for this transaction direction.
+        # A credit (money IN)  must map to a Revenue/Income GL account.
+        # A debit  (money OUT) must map to an Expense/Cost GL account.
+        # Mixed or zero amounts have no restriction.
+        # This is applied BEFORE picking the best row, not as a post-hoc correction,
+        # so "Interest Expense" can never win over "Interest Income" for a credit tx.
+        _is_credit_only = credit > 0 and debit == 0
+        _is_debit_only  = debit  > 0 and credit == 0
+
+        if _is_credit_only:
+            _direction_types = _INCOME_TYPES
+        elif _is_debit_only:
+            _direction_types = _EXPENSE_TYPES
+        else:
+            _direction_types = None   # no restriction for mixed/zero amounts
+
+        # First try: query restricted to the correct direction type.
+        # This ensures "interest received" (credit) always resolves to
+        # Interest Income (Revenue) not Interest Expense (Expense), even if the
+        # TF-IDF score for the expense account is marginally higher.
+        row, score = index.query(desc, restrict_types=_direction_types)
+
+        if not row and _direction_types is not None:
+            # Nothing matched within the correct type — try unrestricted as fallback
+            # (better a cross-type match than no match at all)
+            row, score = index.query(desc)
+
         if row:
-            # FIX 1: Direction guard — during auto-allocation, do not assign an
-            # Expense-type GL to an Incoming row, or Income-type GL to Outgoing.
-            # If mismatch: re-query the index restricted to the correct direction,
-            # so the result still comes from COA — not hardcoded.
-            _row_type = (row.atype or "").lower()
-            _income_mismatch  = credit > 0 and debit == 0 and _row_type in _EXPENSE_TYPES
-            _expense_mismatch = debit  > 0 and credit == 0 and _row_type in _INCOME_TYPES
-            if _income_mismatch or _expense_mismatch:
-                # Find best match among correctly-typed COA rows only
-                _target_types = _INCOME_TYPES if (credit > 0 and debit == 0) else _EXPENSE_TYPES
-                _fb = index.first_of_type(_target_types)
-                # Try a typed query first — if a better match exists in correct type, prefer it
-                _typed_row, _typed_score = index.query(desc, restrict_types=_target_types)
-                if _typed_row:
-                    row, score = _typed_row, _typed_score
-                elif _fb:
-                    # Fallback to first matching type from COA
-                    return ClassifyResult(
-                        gl_account   = _fb.name,
-                        gl_type      = _fb.atype,
-                        gst_category = _fb.tax_code,
-                        gst_amount   = _calc_gst(debit, credit, _fb.tax_code),
-                        matched      = False,
-                        score        = 0.0,
-                        source       = "fallback",
-                    )
             return ClassifyResult(
                 gl_account   = row.name,
                 gl_type      = row.atype,
