@@ -52,14 +52,6 @@ fi
 echo "[accfino] Auth API ready"
 
 # ── Start main API on :8001 (foreground) ──────────────────────────────────
-# ── Verify React build is present ─────────────────────────────────────────
-if [ -f "/app/react_frontend/dist/index.html" ]; then
-    echo "[accfino] ✅ React dist found at /app/react_frontend/dist/index.html"
-else
-    echo "[accfino] ⚠️  WARNING: React dist NOT found — UI will not be served"
-    echo "[accfino]    Check Dockerfile COPY --from=frontend-build step"
-fi
-
 echo "[accfino] Starting main API on :8001..."
 if [ -n "$DATABASE_URL" ]; then
     echo "[accfino] Postgres detected — running with 2 workers"

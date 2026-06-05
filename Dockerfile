@@ -9,14 +9,7 @@ COPY react_frontend/package.json react_frontend/package-lock.json ./
 RUN npm ci --silent
 
 COPY react_frontend/ ./
-
-# In production (Northflank/Docker) there is no Vite dev proxy.
-# The built JS calls /api/* which FastAPI strips via StripApiPrefix middleware.
-# No VITE_API_BASE_URL needed — relative /api path works for same-origin deployments.
 RUN npm run build
-
-# Verify the build succeeded and index.html exists
-RUN test -f /build/dist/index.html || (echo "ERROR: Vite build failed — dist/index.html missing" && exit 1)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: Python runtime
