@@ -96,13 +96,20 @@ except Exception:
     OB_AVAILABLE = False
 
 app = FastAPI(title="Accfino API", version="2.0")
+# CORS origins — configurable via CORS_ORIGINS env var for custom domains.
+# Format: comma-separated list, e.g. "https://myapp.northflank.app,https://mysite.com"
+import os as _os
+_extra_origins = [o.strip() for o in _os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+_CORS_ORIGINS = [
+    "http://localhost:3000", "http://127.0.0.1:3000",
+    "http://localhost:5173", "http://127.0.0.1:5173",
+    "https://www.accfino.com",
+    "https://accfino.com",
+] + _extra_origins
+
 app.add_middleware(CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", "http://127.0.0.1:3000",
-        "http://localhost:5173", "http://127.0.0.1:5173",
-        "https://www.accfino.com",
-        "https://accfino.com",
-    ],
+    allow_origins=_CORS_ORIGINS,
+    allow_origin_regex=r"https://.*\.northflank\.app",   # all Northflank preview URLs
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 from fastapi.responses import JSONResponse
@@ -1920,11 +1927,15 @@ class StripApiPrefix(BaseHTTPMiddleware):
         scope = request.scope
         path  = scope.get("path", "")
         if path.startswith("/api/"):
-            scope["path"]     = path[4:]
-            scope["raw_path"] = scope["path"].encode()
+            new_path          = path[4:]          # "/api/banks" → "/banks"
+            scope["path"]     = new_path
+            # raw_path must include query string for ASGI compliance
+            qs = scope.get("query_string", b"")
+            scope["raw_path"] = (new_path + ("?" + qs.decode() if qs else "")).encode()
         elif path == "/api":
             scope["path"]     = "/"
             scope["raw_path"] = b"/"
+        # All other paths (/, /assets/*, /dashboard, etc.) pass through unchanged
         return await call_next(request)
 
 app.add_middleware(StripApiPrefix)
