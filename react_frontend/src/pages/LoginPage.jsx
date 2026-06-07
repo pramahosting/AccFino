@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { register, forgotPassword, getPlans, createCheckout } from '../lib/api.js'
+import { register, forgotPassword, getPricingPlans, createCheckout } from '../lib/api.js'
 import { Eye, EyeOff, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import TopBar from '../components/ui/TopBar.jsx'
@@ -43,7 +43,7 @@ export default function LoginPage() {
   }
 
   useEffect(() => {
-    getPlans().then(r => setPlans(r.data || {})).catch(() => {})
+    getPricingPlans().then(r => setPlans(r.data || {})).catch(() => {})
 
     // Auto-switch to register tab if ?tab=register in URL
     const tabParam = searchParams.get('tab')
@@ -79,6 +79,7 @@ export default function LoginPage() {
         role: 'user',
         phone: form.phone.trim(),
         address: '',
+        home_company: (form.home_company || '').trim(),
       })
 
       if (selPlan === 'base') {
@@ -546,6 +547,19 @@ export default function LoginPage() {
                     value={form.phone}
                     onChange={set('phone')}
                     placeholder="+61 4xx xxx xxx"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">
+                    Registered Company
+                    <span style={{fontSize:'0.78rem',color:'var(--gray-400)',fontWeight:400,marginLeft:6}}>
+                      optional — for internal transfer detection
+                    </span>
+                  </label>
+                  <input className="form-input" name="home_company"
+                    value={form.home_company||''}
+                    onChange={e=>setForm(f=>({...f,home_company:e.target.value}))}
+                    placeholder="e.g. Headstart Finances Australia Pty Ltd"
                   />
                 </div>
 
