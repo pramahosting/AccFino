@@ -150,7 +150,6 @@ export default function PaymentPage() {
         paddingTop: '48px',
       }}>
         <div style={{ width: '100%' }}>
-          <AccfinoLogo size={44} showText textColor="#fff" />
           <div style={{ marginTop: 28, marginBottom: 24 }}>
             <h2 style={{ color:'#fff', fontSize:'1.3rem', fontFamily:"'Instrument Serif', serif", marginBottom:8 }}>
               Choose what you need
