@@ -96,20 +96,19 @@ except Exception:
     OB_AVAILABLE = False
 
 app = FastAPI(title="Accfino API", version="2.0")
-# CORS origins — configurable via CORS_ORIGINS env var for custom domains.
-# Format: comma-separated list, e.g. "https://myapp.northflank.app,https://mysite.com"
+# CORS — extend via CORS_ORIGINS env var (comma-separated) for custom domains.
+# E.g. in Northflank env vars: CORS_ORIGINS=https://myapp.northflank.app
 import os as _os
-_extra_origins = [o.strip() for o in _os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+_extra_origins = [o.strip() for o in _os.environ.get("CORS_ORIGINS","").split(",") if o.strip()]
 _CORS_ORIGINS = [
-    "http://localhost:3000", "http://127.0.0.1:3000",
-    "http://localhost:5173", "http://127.0.0.1:5173",
-    "https://www.accfino.com",
-    "https://accfino.com",
+    "http://localhost:3000","http://127.0.0.1:3000",
+    "http://localhost:5173","http://127.0.0.1:5173",
+    "https://www.accfino.com","https://accfino.com",
 ] + _extra_origins
 
 app.add_middleware(CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
-    allow_origin_regex=r"https://.*\.northflank\.app",   # all Northflank preview URLs
+    allow_origin_regex=r"https://.*\.northflank\.app",  # all Northflank preview URLs
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 from fastapi.responses import JSONResponse
@@ -126,6 +125,29 @@ async def global_exception_handler(request: _Request, exc: Exception):
     )
 
 # ── Health check endpoint (used by Northflank / Docker HEALTHCHECK) ───────────
+@app.post("/debug/parse-csv", include_in_schema=False)
+async def debug_parse_csv(
+    file: UploadFile = File(...),
+    bank_name: str = Form(...),
+):
+    """Debug endpoint: parse a CSV and return the first 5 rows as JSON.
+    Use this to verify column detection is working correctly on Northflank.
+    POST to /api/debug/parse-csv with file + bank_name form fields.
+    """
+    import io as _io
+    try:
+        df_raw = pd.read_csv(_io.BytesIO(await file.read()))
+        result = normalize_transactions(df_raw, bank_name, "DEBUG")
+        return {
+            "raw_columns":    df_raw.columns.tolist(),
+            "parsed_columns": result.columns.tolist(),
+            "row_count":      len(result),
+            "sample":         result.head(5).to_dict(orient="records"),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.get("/health", include_in_schema=False)
 def health_check():
     """Simple liveness probe — returns 200 if the API process is running."""
@@ -248,7 +270,20 @@ def _build_monthly_summary(df: pd.DataFrame) -> list:
     if "GST" not in df.columns:
         df["GST"] = 0.0
 
-    rows = []
+    def _make_row(label, src, row_type="month"):
+        return {
+            "Year/Month":               label,
+            "_row_type":                row_type,
+            "🟢Internal Transfers":     sum(r["🟢Internal Transfers"] for r in src),
+            "🔵Incoming Count":         sum(r["🔵Incoming Count"]     for r in src),
+            "🟡Outgoing Count":         sum(r["🟡Outgoing Count"]     for r in src),
+            "Total 🔵Incoming Income":  round(sum(r["Total 🔵Incoming Income"]  for r in src), 2),
+            "Total 🟡Outgoing Expense": round(sum(r["Total 🟡Outgoing Expense"] for r in src), 2),
+            "Total 🔵Incoming GST":     round(sum(r["Total 🔵Incoming GST"]     for r in src), 2),
+            "Total 🟡Outgoing GST":     round(sum(r["Total 🟡Outgoing GST"]     for r in src), 2),
+        }
+
+    months_by_year = {}
     for (year, month), group in df.groupby(["Year", "Month"]):
         internal_count = (group["Classification"] == "🟢Internal").sum()
         incoming_count = (group["Classification"] == "🔵Incoming").sum()
@@ -257,31 +292,31 @@ def _build_monthly_summary(df: pd.DataFrame) -> list:
         total_expense  = group.loc[group["Classification"] == "🟡Outgoing", "Debit"].sum()
         gst_in         = group.loc[group["Classification"] == "🔵Incoming", "GST"].sum()
         gst_out        = group.loc[group["Classification"] == "🟡Outgoing", "GST"].sum()
-        rows.append({
-            "Year/Month":                  f"{int(year)}/{int(month):02d}",
-            "🟢Internal Transfers":        int(internal_count),
-            "🔵Incoming Count":            int(incoming_count),
-            "🟡Outgoing Count":            int(outgoing_count),
-            "Total 🔵Incoming Income":     round(float(total_income), 2),
-            "Total 🟡Outgoing Expense":    round(float(total_expense), 2),
-            "Total 🔵Incoming GST":        round(float(gst_in), 2),
-            "Total 🟡Outgoing GST":        round(float(gst_out), 2),
-        })
+        row = {
+            "Year/Month":               f"{int(year)}/{int(month):02d}",
+            "_row_type":                "month",
+            "🟢Internal Transfers":     int(internal_count),
+            "🔵Incoming Count":         int(incoming_count),
+            "🟡Outgoing Count":         int(outgoing_count),
+            "Total 🔵Incoming Income":  round(float(total_income),  2),
+            "Total 🟡Outgoing Expense": round(float(total_expense), 2),
+            "Total 🔵Incoming GST":     round(float(gst_in),  2),
+            "Total 🟡Outgoing GST":     round(float(gst_out), 2),
+        }
+        months_by_year.setdefault(int(year), []).append(row)
 
-    # Grand total row
-    if rows:
-        rows.append({
-            "Year/Month":                  "Grand Total",
-            "🟢Internal Transfers":        sum(r["🟢Internal Transfers"] for r in rows),
-            "🔵Incoming Count":            sum(r["🔵Incoming Count"] for r in rows),
-            "🟡Outgoing Count":            sum(r["🟡Outgoing Count"] for r in rows),
-            "Total 🔵Incoming Income":     round(sum(r["Total 🔵Incoming Income"] for r in rows), 2),
-            "Total 🟡Outgoing Expense":    round(sum(r["Total 🟡Outgoing Expense"] for r in rows), 2),
-            "Total 🔵Incoming GST":        round(sum(r["Total 🔵Incoming GST"] for r in rows), 2),
-            "Total 🟡Outgoing GST":        round(sum(r["Total 🟡Outgoing GST"] for r in rows), 2),
-        })
+    result, all_rows = [], []
+    for year in sorted(months_by_year):
+        yr_rows = months_by_year[year]
+        result.extend(yr_rows)
+        all_rows.extend(yr_rows)
+        if len(months_by_year) > 1:
+            result.append(_make_row(f"{year} Total", yr_rows, "year_total"))
 
-    return rows
+    if all_rows:
+        result.append(_make_row("Grand Total", all_rows, "grand_total"))
+
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -562,8 +597,22 @@ async def reconcile_process(
 
     combined = pd.concat(normed, ignore_index=True)
     combined.columns = combined.columns.str.strip().str.lower()
+
+    # Safety: ensure account_name column always exists (may be missing if
+    # bank_normalizer didn't produce it for some files)
+    if "account_name" not in combined.columns:
+        combined["account_name"] = ""
+
+    # Log column presence for Northflank debugging
+    logger.info(f"Combined columns: {combined.columns.tolist()}")
+    logger.info(f"Sample description (first row): {combined['description'].iloc[0] if 'description' in combined.columns and len(combined) else 'N/A'}")
+
     classified = rec_classifier.classify_transactions(combined, show_progress=False)
     classified = _norm_cols(classified)
+
+    # Safety: ensure Account Name survives _norm_cols
+    if "Account Name" not in classified.columns:
+        classified["Account Name"] = combined.get("account_name", "").values[:len(classified)]
 
     # Ensure all columns match original schema
     for col, default in [("GL Account",""),("GL Type",""),("GST Category",""),("GST",0.0),("Who",""),("PairID","")]:
@@ -671,15 +720,24 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
 
                 _direction_ok = True
                 if _is_incoming and _type_lower in _expense_types:
-                    # Incoming row got an Expense GL — find nearest income-type account
+                    # Incoming row got an Expense GL — find best Revenue-type account.
+                    # Prefer Revenue over Equity/neutral for income rows.
                     _direction_ok = False
-                    for _fallback_name, _fallback_type in _COA_NAME_TO_TYPE.items():
-                        if _fallback_type.lower() in _income_types:
-                            gl_candidate = _fallback_name
-                            gl_type      = _fallback_type
+                    # First pass: look for Revenue type specifically
+                    for _fn, _ft in _COA_NAME_TO_TYPE.items():
+                        if _ft.lower() == "revenue":
+                            gl_candidate = _fn
+                            gl_type      = _ft
                             break
+                    else:
+                        # Second pass: any income-adjacent type (equity etc.)
+                        for _fn, _ft in _COA_NAME_TO_TYPE.items():
+                            if _ft.lower() in _income_types:
+                                gl_candidate = _fn
+                                gl_type      = _ft
+                                break
                 elif _is_outgoing and _type_lower in _income_types:
-                    # Outgoing row got an Income GL — find nearest expense-type account
+                    # Outgoing row got an Income/Revenue GL — find nearest expense-type account
                     _direction_ok = False
                     for _fallback_name, _fallback_type in _COA_NAME_TO_TYPE.items():
                         if _fallback_type.lower() in _expense_types:
@@ -1927,15 +1985,16 @@ class StripApiPrefix(BaseHTTPMiddleware):
         scope = request.scope
         path  = scope.get("path", "")
         if path.startswith("/api/"):
-            new_path          = path[4:]          # "/api/banks" → "/banks"
-            scope["path"]     = new_path
-            # raw_path must include query string for ASGI compliance
+            new_path = path[4:]                    # "/api/banks" → "/banks"
+            scope["path"] = new_path
             qs = scope.get("query_string", b"")
-            scope["raw_path"] = (new_path + ("?" + qs.decode() if qs else "")).encode()
+            scope["raw_path"] = (
+                new_path + ("?" + qs.decode() if qs else "")
+            ).encode()
         elif path == "/api":
             scope["path"]     = "/"
             scope["raw_path"] = b"/"
-        # All other paths (/, /assets/*, /dashboard, etc.) pass through unchanged
+        # All other paths pass through unchanged
         return await call_next(request)
 
 app.add_middleware(StripApiPrefix)
