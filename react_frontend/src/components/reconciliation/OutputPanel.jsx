@@ -258,13 +258,16 @@ function SortTh({ label, field, sort, setSort, colFilters, onOpenFilter, values,
   const handleFilterClick = e => {
     e.stopPropagation()
     if (!thRef.current) return
-    // getBoundingClientRect on a sticky <th> returns correct VIEWPORT coords.
-    // We pass these up to OutputPanel which renders the portal outside the table.
-    const r  = thRef.current.getBoundingClientRect()
+    const r = thRef.current.getBoundingClientRect()
     const vh = window.innerHeight
+    // Layout has overflow:hidden + overflowY:auto ancestors which break position:fixed.
+    // We render the portal as position:absolute into document.body,
+    // so coordinates must be document-relative (viewport + scroll offset).
+    const scrollY = window.pageYOffset || document.documentElement.scrollTop  || 0
+    const scrollX = window.pageXOffset || document.documentElement.scrollLeft || 0
     onOpenFilter(field, {
-      top:  r.bottom,                           // flush below column header
-      left: r.left,                             // flush with column left edge
+      top:  r.bottom + scrollY,
+      left: r.left   + scrollX,
       maxH: Math.max(160, vh - r.bottom - 8),
     })
   }
@@ -862,8 +865,8 @@ export default function OutputPanel({
   // Column widths — default + user-draggable
   const DEFAULT_WIDTHS = {
     date:90,           // 10 chars: dd/mm/yyyy
-    bank:80, account_name:100, account:88,
-    description:220,   // user can drag to expand
+    bank:90, account_name:130, account:100,
+    description:240,   // user can drag to expand
     debit:90, credit:90,
     classification:105, // 10 chars: 🔵Incoming
     pairid:80,
