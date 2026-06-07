@@ -8,13 +8,30 @@ from backend.utils.logger import logger
 # ------------------------
 BANK_PRESETS = {
     # Big 4 Banks
-    "CBA": {"date": "Date", "description": "Description", "amount": "Amount", "balance": "Balance"},
+    # CBA exports have NO header row — columns are positional: Date|Amount|Description|Balance
+    # We handle this in normalize_transactions via the 'no_header' + 'col_positions' keys.
+    "CBA": {
+        "no_header":     True,
+        "col_positions": {"date": 0, "amount": 1, "description": 2, "balance": 3},
+        "date":          "Date",        # fallback if header detected
+        "description":   "Description",
+        "amount":        "Amount",
+        "balance":       "Balance",
+    },
     "ANZ": {"date": "Transaction Date", "description": "Transaction Details", "amount": "Amount ($)", "balance": "Balance ($)"},
     "Westpac": {"date": "Date", "description": "Transaction Description", "debit": "Debit", "credit": "Credit", "balance": "Balance"},
     "NAB": {"date": "Date", "description": "Description", "debit": "Debit", "credit": "Credit", "balance": "Balance"},
 
     # Other banks
-    "Macquarie": {"date": "Date", "description": "Transaction Details", "amount": "Amount", "balance": "Balance"},
+    # Macquarie CSV exports: Transaction Date | Details | Account | ... | Debit | Credit | Balance | Original Description
+    "Macquarie": {
+        "date":                "Transaction Date",
+        "description":         "Details",           # full description with BSB/A/C/reference
+        "description_alt":     "Original Description",  # short fallback
+        "debit":               "Debit",
+        "credit":              "Credit",
+        "balance":             "Balance",
+    },
     "HSBC": {"date": "Date", "description": "Transaction Details", "debit": "Money Out", "credit": "Money In", "balance": "Balance"},
     "BOQ": {"date": "Transaction Date", "description": "Description", "amount": "Transaction Amount", "balance": "Balance"},
     "ING": {"date": "Date", "description": "Transaction Description", "amount": "Amount", "balance": "Balance"},
@@ -123,22 +140,68 @@ def normalize_transactions(df: pd.DataFrame, bank_name: str, account_number: str
         ])
 
     df_local = df.copy()
-    df_local.columns = [c.strip() for c in df_local.columns]
-    logger.info(f"Bank: {bank_name}, Available columns: {df_local.columns.tolist()}")
+    logger.info(f"Bank: {bank_name}, Raw columns: {df_local.columns.tolist()}")
 
     preset = BANK_PRESETS.get(bank_name.strip().title()) or BANK_PRESETS.get(bank_name.strip().upper())
 
-    date_col = _match_column_case_insensitive(df_local, preset.get("date") if preset else None)
-    desc_col = _match_column_case_insensitive(df_local, preset.get("description") if preset else None)
-    debit_col = _match_column_case_insensitive(df_local, preset.get("debit") if preset else None)
+    # ── Handle no-header CSVs (e.g. CBA) ─────────────────────────────────────
+    # CBA exports have no header — first row is data. Detect by checking if
+    # the header row looks like a date (dd/mm/yyyy) rather than a column name.
+    _is_no_header = preset and preset.get("no_header", False)
+    if not _is_no_header and len(df_local.columns) >= 2:
+        # Auto-detect: if the "header" of col 0 looks like a date, it's headerless
+        _h0 = str(df_local.columns[0]).strip()
+        import re as _re
+        if _re.match(r"\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}", _h0):
+            _is_no_header = True
+            logger.info(f"  Auto-detected headerless CSV (col[0]='{_h0}')")
+
+    if _is_no_header and preset and "col_positions" in preset:
+        # Re-read with positional columns — prepend the header row back as data row
+        # by resetting column names to integers and inserting the original header
+        _pos = preset["col_positions"]
+        # The current df_local has first data row as "header" — recover it
+        _header_as_row = pd.DataFrame([df_local.columns.tolist()], columns=range(len(df_local.columns)))
+        df_local.columns = range(len(df_local.columns))
+        df_local = pd.concat([_header_as_row, df_local], ignore_index=True)
+        # Map positional columns to named ones
+        _col_map = {v: k.capitalize() for k, v in _pos.items()}
+        df_local = df_local.rename(columns=_col_map)
+        logger.info(f"  Headerless CSV reindexed → columns: {df_local.columns.tolist()}")
+    else:
+        df_local.columns = [str(c).strip() for c in df_local.columns]
+
+    date_col   = _match_column_case_insensitive(df_local, preset.get("date")   if preset else None)
+    desc_col   = _match_column_case_insensitive(df_local, preset.get("description") if preset else None)
+    desc_alt   = _match_column_case_insensitive(df_local, preset.get("description_alt") if preset else None)
+    debit_col  = _match_column_case_insensitive(df_local, preset.get("debit")  if preset else None)
     credit_col = _match_column_case_insensitive(df_local, preset.get("credit") if preset else None)
     amount_col = _match_column_case_insensitive(df_local, preset.get("amount") if preset else None)
-    balance_col = _match_column_case_insensitive(df_local, preset.get("balance") if preset else None)
+    balance_col= _match_column_case_insensitive(df_local, preset.get("balance")if preset else None)
 
     if not date_col:
         date_col = _find_column(df_local, ["date", "txn_date", "value_date"])
     if not desc_col:
-        desc_col = _find_column(df_local, ["description", "details", "narrative", "memo"])
+        desc_col = _find_column(df_local, [
+            "description", "details", "narrative", "memo", "particulars",
+            "transaction details", "transaction description", "remarks",
+            "reference", "note", "notes", "text", "comment",
+        ])
+    # Last resort: pick the string column with the most non-null, non-numeric text
+    if not desc_col:
+        exclude = {c for c in [date_col, balance_col, debit_col, credit_col, amount_col] if c}
+        best_col, best_score = None, 0
+        for col in df_local.columns:
+            if col in exclude: continue
+            sample = df_local[col].dropna().astype(str).head(20)
+            # Score = average word count (text-rich columns have multiple words)
+            score = sample.apply(lambda x: len(x.split())).mean() if len(sample) else 0
+            if score > best_score and score > 1.5:   # at least 2 words avg = likely description
+                best_score = score
+                best_col   = col
+        if best_col:
+            desc_col = best_col
+            logger.info(f"  desc_col auto-detected: {desc_col} (score={best_score:.1f})")
 
     # Detect balance column by keyword before debit/credit detection so it can be excluded
     if not balance_col:
@@ -178,9 +241,21 @@ def normalize_transactions(df: pd.DataFrame, bank_name: str, account_number: str
     else:
         df_out["date"] = None
 
-    df_out["bank"] = bank_name
-    df_out["account"] = account_number
-    df_out["description"] = df_local[desc_col] if desc_col else None
+    df_out["bank"]         = bank_name
+    df_out["account"]      = account_number
+    df_out["account_name"] = ""         # populated by caller (process_files) from user input
+
+    # Use primary description column; fall back to alt (e.g. Macquarie Original Description)
+    if desc_col:
+        df_out["description"] = df_local[desc_col].astype(str).str.strip()
+    elif desc_alt:
+        df_out["description"] = df_local[desc_alt].astype(str).str.strip()
+        logger.info(f"  Using description_alt column: {desc_alt}")
+    else:
+        df_out["description"] = ""
+
+    logger.info(f"  date_col={date_col}, desc_col={desc_col}, desc_alt={desc_alt}, "
+                f"debit_col={debit_col}, credit_col={credit_col}, amount_col={amount_col}")
 
     if debit_col and credit_col and debit_col != credit_col:
         df_out["debit"] = df_local[debit_col].apply(lambda x: max(clean_amount(x),0))
