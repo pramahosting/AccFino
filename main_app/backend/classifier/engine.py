@@ -57,8 +57,16 @@ _RDR_PATHS: List[Path] = [
 # ── Constants ───────────────────────────────────────────────────────────────
 MIN_SIMILARITY  = 0.08
 _GST_RATE       = 0.10
+# Account types that are VALID for credit (Incoming) transactions.
+# Revenue is the primary type; Equity is valid (owner injecting capital, dividends).
+# BAS Excluded accounts (Wages, Super) are valid for credits (salary refunds etc.)
+# — they are handled by neutral types below, not blocked.
 _INCOME_TYPES   = frozenset({"revenue", "income", "other income", "sales"})
+# Account types that are VALID for debit (Outgoing) transactions.
 _EXPENSE_TYPES  = frozenset({"expense", "direct costs", "overhead", "other expense"})
+# Types that carry no directional restriction (valid for either side).
+# Fixed Asset, Inventory, Equity, GST — not forced to income or expense.
+_NEUTRAL_TYPES  = frozenset({"fixed asset", "inventory", "equity", "gst"})
 _STOP: frozenset = frozenset({
     "a","an","the","and","or","of","in","to","for","with","at","by","from",
     "on","is","it","as","be","this","that","are","was","were","has","have",
@@ -224,11 +232,12 @@ class _Index:
         self._mat = mat.multiply(1.0 / norms[:, None])
 
     def query(self, desc: str, restrict_types: Optional[frozenset] = None,
+              min_sim: Optional[float] = None,
               ) -> Tuple[Optional[_Row], float]:
         """TF-IDF cosine similarity match.
-        restrict_types: FIX 1 — if set, only COA rows whose atype is in this
-        frozenset are considered. Allows direction-aware re-query without
-        hardcoding any account names.
+        restrict_types: if set, only COA rows whose atype is in this frozenset are considered.
+        min_sim: override the module-level MIN_SIMILARITY threshold (use 0.0 to get best
+                 match even if score is very low — useful for direction-restricted fallback).
         """
         if not self._rows or not self._mat.shape[0]:
             return None, 0.0
@@ -256,9 +265,10 @@ class _Index:
             sims = sims * type_mask
             if sims.max() == 0:
                 return None, 0.0
-        best_idx = int(np.argmax(sims))
-        score    = float(sims[best_idx])
-        return (self._rows[best_idx], score) if score >= MIN_SIMILARITY else (None, score)
+        best_idx  = int(np.argmax(sims))
+        score     = float(sims[best_idx])
+        threshold = min_sim if min_sim is not None else MIN_SIMILARITY
+        return (self._rows[best_idx], score) if score >= threshold else (None, score)
 
     def first_of_type(self, types: frozenset) -> Optional[_Row]:
         for r in self._rows:
@@ -523,8 +533,11 @@ def classify(
         _is_debit_only  = debit  > 0 and credit == 0
         _rdr_type_lower = _rdr_type.lower()
         _direction_wrong = (
+            # Credit row must NOT get an Expense/Direct Costs GL
             (_is_credit_only and _rdr_type_lower in _EXPENSE_TYPES) or
+            # Debit row must NOT get a Revenue GL
             (_is_debit_only  and _rdr_type_lower in _INCOME_TYPES)
+            # Neutral types (Equity, Fixed Asset, GST, Inventory) are allowed on either side
         )
         if _direction_wrong and gl:
             _target = _INCOME_TYPES if _is_credit_only else _EXPENSE_TYPES
@@ -587,9 +600,17 @@ def classify(
         row, score = index.query(desc, restrict_types=_direction_types)
 
         if not row and _direction_types is not None:
-            # Nothing matched within the correct type — try unrestricted as fallback
-            # (better a cross-type match than no match at all)
-            row, score = index.query(desc)
+            # Nothing matched within the correct type at MIN_SIMILARITY.
+            # Try with min_sim=0 (take the best score even if weak) but STAY
+            # restricted to the correct direction type — never cross into
+            # Expense for a credit row or Revenue for a debit row.
+            row, score = index.query(desc, restrict_types=_direction_types, min_sim=0.0)
+            # If still nothing (e.g. all Revenue accounts scored exactly 0),
+            # try including neutral types (Equity, Fixed Asset, Inventory, GST)
+            # but still exclude the wrong-direction types entirely.
+            if not row:
+                _allowed = _direction_types | _NEUTRAL_TYPES
+                row, score = index.query(desc, restrict_types=_allowed, min_sim=0.0)
 
         if row:
             return ClassifyResult(
@@ -603,7 +624,15 @@ def classify(
             )
 
     # ── Stage 4: Directional fallback ────────────────────────────────────
-    target = _INCOME_TYPES if credit > 0 else _EXPENSE_TYPES
+    # For credit rows: try Revenue first, then include Equity/neutral types.
+    # For debit rows: try Expense/Direct Costs first.
+    # Never return an Expense-type GL for a credit row.
+    if credit > 0 and debit == 0:
+        target = _INCOME_TYPES | _NEUTRAL_TYPES
+    elif debit > 0 and credit == 0:
+        target = _EXPENSE_TYPES
+    else:
+        target = _INCOME_TYPES | _EXPENSE_TYPES | _NEUTRAL_TYPES
     fb     = index.first_of_type(target)
     if fb:
         return ClassifyResult(
