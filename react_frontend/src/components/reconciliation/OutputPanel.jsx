@@ -1066,35 +1066,33 @@ export default function OutputPanel({
             )}
           </div>
 
+          {/* Filter chips — same box as toolbar */}
+          <div style={{display:'flex',alignItems:'center',gap:4,
+            padding:'6px 10px',background:'var(--surface-2)',borderRadius:'var(--r-md)',
+            border:'1px solid var(--border)',flexWrap:'wrap',marginBottom:6}}>
+            <span style={{fontSize:'.72rem',color:'var(--text-3)',marginRight:4,fontWeight:600}}>Show:</span>
+            {[['internal','🟢','active-int'],['incoming','🔵','active-in'],
+              ['outgoing','🟡','active-out'],['unclassified','⚪','']].map(([k,emoji,activeClass])=>(
+              <button key={k} onClick={()=>toggleF(k)}
+                className={`chip${filters[k] && activeClass ? ` ${activeClass}` : ''}`}
+                style={{opacity:filters[k]?1:.4,transition:'opacity .15s',fontSize:'.75rem',padding:'4px 10px'}}>
+                {emoji} {k.charAt(0).toUpperCase()+k.slice(1)}
+              </button>
+            ))}
+            {Object.values(colFilters).some(v=>v&&v.size>0) && (
+              <button className="btn btn-ghost btn-xs" style={{marginLeft:'auto'}} onClick={()=>setColFilters({})}>
+                <X size={11}/> Clear col filters
+              </button>
+            )}
+            <span style={{marginLeft:'auto',fontSize:'.72rem',color:'var(--text-3)'}}>
+              {filtered.length} row{filtered.length!==1?'s':''}
+            </span>
+          </div>
+
         </div>}
       </div>
 
-      {/* Filter chips — inline below toolbar */}
-      <div style={{display:'flex',alignItems:'center',gap:4,margin:'6px 0 8px',
-        padding:'6px 10px',background:'var(--surface-2)',borderRadius:'var(--r-md)',
-        border:'1px solid var(--border)',flexWrap:'wrap',display: showTxn ? 'flex' : 'none'}}>
-        <span style={{fontSize:'.72rem',color:'var(--text-3)',marginRight:4,fontWeight:600}}>Show:</span>
-        {[['internal','🟢','active-int'],['incoming','🔵','active-in'],
-          ['outgoing','🟡','active-out'],['unclassified','⚪','']].map(([k,emoji,activeClass])=>{
-          const hasColFilter = Object.values(colFilters).some(v=>v&&v.size>0)
-          return (
-            <button key={k} onClick={()=>toggleF(k)}
-              className={`chip${filters[k] && activeClass ? ` ${activeClass}` : ''}`}
-              style={{opacity:filters[k]?1:.4,transition:'opacity .15s',fontSize:'.75rem',
-                padding:'4px 10px',position:'relative'}}>
-              {emoji} {k.charAt(0).toUpperCase()+k.slice(1)}
-            </button>
-          )
-        })}
-        {Object.values(colFilters).some(v=>v&&v.size>0) && (
-          <button className="btn btn-ghost btn-xs" style={{marginLeft:'auto'}} onClick={()=>setColFilters({})}>
-            <X size={11}/> Clear col filters
-          </button>
-        )}
-        <span style={{marginLeft:'auto',fontSize:'.72rem',color:'var(--text-3)'}}>
-          {filtered.length} row{filtered.length!==1?'s':''}
-        </span>
-      </div>
+
 
       {/* Add Row panel */}
       {showAdd && (
