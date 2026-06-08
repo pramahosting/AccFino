@@ -550,12 +550,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">
-                    Registered Company
-                    <span style={{fontSize:'0.78rem',color:'var(--gray-400)',fontWeight:400,marginLeft:6}}>
-                      optional — for internal transfer detection
-                    </span>
-                  </label>
+                  <label className="form-label">Company Name</label>
                   <input className="form-input" name="home_company"
                     value={form.home_company||''}
                     onChange={e=>setForm(f=>({...f,home_company:e.target.value}))}
