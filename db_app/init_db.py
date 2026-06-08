@@ -20,7 +20,7 @@ ROLE_PERMISSIONS = {
 
 # ── Admin credentials — change here to update everywhere ─────────────────────
 ADMIN_EMAIL    = "admin@accfino.com"
-ADMIN_PASSWORD = "AccFino@2026!"
+ADMIN_PASSWORD = "AccFino$1"
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _ensure_home_company_column():
