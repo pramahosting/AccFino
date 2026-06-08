@@ -17,6 +17,7 @@ class LoginRequest(BaseModel):
 
 class RegisterRequest(BaseModel):
     username: str
+    home_company: str | None = None   # registered company for internal transfer detection
     full_name: str | None = None
     email: str
     password: str
@@ -155,6 +156,7 @@ def register(
         password=hashed,
         phone=request.phone or "",
         address=request.address or "",
+        home_company=(request.home_company or ""),
     )
     new_user.roles.append(role)
     db.add(new_user)

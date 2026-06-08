@@ -39,28 +39,6 @@ def _ensure_home_company_column():
         print(f"Warning: home_company migration skipped: {e}")
 
 
-def _ensure_admin_role(db):
-    """Ensure the admin user exists and has the admin role — idempotent."""
-    try:
-        admin = db.query(User).filter(
-            (User.username == "admin") | (User.email == "admin@ex.com")
-        ).first()
-        if not admin:
-            return  # no admin user yet — init_db will create one
-        # Check roles table exists and admin has admin role
-        admin_role_names = [r.name for r in admin.roles]
-        if "admin" not in admin_role_names:
-            # Find or create admin role
-            from db_app.models.role import Role
-            admin_role = db.query(Role).filter(Role.name == "admin").first()
-            if admin_role:
-                admin.roles.append(admin_role)
-                db.commit()
-                print("Fixed: added admin role to admin user.")
-    except Exception as e:
-        print(f"Warning: _ensure_admin_role failed (non-fatal): {e}")
-
-
 def init_db():
     print("Initializing database...")
     # Patch missing columns BEFORE any ORM query (shipped DB may be older schema)
@@ -72,8 +50,6 @@ def init_db():
     try:
         if db.query(User).count() > 0:
             print("Users already exist. Skipping user creation.")
-            # Ensure admin role exists and admin user has it
-            _ensure_admin_role(db)
             return
 
         permission_map = {}
@@ -138,7 +114,6 @@ def init_db():
 def _seed_companies_safe():
     """Seed company database — safe to run multiple times."""
     try:
-        from db_app.models.company import Company, CompanyAlias  # verify model exists
         from db_app.company_seed import seed_companies
         db2 = SessionLocal()
         n = seed_companies(db2)

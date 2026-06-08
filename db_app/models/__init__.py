@@ -5,6 +5,7 @@ from .role import Role
 from .transaction import Transaction
 from .user import User
 from .invoice import BusinessDetail, Customer, Invoice, InvoiceItem
+from .company import Company, CompanyAlias
 
 __all__ = [
 	"User",
@@ -17,4 +18,6 @@ __all__ = [
 	"InvoiceItem",
 	"LicenceRecord",
 	"PasswordResetToken",
+	"Company",
+	"CompanyAlias",
 ]

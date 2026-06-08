@@ -2,8 +2,16 @@
 db_app/api/company.py
 ─────────────────────────────────────────────────────────────────────────────
 REST API endpoints for the Company database.
-All model imports are lazy (inside functions) so this module never crashes
-at import time — even if db_app/models/company.py is not yet present.
+
+Routes (all prefixed /company in react_api.py):
+  GET  /company/search?q=...          Search companies by name/alias
+  GET  /company/list                  List all companies (admin)
+  POST /company                       Add a new company (admin)
+  PUT  /company/{id}                  Update a company (admin)
+  DELETE /company/{id}                Delete a company (admin)
+  POST /company/{id}/alias            Add alias to a company
+  DELETE /company/{id}/alias/{alias}  Remove alias
+  POST /company/approve/{id}          Approve a pending company
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,20 +19,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from db_app.database import SessionLocal
+from db_app.models.company import Company, CompanyAlias
 
 router = APIRouter()
-
-
-def _models():
-    """Lazy import of Company models — raises HTTPException if unavailable."""
-    try:
-        from db_app.models.company import Company, CompanyAlias
-        return Company, CompanyAlias
-    except ImportError:
-        raise HTTPException(
-            status_code=503,
-            detail="Company database feature not available — db_app/models/company.py missing"
-        )
 
 
 def get_db():
@@ -82,18 +79,22 @@ def search_companies(
     limit: int = Query(20, le=100),
     db: Session = Depends(get_db),
 ):
-    Company, CompanyAlias = _models()
+    """Search companies by name or alias (substring, case-insensitive)."""
     q_lower = q.strip().lower()
+    # First: name matches
     name_matches = (
         db.query(Company)
         .filter(Company.name.ilike(f"%{q}%"), Company.approved == True)
-        .limit(limit).all()
+        .limit(limit)
+        .all()
     )
+    # Also: alias matches
     alias_matches = (
         db.query(Company)
         .join(CompanyAlias, Company.id == CompanyAlias.company_id)
         .filter(CompanyAlias.alias.ilike(f"%{q_lower}%"), Company.approved == True)
-        .limit(limit).all()
+        .limit(limit)
+        .all()
     )
     seen = {c.id for c in name_matches}
     combined = list(name_matches) + [c for c in alias_matches if c.id not in seen]
@@ -109,7 +110,7 @@ def list_companies(
     limit:    int             = Query(100, le=500),
     db:       Session         = Depends(get_db),
 ):
-    Company, _ = _models()
+    """List companies with optional filters. Admin use."""
     q = db.query(Company)
     if approved is not None:
         q = q.filter(Company.approved == approved)
@@ -122,7 +123,6 @@ def list_companies(
 
 @router.post("", response_model=CompanyOut, status_code=201)
 def create_company(body: CompanyIn, db: Session = Depends(get_db)):
-    Company, CompanyAlias = _models()
     existing = db.query(Company).filter(Company.name == body.name).first()
     if existing:
         raise HTTPException(400, f"Company '{body.name}' already exists (id={existing.id})")
@@ -143,18 +143,19 @@ def create_company(body: CompanyIn, db: Session = Depends(get_db)):
 
 
 @router.put("/{company_id}", response_model=CompanyOut)
-def update_company(company_id: int, body: CompanyIn, db: Session = Depends(get_db)):
-    Company, _ = _models()
+def update_company(
+    company_id: int, body: CompanyIn, db: Session = Depends(get_db)
+):
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(404, "Company not found")
-    company.name = body.name
-    company.short_name = body.short_name
-    company.category = body.category
-    company.subcategory = body.subcategory
-    company.country = body.country
-    company.abn = body.abn or ""
-    company.is_government = body.is_government
+    company.name         = body.name
+    company.short_name   = body.short_name
+    company.category     = body.category
+    company.subcategory  = body.subcategory
+    company.country      = body.country
+    company.abn          = body.abn or ""
+    company.is_government= body.is_government
     db.commit()
     db.refresh(company)
     return company
@@ -162,7 +163,6 @@ def update_company(company_id: int, body: CompanyIn, db: Session = Depends(get_d
 
 @router.delete("/{company_id}", status_code=204)
 def delete_company(company_id: int, db: Session = Depends(get_db)):
-    Company, _ = _models()
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(404, "Company not found")
@@ -171,8 +171,9 @@ def delete_company(company_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{company_id}/alias", response_model=AliasOut, status_code=201)
-def add_alias(company_id: int, body: AliasIn, db: Session = Depends(get_db)):
-    Company, CompanyAlias = _models()
+def add_alias(
+    company_id: int, body: AliasIn, db: Session = Depends(get_db)
+):
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(404, "Company not found")
@@ -192,7 +193,6 @@ def add_alias(company_id: int, body: AliasIn, db: Session = Depends(get_db)):
 
 @router.delete("/{company_id}/alias/{alias}", status_code=204)
 def remove_alias(company_id: int, alias: str, db: Session = Depends(get_db)):
-    _, CompanyAlias = _models()
     al = db.query(CompanyAlias).filter(
         CompanyAlias.company_id == company_id,
         CompanyAlias.alias == alias.lower(),
@@ -205,7 +205,7 @@ def remove_alias(company_id: int, alias: str, db: Session = Depends(get_db)):
 
 @router.post("/approve/{company_id}", response_model=CompanyOut)
 def approve_company(company_id: int, db: Session = Depends(get_db)):
-    Company, _ = _models()
+    """Approve a pending auto-captured company."""
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(404, "Company not found")
@@ -217,6 +217,6 @@ def approve_company(company_id: int, db: Session = Depends(get_db)):
 
 @router.get("/categories")
 def list_categories(db: Session = Depends(get_db)):
-    Company, _ = _models()
+    """Return all distinct categories in the company DB."""
     rows = db.query(Company.category).distinct().order_by(Company.category).all()
     return [r[0] for r in rows if r[0]]

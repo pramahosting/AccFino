@@ -76,4 +76,3 @@ class CompanyAlias(Base):
 
     def __repr__(self):
         return f"<CompanyAlias '{self.alias}' → {self.company_id}>"
-

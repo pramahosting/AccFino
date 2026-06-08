@@ -14,6 +14,8 @@ class User(Base):
     password = Column(String(255), nullable=False)
     phone = Column(String(20), nullable=True)
     address = Column(String(255), nullable=True)
+    # Registered company name — transfers to/from this company = Internal
+    home_company = Column(String(255), nullable=True, default="")
     created_at = Column(TIMESTAMP, default=datetime.now)
     updated_at = Column(TIMESTAMP, default=datetime.now, onupdate=datetime.now)
 

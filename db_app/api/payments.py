@@ -30,48 +30,63 @@ router = APIRouter()
 import os as _os
 from pathlib import Path as _Path
 
-_PRICING_FILE = _Path(__file__).parent.parent / "main_app" / "data" / "pricing.json"
+# Try multiple candidate paths so the file is found in both local and
+# Docker/Northflank layouts
+_PRICING_CANDIDATES = [
+    _Path(__file__).parent.parent / "main_app" / "data" / "pricing.json",  # local: db_app/api/../../main_app/data/
+    _Path("/app/main_app/data/pricing.json"),                               # Docker: /app/main_app/data/
+    _Path(__file__).resolve().parents[3] / "main_app" / "data" / "pricing.json",  # deep nesting
+]
+
+def _find_pricing_file():
+    for p in _PRICING_CANDIDATES:
+        if p.exists():
+            return p
+    return None
 
 def _load_plans() -> dict:
-    """Load plans from JSON file — allows admin to edit prices without redeployment."""
-    if _PRICING_FILE.exists():
+    """Load plans from pricing.json — single source of truth for all plan data."""
+    p = _find_pricing_file()
+    if p:
         try:
             import json as _j
-            return _j.loads(_PRICING_FILE.read_text(encoding="utf-8"))
+            data = _j.loads(p.read_text(encoding="utf-8"))
+            if data and isinstance(data, dict):
+                return data
         except Exception:
             pass
-    # Fallback hardcoded plans
+    # Fallback to hardcoded plans — must match pricing.json exactly
     return _FALLBACK_PLANS
 
 _FALLBACK_PLANS = {
-    "base":    {"name":"Base",         "price_monthly":0,    "price_yearly":0,
-                "modules":["dashboard","reconciliation"],
-                "features":["Dashboard","CSV reconciliation"],"highlight":False,"badge":"Free",
-                "description":"Free plan"},
+    "base":         {"name":"Base",         "price_monthly":0,    "price_yearly":0,
+                     "modules":["dashboard","reconciliation"],
+                     "features":["Dashboard","CSV reconciliation (up to 5000 txns/mo)"],"highlight":False,"badge":"Free",
+                     "description":"Start free — Dashboard + CSV Reconciliation included"},
     "reconciliation":{"name":"Reconciliation","price_monthly":1900,"price_yearly":19000,
-                "modules":["dashboard","reconciliation"],
-                "features":["Open Banking","Unlimited txns"],"highlight":False,"badge":"",
-                "description":"Full reconciliation"},
-    "trading": {"name":"Trading",      "price_monthly":1500, "price_yearly":15000,
-                "modules":["dashboard","trading"],
-                "features":["Crypto CGT","Equity CGT"],"highlight":False,"badge":"",
-                "description":"CGT tax reports"},
-    "cashflow":{"name":"Cash Flow",    "price_monthly":1500, "price_yearly":15000,
-                "modules":["dashboard","cash-flow"],
-                "features":["ML forecast","Charts"],"highlight":False,"badge":"",
-                "description":"ML forecasting"},
-    "invoice": {"name":"Invoice",      "price_monthly":1200, "price_yearly":12000,
-                "modules":["dashboard","invoice"],
-                "features":["GST invoices","PDF extract"],"highlight":False,"badge":"",
-                "description":"Invoice management"},
-    "basic":   {"name":"Full Bundle",  "price_monthly":4900, "price_yearly":49000,
-                "modules":["dashboard","reconciliation","trading","cash-flow","invoice"],
-                "features":["All 4 modules","Save vs individual"],"highlight":False,"badge":"",
-                "description":"All modules bundled"},
-    "premium": {"name":"Premium",      "price_monthly":3900, "price_yearly":39000,
-                "modules":["dashboard","reconciliation","trading","cash-flow","invoice"],
-                "features":["Best value","Priority support"],"highlight":True,"badge":"Best Value",
-                "description":"Complete suite"},
+                     "modules":["dashboard","reconciliation"],
+                     "features":["Unlimited transactions","Open Banking","GL & GST auto-classify","Excel export"],"highlight":False,"badge":"",
+                     "description":"Full bank reconciliation with Open Banking & unlimited transactions"},
+    "trading":      {"name":"Trading",      "price_monthly":1500, "price_yearly":15000,
+                     "modules":["dashboard","trading"],
+                     "features":["Crypto CGT","Equity CGT","ATO-ready summaries"],"highlight":False,"badge":"",
+                     "description":"Crypto & equity CGT tax reports + Open Banking"},
+    "cashflow":     {"name":"Cash Flow",    "price_monthly":1500, "price_yearly":15000,
+                     "modules":["dashboard","reconciliation","cash-flow"],
+                     "features":["ML next-month prediction","Visual charts","Excel export"],"highlight":False,"badge":"",
+                     "description":"ML-powered cash flow forecasting"},
+    "invoice":      {"name":"Invoice",      "price_monthly":1200, "price_yearly":12000,
+                     "modules":["dashboard","reconciliation","invoice"],
+                     "features":["GST-compliant invoices","PDF extraction","Customer management"],"highlight":False,"badge":"",
+                     "description":"GST invoices & PDF extraction"},
+    "full_bundle":  {"name":"Full Bundle",  "price_monthly":4900, "price_yearly":49000,
+                     "modules":["dashboard","reconciliation","trading","cash-flow","invoice"],
+                     "features":["Reconciliation + Trading + Cash Flow + Invoice","Open Banking","Priority support"],"highlight":False,"badge":"Popular",
+                     "description":"Reconciliation + Trading + Cash Flow + Invoice"},
+    "premium":      {"name":"Premium",      "price_monthly":3900, "price_yearly":39000,
+                     "modules":["dashboard","reconciliation","trading","cash-flow","invoice"],
+                     "features":["Everything in Full Bundle","Save vs Full Bundle","Priority support","Early access"],"highlight":True,"badge":"Best Value",
+                     "description":"Complete suite — best value, all modules + Open Banking"},
 }
 
 # Load plans dynamically — refreshed on each request via property

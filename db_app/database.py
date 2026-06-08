@@ -23,15 +23,24 @@ if _DATABASE_URL:
     print("[accfino] database: PostgreSQL (production)")
 else:
     # Local dev fallback — SQLite
-    _DB_DIR  = Path(__file__).parent / "data"
-    _DB_DIR.mkdir(parents=True, exist_ok=True)
-    _DB_FILE = _DB_DIR / "hsledger.db"
+    # Prefer db_app/hsledger.db (shipped location).
+    # Fall back to db_app/data/hsledger.db for legacy installs.
+    _DB_ROOT      = Path(__file__).parent
+    _DB_FILE_ROOT = _DB_ROOT / "hsledger.db"
+    _DB_FILE_DATA = _DB_ROOT / "data" / "hsledger.db"
+
+    if _DB_FILE_ROOT.exists():
+        _DB_FILE = _DB_FILE_ROOT          # shipped / primary
+    else:
+        _DB_FILE_DATA.parent.mkdir(parents=True, exist_ok=True)
+        _DB_FILE = _DB_FILE_DATA          # legacy / fresh install
+
     _DATABASE_URL = f"sqlite:///{_DB_FILE}"
     engine = create_engine(
         _DATABASE_URL,
         connect_args={"check_same_thread": False},
     )
-    print(f"[accfino] database: SQLite fallback at {_DB_FILE}")
+    print(f"[accfino] database: SQLite at {_DB_FILE}")
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
