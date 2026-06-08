@@ -145,7 +145,5 @@ export const companyAddAlias = (id, alias)   => http.post(`/company/${id}/alias`
 export const companyDelAlias = (id, alias)   => http.delete(`/company/${id}/alias/${encodeURIComponent(alias)}`)
 export const companyApprove  = (id)          => http.post(`/company/approve/${id}`)
 export const companyCategories = ()          => http.get('/company/categories')
-export const captureWho      = (who, desc, username) =>
-  http.post('/company/capture-who', { who, description: desc, username })
 export const savePricingPlans   = (data)          => http.post('/pricing/plans', data)
 export const updatePricingPlan  = (planId, data)  => http.patch(`/pricing/plans/${planId}`, data)
