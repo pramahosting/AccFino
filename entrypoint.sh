@@ -24,19 +24,27 @@ mkdir -p /app/main_app/data
 mkdir -p /app/main_app/classifier_model
 mkdir -p /app/main_app/backend/cash_flow/outputs/plots
 
-# ── Ensure seed database is at primary location ────────────────────────────
-# database.py prefers /app/db_app/hsledger.db over /app/db_app/data/hsledger.db
-# If it was excluded from Docker context (gitignore), create an empty one so
-# the path is consistent and init_db will populate it correctly.
-if [ ! -f /app/db_app/hsledger.db ] || [ ! -s /app/db_app/hsledger.db ]; then
-    if [ -f /app/db_app/data/hsledger.db ] && [ -s /app/db_app/data/hsledger.db ]; then
-        echo "[accfino] Using existing DB at db_app/data/hsledger.db"
-    else
-        echo "[accfino] Creating fresh database at /app/db_app/hsledger.db"
-        touch /app/db_app/hsledger.db
-    fi
+# ── Ensure DB file exists at primary path BEFORE any Python imports ────────
+# CRITICAL: database.py evaluates the path at IMPORT TIME (module level).
+# init_db.py imports database.py — so the DB file must exist at the right
+# path BEFORE init_db runs, otherwise it falls back to db_app/data/.
+#
+# Priority order:
+#   1. /app/db_app/hsledger.db  — shipped in Docker image (from git/zip)
+#   2. /app/db_app/data/hsledger.db — persistent volume (survives restarts)
+#   3. Create fresh /app/db_app/hsledger.db — first-time Northflank deploy
+
+if [ -f /app/db_app/hsledger.db ] && [ -s /app/db_app/hsledger.db ]; then
+    echo "[accfino] ✅ Using shipped DB at /app/db_app/hsledger.db"
+elif [ -f /app/db_app/data/hsledger.db ] && [ -s /app/db_app/data/hsledger.db ]; then
+    # Persistent volume has existing data — copy it to primary location
+    echo "[accfino] Copying persistent DB from data/ to primary location..."
+    cp /app/db_app/data/hsledger.db /app/db_app/hsledger.db
+    echo "[accfino] ✅ Using persistent DB ($(du -sh /app/db_app/hsledger.db | cut -f1))"
 else
-    echo "[accfino] ✅ Seed database found at /app/db_app/hsledger.db"
+    # First run — create empty file at primary location so database.py picks it up
+    echo "[accfino] Creating fresh database at /app/db_app/hsledger.db"
+    touch /app/db_app/hsledger.db
 fi
 
 # ── Init DB schema (idempotent — safe to run every start) ─────────────────
@@ -69,6 +77,12 @@ fi
 echo "[accfino] Auth API ready"
 
 # ── Start main API on :8001 (foreground) ──────────────────────────────────
+# ── Backup DB to persistent volume after init ─────────────────────────────
+# If a persistent volume is mounted at db_app/data/, keep it in sync
+if [ -f /app/db_app/hsledger.db ] && [ -s /app/db_app/hsledger.db ]; then
+    cp /app/db_app/hsledger.db /app/db_app/data/hsledger.db 2>/dev/null || true
+fi
+
 echo "[accfino] Starting main API on :8001..."
 echo "[accfino] Note: scikit-learn/pandas/CV models take 30-90s to load on first start"
 echo "[accfino] App will be READY once /ready returns 200 — configure Northflank health check to use /ready"
