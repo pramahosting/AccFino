@@ -74,8 +74,10 @@ _ACTIVE_COA_PATH = None   # tracks which COA file is in use; None = DEFAULT
 
 # Import the EXACT enums used in the original output UI
 from backend.llm_classifier.classify_category import (
-    CATEGORY_ENUM, extract_who_bank
+    CATEGORY_ENUM,
 )
+# extract_who_bank removed — Who field is now resolved by CompanyResolver only
+def extract_who_bank(desc): return ""
 from backend.reconciliation.gst_calculator import GST_CATEGORY_OPTIONS
 
 try:
@@ -96,6 +98,10 @@ except Exception:
     OB_AVAILABLE = False
 
 app = FastAPI(title="Accfino API", version="2.0")
+
+# Register company API router
+from db_app.api.company import router as _company_router
+app.include_router(_company_router, prefix="/company", tags=["company"])
 # CORS — extend via CORS_ORIGINS env var (comma-separated) for custom domains.
 # E.g. in Northflank env vars: CORS_ORIGINS=https://myapp.northflank.app
 import os as _os
@@ -146,6 +152,36 @@ async def debug_parse_csv(
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.get("/profile/home-company")
+def get_home_company(username: str):
+    """Return the registered home company for a user."""
+    from db_app.database import SessionLocal as _SL
+    from db_app.models.user import User as _User
+    db2 = _SL()
+    try:
+        u = db2.query(_User).filter(_User.username == norm_username(username)).first()
+        return {"home_company": u.home_company if u else ""}
+    finally:
+        db2.close()
+
+
+@app.post("/profile/home-company")
+def set_home_company(username: str = Body(...), home_company: str = Body(...)):
+    """Set the registered home company for a user."""
+    from db_app.database import SessionLocal as _SL
+    from db_app.models.user import User as _User
+    db2 = _SL()
+    try:
+        u = db2.query(_User).filter(_User.username == norm_username(username)).first()
+        if not u:
+            raise HTTPException(404, "User not found")
+        u.home_company = home_company.strip()
+        db2.commit()
+        return {"home_company": u.home_company, "ok": True}
+    finally:
+        db2.close()
 
 
 @app.get("/health", include_in_schema=False)
@@ -607,7 +643,23 @@ async def reconcile_process(
     logger.info(f"Combined columns: {combined.columns.tolist()}")
     logger.info(f"Sample description (first row): {combined['description'].iloc[0] if 'description' in combined.columns and len(combined) else 'N/A'}")
 
-    classified = rec_classifier.classify_transactions(combined, show_progress=False)
+    # Fetch user's home company from DB for internal transfer detection
+    _home_company = ""
+    try:
+        from db_app.database import SessionLocal as _SL
+        from db_app.models.user import User as _User
+        _db2 = _SL()
+        _uname = norm_username(username)
+        _usr = _db2.query(_User).filter(_User.username == _uname).first()
+        if _usr and _usr.home_company:
+            _home_company = _usr.home_company
+        _db2.close()
+    except Exception:
+        pass
+    classified = rec_classifier.classify_transactions(
+        combined, show_progress=False,
+        home_company=_home_company,
+    )
     classified = _norm_cols(classified)
 
     # Safety: ensure Account Name survives _norm_cols
@@ -619,7 +671,7 @@ async def reconcile_process(
         if col not in classified.columns: classified[col] = default
 
     # Auto-classify immediately (replicates needs_classification=True logic)
-    classified = _run_classify_gl(classified)
+    classified = _run_classify_gl(classified, username=username)
 
     monthly = _build_monthly_summary(classified)
 
@@ -658,7 +710,7 @@ async def reconcile_process(
     }
 
 
-def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
+def _run_classify_gl(df: pd.DataFrame, username: str = "") -> pd.DataFrame:
     """
     Classify GL account, GST category and GST amount for every row.
     Delegates to backend.classifier.engine — single call per transaction,
@@ -672,6 +724,34 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
     if "GST Category" not in df.columns: df["GST Category"] = ""
     if "GST"          not in df.columns: df["GST"]          = 0.0
     if "Who"          not in df.columns: df["Who"]          = ""
+
+    # Build CompanyResolver for this request — uses company DB + home company
+    _who_resolver = None
+    try:
+        from backend.reconciliation.company_resolver import CompanyResolver
+        from db_app.database import SessionLocal as _SL_who
+        _who_db = _SL_who()
+        _home_co = ""
+        try:
+            from db_app.models.user import User as _UWho
+            _uw = _who_db.query(_UWho).filter(
+                _UWho.username == norm_username(username)
+            ).first()
+            if _uw and _uw.home_company:
+                _home_co = _uw.home_company
+        except Exception:
+            pass
+        _who_resolver = CompanyResolver(db=_who_db, home_company=_home_co)
+    except Exception:
+        pass
+
+    def _resolve_who(desc_text):
+        """Resolve Who field using CompanyResolver, fallback to extract_who_bank."""
+        if _who_resolver:
+            who, _ = _who_resolver.resolve(desc_text)
+            if who and who not in ("", "Other/Unknown"):
+                return who
+        return extract_who_bank(desc_text)
 
     def _to_float(v):
         parsed = pd.to_numeric(v, errors="coerce")
@@ -690,7 +770,7 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
             df.at[idx, "GL Type"]      = ""
             df.at[idx, "GST Category"] = ""
             df.at[idx, "GST"]          = 0.0
-            df.at[idx, "Who"]          = extract_who_bank(desc)
+            df.at[idx, "Who"]          = _resolve_who(desc)
             continue
 
         if not desc.strip():
@@ -754,7 +834,7 @@ def _run_classify_gl(df: pd.DataFrame) -> pd.DataFrame:
                 from backend.reconciliation.gst_calculator import calculate_gst_value
                 df.at[idx, "GST"] = calculate_gst_value(debit, credit, result.gst_category)
 
-        df.at[idx, "Who"] = extract_who_bank(desc)
+        df.at[idx, "Who"] = _resolve_who(desc)
 
     return df
 
@@ -771,7 +851,7 @@ def reconcile_classify(body: ClassifyReq):
         raise HTTPException(404, "Session not found")
 
     df = _norm_cols(d["results"].copy())
-    df = _run_classify_gl(df)
+    df = _run_classify_gl(df, username=body.username)
     monthly = _build_monthly_summary(df)
     session_manager.save_output_data(username, body.session_id, df, {}, set(), 1)
     return {"transactions": _to_frontend(df), "monthly_summary": monthly}
@@ -794,7 +874,7 @@ def reconcile_reclassify(body: ClassifyReq):
         if col in df.columns:
             df[col] = "" if col != "GST" else 0.0
 
-    df = _run_classify_gl(df)
+    df = _run_classify_gl(df, username=body.username)
     monthly = _build_monthly_summary(df)
     session_manager.save_output_data(username, body.session_id, df, {}, set(), 1)
     return {"transactions": _to_frontend(df), "monthly_summary": monthly}
@@ -1933,10 +2013,22 @@ def licence_update_user(user_id: int, body: dict = Body(...)):
 # ══════════════════════════════════════════════════════════════════════════════
 # PRICING MANAGEMENT — admin editable pricing from JSON file
 # ══════════════════════════════════════════════════════════════════════════════
-_PRICING_FILE = Path(__file__).parent / "data" / "pricing.json"
+# Try multiple candidate paths — robust for local, Docker and Northflank layouts
+_PRICING_CANDIDATES = [
+    Path(__file__).parent / "data" / "pricing.json",   # main_app/data/ (normal)
+    Path("/app/main_app/data/pricing.json"),            # Docker /app layout
+]
+
+def _find_pricing():
+    for p in _PRICING_CANDIDATES:
+        if p.exists():
+            return p
+    return None
+
+_PRICING_FILE = _find_pricing() or Path(__file__).parent / "data" / "pricing.json"
 
 def _load_pricing() -> dict:
-    """Load pricing from JSON file, fall back to payments.py PLANS if missing."""
+    """Load pricing from JSON file — single source of truth for all plan data."""
     if _PRICING_FILE.exists():
         try:
             return json.loads(_PRICING_FILE.read_text(encoding="utf-8"))
@@ -1952,6 +2044,12 @@ def _load_pricing() -> dict:
 def _save_pricing(data: dict):
     _PRICING_FILE.parent.mkdir(parents=True, exist_ok=True)
     _PRICING_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+@app.get("/payments/plans")
+def payments_get_plans():
+    """Alias of /pricing/plans — kept for backward compatibility. Single source: pricing.json."""
+    return _load_pricing()
+
 
 @app.get("/pricing/plans")
 def pricing_get():
@@ -2023,26 +2121,53 @@ _APP_INDEX  = _DIST / "index.html"
 
 
 def _serve_marketing():
-    """Return the public marketing homepage with pricing pre-injected.
-    Works in both dev mode (serves from react_frontend/public/)
-    and production (serves from react_frontend/dist/).
+    """Return the marketing homepage with pricing always injected from pricing.json.
+
+    Three-layer sync so homepage, login and upgrade always match pricing.json:
+      Layer 1 — server injects window.__ACCFINO_PRICING__ into <head> (instant, no flash)
+      Layer 2 — client JS uses window.__ACCFINO_PRICING__ before any fetch completes
+      Layer 3 — client fetches /api/pricing/plans and re-renders (updates after load)
+
+    Additionally regenerates the BUNDLES variable inside the marketing script so
+    bundle vs module card layout stays correct when pricing.json changes.
     """
     if not _MARKETING.exists():
         return {"error": "Marketing page not found. Check react_frontend/public/index-marketing.html"}
-    import json as _json_mkt
+    import json as _json_mkt, re as _re_mkt
     from fastapi.responses import HTMLResponse as _HTMLResponse
     html = _MARKETING.read_text(encoding="utf-8")
-    # Pre-inject pricing so cards render instantly — no fetch round-trip
     try:
         pricing = _load_pricing()
+
+        # ── Layer 1: inject window.__ACCFINO_PRICING__ into <head> ──────────
         pricing_json = _json_mkt.dumps(pricing, ensure_ascii=False)
         inject = f'''<script>
-// Pricing pre-loaded server-side — no fetch needed
+// Pricing injected server-side from pricing.json — single source of truth
 window.__ACCFINO_PRICING__ = {pricing_json};
 </script>'''
         html = html.replace("</head>", inject + "\n</head>", 1)
+
+        # ── Layer 2: keep DEFAULTS fallback in sync with pricing.json ────────
+        # Replace the hardcoded DEFAULTS object so the page renders correctly
+        # even if window.__ACCFINO_PRICING__ is not set (e.g. cached HTML).
+        defaults_js = _json_mkt.dumps(pricing, ensure_ascii=False, separators=(',', ':'))
+        html = _re_mkt.sub(
+            r'var DEFAULTS=window\.__ACCFINO_PRICING__\|\|\{.*?\};',
+            f'var DEFAULTS=window.__ACCFINO_PRICING__||{defaults_js};',
+            html, count=1, flags=_re_mkt.DOTALL
+        )
+
+        # ── Layer 3: regenerate BUNDLES array from pricing.json ───────────────
+        # A plan is a "bundle" if it includes 2+ non-base modules.
+        _base_mods = {"dashboard", "reconciliation"}
+        bundle_keys = _json_mkt.dumps([
+            k for k, p in pricing.items()
+            if sum(1 for m in p.get("modules", []) if m not in _base_mods) >= 2
+        ])
+        html = _re_mkt.sub(r'BUNDLES=\[.*?\]', f'BUNDLES={bundle_keys}', html)
+
     except Exception:
-        pass  # Fall back to client-side fetch if inject fails
+        pass  # Fall back gracefully — client-side fetch still works
     return _HTMLResponse(content=html, status_code=200)
 
 
