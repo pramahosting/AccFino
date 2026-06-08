@@ -57,6 +57,13 @@ RUN test -f /app/db_app/hsledger.db \
     && echo "✅ Seed database present at /app/db_app/hsledger.db" \
     || echo "⚠️  WARNING: hsledger.db not found — will create fresh DB on startup"
 
+# Verify all required company model files exist — fail build if missing
+RUN echo "Checking required model files..." \
+    && test -f /app/db_app/models/company.py   || (echo "ERROR: db_app/models/company.py missing" && exit 1) \
+    && test -f /app/db_app/api/company.py      || (echo "ERROR: db_app/api/company.py missing" && exit 1) \
+    && test -f /app/db_app/company_seed.py     || (echo "ERROR: db_app/company_seed.py missing" && exit 1) \
+    && echo "✅ All company model files present"
+
 # If hsledger.db is missing (gitignore/dockerignore edge case), create a placeholder
 # so database.py uses the shipped path consistently even on fresh installs
 RUN touch /app/db_app/hsledger.db.placeholder
