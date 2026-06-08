@@ -330,8 +330,12 @@ def my_plan(user_id: int):
         if not lic:
             return {"plan_id": "base", "licence_type": "base",
                     "end_date": "", "modules": PLANS["base"]["modules"]}
+        # Map legacy "admin" plan_id → "premium" (matches pricing.json)
+        _plan_id = lic.plan_id or "base"
+        if _plan_id == "admin":
+            _plan_id = "premium"
         return {
-            "plan_id":        lic.plan_id or "base",
+            "plan_id":        _plan_id,
             "licence_type":   lic.licence_type,
             "billing_period": lic.billing_period,
             "start_date":     lic.start_date,

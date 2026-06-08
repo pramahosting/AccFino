@@ -151,7 +151,7 @@ def ensure_demo_licences():
                 lic = LicenceRecord(
                     user_id      = user.id,
                     licence_type = "admin" if is_admin else "base",
-                    plan_id      = "admin" if is_admin else "base",
+                    plan_id      = "premium" if is_admin else "base",
                     payment_mode = "",
                     # start_date fixed to today if not set
                     start_date   = today_s,
@@ -171,6 +171,9 @@ def ensure_demo_licences():
                 # Fix licence_type
                 if not lic.licence_type or lic.licence_type == "demo":
                     lic.licence_type = "admin" if is_admin else "base"
+                # Fix plan_id — "admin" is not a real plan in pricing.json
+                if is_admin and lic.plan_id in ("admin", "", None):
+                    lic.plan_id = "premium"
                 # Fix admin end date
                 if is_admin and lic.end_date != "9999-12-31":
                     lic.end_date = "9999-12-31"
