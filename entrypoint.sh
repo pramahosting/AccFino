@@ -13,6 +13,8 @@ if [ -n "$DATABASE_URL" ]; then
     echo "[accfino] DATABASE_URL value: ${DATABASE_URL:0:30}..."
 else
     echo "[accfino] WARNING: DATABASE_URL is not set — falling back to SQLite"
+    echo "[accfino] ⚠️  SQLite is ephemeral on Northflank — data WILL BE LOST on container restart"
+    echo "[accfino] ⚠️  Set DATABASE_URL to a Postgres connection string for persistent storage"
     echo "[accfino] Set DATABASE_URL in Northflank environment variables"
 fi
 
@@ -21,6 +23,21 @@ mkdir -p /app/db_app/data
 mkdir -p /app/main_app/data
 mkdir -p /app/main_app/classifier_model
 mkdir -p /app/main_app/backend/cash_flow/outputs/plots
+
+# ── Ensure seed database is at primary location ────────────────────────────
+# database.py prefers /app/db_app/hsledger.db over /app/db_app/data/hsledger.db
+# If it was excluded from Docker context (gitignore), create an empty one so
+# the path is consistent and init_db will populate it correctly.
+if [ ! -f /app/db_app/hsledger.db ] || [ ! -s /app/db_app/hsledger.db ]; then
+    if [ -f /app/db_app/data/hsledger.db ] && [ -s /app/db_app/data/hsledger.db ]; then
+        echo "[accfino] Using existing DB at db_app/data/hsledger.db"
+    else
+        echo "[accfino] Creating fresh database at /app/db_app/hsledger.db"
+        touch /app/db_app/hsledger.db
+    fi
+else
+    echo "[accfino] ✅ Seed database found at /app/db_app/hsledger.db"
+fi
 
 # ── Init DB schema (idempotent — safe to run every start) ─────────────────
 echo "[accfino] Initialising database schema..."
@@ -53,18 +70,22 @@ echo "[accfino] Auth API ready"
 
 # ── Start main API on :8001 (foreground) ──────────────────────────────────
 echo "[accfino] Starting main API on :8001..."
+echo "[accfino] Note: scikit-learn/pandas/CV models take 30-90s to load on first start"
+echo "[accfino] App will be READY once /ready returns 200 — configure Northflank health check to use /ready"
 if [ -n "$DATABASE_URL" ]; then
     echo "[accfino] Postgres detected — running with 2 workers"
     exec python -m uvicorn main_app.react_api:app \
         --host 0.0.0.0 \
         --port 8001 \
         --workers 2 \
-        --timeout-keep-alive 75
+        --timeout-keep-alive 75 \
+        --timeout-graceful-shutdown 30
 else
     echo "[accfino] SQLite fallback — running with 1 worker"
     exec python -m uvicorn main_app.react_api:app \
         --host 0.0.0.0 \
         --port 8001 \
         --workers 1 \
-        --timeout-keep-alive 75
+        --timeout-keep-alive 75 \
+        --timeout-graceful-shutdown 30
 fi

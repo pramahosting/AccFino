@@ -10,6 +10,7 @@ RUN npm ci --silent
 
 COPY react_frontend/ ./
 RUN npm run build
+RUN test -f /build/dist/index.html || (echo "ERROR: Vite build failed" && exit 1)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: Python runtime
@@ -51,12 +52,24 @@ RUN mkdir -p \
         main_app/classifier_model \
         main_app/backend/cash_flow/outputs/plots
 
+# Verify the seed database was copied (fails build if .dockerignore excluded it)
+RUN test -f /app/db_app/hsledger.db \
+    && echo "✅ Seed database present at /app/db_app/hsledger.db" \
+    || echo "⚠️  WARNING: hsledger.db not found — will create fresh DB on startup"
+
+# If hsledger.db is missing (gitignore/dockerignore edge case), create a placeholder
+# so database.py uses the shipped path consistently even on fresh installs
+RUN touch /app/db_app/hsledger.db.placeholder
+
 RUN chmod +x /app/entrypoint.sh
 
 # Only 8001 is exposed — api_call (8000) is internal only
 EXPOSE 8001
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')" || exit 1
+# Health check — use /ready which returns 503 until app is fully initialised.
+# start-period=120s gives time for scikit-learn/pandas/CV to load.
+# interval=15s after that to detect crashes quickly.
+HEALTHCHECK --interval=15s --timeout=10s --start-period=120s --retries=5 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/ready')" || exit 1
 
 ENTRYPOINT ["/app/entrypoint.sh"]
