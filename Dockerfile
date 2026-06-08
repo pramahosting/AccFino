@@ -1,12 +1,11 @@
 # Stage 1: Build React frontend
-# Using node:22-alpine to match local development environment
-# (rollup 4.61+ has compatibility issues with node:20)
-FROM node:22-alpine AS frontend-build
+FROM node:20-slim AS frontend-build
 
 WORKDIR /build
 
-COPY react_frontend/package.json ./
-RUN npm install --legacy-peer-deps
+# Copy lockfile — "npm ci" uses exact versions, bypasses all npm cache
+COPY react_frontend/package.json react_frontend/package-lock.json ./
+RUN npm ci --legacy-peer-deps
 
 COPY react_frontend/ ./
 RUN npm run build
