@@ -99,11 +99,6 @@ except Exception:
 
 app = FastAPI(title="Accfino API", version="2.0")
 
-# Startup readiness flag — set to True after all heavy modules are loaded.
-# The /ready endpoint returns 503 until this is True so Northflank's
-# load balancer doesn't route traffic before the app is initialised.
-_app_ready = False
-
 # Register company API router
 from db_app.api.company import router as _company_router
 app.include_router(_company_router, prefix="/company", tags=["company"])
@@ -187,160 +182,6 @@ def set_home_company(username: str = Body(...), home_company: str = Body(...)):
         return {"home_company": u.home_company, "ok": True}
     finally:
         db2.close()
-
-
-@app.post("/company/capture-who")
-def capture_who_edit(
-    who:         str  = Body(...),
-    description: str  = Body(default=""),
-    username:    str  = Body(default=""),
-):
-    """
-    Called when a user manually sets/corrects the Who field in the output table.
-
-    Behaviour:
-      1. If a company with this name already exists (approved) — add the description
-         as a new alias so future transactions auto-resolve.
-      2. If the company does NOT exist — create it as pending (approved=False)
-         so admin can review before it affects all future reconciliations.
-      3. In both cases, derive alias keywords from the description text and
-         attach them to the company record.
-
-    Frontend flow:
-      User edits Who → commitEdits/saveDB → also calls POST /api/company/capture-who
-      Admin sees pending companies in the Company DB admin page → approves them
-      On next reconciliation, CompanyResolver picks up the new aliases automatically
-    """
-    from db_app.database import SessionLocal as _SL
-    from db_app.models.company import Company, CompanyAlias
-    from backend.reconciliation.company_resolver import _home_aliases
-
-    who   = (who or "").strip()
-    desc  = (description or "").strip()
-
-    if not who:
-        return {"ok": False, "reason": "empty who"}
-
-    db = _SL()
-    try:
-        # ── Look for existing approved company with this name ───────────────
-        existing = (
-            db.query(Company)
-            .filter(Company.name.ilike(f"%{who}%"), Company.approved == True)
-            .first()
-        )
-
-        # ── Build alias set from who name + description keywords ────────────
-        new_aliases: set = set()
-
-        # Aliases from the who name itself
-        new_aliases.update(_home_aliases(who, []))
-
-        # Extract alias keywords from description
-        if desc:
-            # Key words from the description that identify this company
-            desc_lower = desc.lower()
-            # Remove known noise tokens
-            import re as _re
-            _noise = _re.compile(
-                r"\b(?:transfer|to|from|fast|direct|credit|debit|payment|"
-                r"commbank|app|savings|salary|wages?|payroll|pty|ltd|au|"
-                r"bsb|a/c|receipt|number|value|date|card|xx\d+)\b",
-                _re.IGNORECASE,
-            )
-            clean_desc = _noise.sub(" ", desc_lower).strip()
-            # Extract 3+ char tokens
-            tokens = [t for t in _re.split(r"[\s\-/]+", clean_desc)
-                      if len(t) >= 3 and t.isalpha()]
-            for token in tokens[:6]:  # limit to avoid noise
-                new_aliases.add(token.lower())
-
-        if existing:
-            # ── Add new aliases to existing company ─────────────────────────
-            existing_set = {a.alias for a in existing.aliases}
-            added = 0
-            for alias in new_aliases:
-                if alias and alias not in existing_set:
-                    try:
-                        db.add(CompanyAlias(
-                            company_id=existing.id,
-                            alias=alias.lower().strip(),
-                            priority=1,  # user-confirmed → higher priority
-                        ))
-                        db.flush()
-                        added += 1
-                    except Exception:
-                        db.rollback()
-            db.commit()
-            return {
-                "ok": True,
-                "action": "aliases_added",
-                "company": existing.name,
-                "aliases_added": added,
-            }
-
-        else:
-            # ── Create new pending company ──────────────────────────────────
-            company = Company(
-                name=who,
-                short_name=who[:80],
-                category="Unknown",
-                country="AU",
-                approved=False,   # pending admin approval
-            )
-            db.add(company)
-            db.flush()
-
-            seen = set()
-            for alias in new_aliases:
-                alias = (alias or "").lower().strip()
-                if alias and alias not in seen and len(alias) >= 2:
-                    seen.add(alias)
-                    try:
-                        db.add(CompanyAlias(
-                            company_id=company.id,
-                            alias=alias,
-                            priority=1,
-                        ))
-                        db.flush()
-                    except Exception:
-                        db.rollback()
-
-            db.commit()
-            return {
-                "ok": True,
-                "action": "company_created_pending",
-                "company": who,
-                "aliases_added": len(seen),
-                "message": f"'{who}' added as pending — visit Company DB to approve",
-            }
-
-    except Exception as e:
-        db.rollback()
-        return {"ok": False, "reason": str(e)}
-    finally:
-        db.close()
-
-
-@app.on_event("startup")
-async def _on_startup():
-    """Mark app as ready after all modules have finished loading."""
-    global _app_ready
-    _app_ready = True
-
-
-@app.get("/ready", include_in_schema=False)
-def readiness_probe():
-    """
-    Northflank / Kubernetes readiness probe.
-    Returns 200 once the app is fully initialised, 503 during startup.
-    Configure Northflank to use this as the health check path.
-    """
-    if _app_ready:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"status": "ready"}, status_code=200)
-    from fastapi.responses import JSONResponse
-    return JSONResponse({"status": "starting"}, status_code=503)
 
 
 @app.get("/health", include_in_schema=False)
@@ -2411,4 +2252,3 @@ if _DIST.exists() and _APP_INDEX.exists():
     @app.get("/{spa_path:path}", include_in_schema=False)
     def spa_fallback(spa_path: str = ""):
         return _serve_app()
-
