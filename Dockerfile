@@ -5,7 +5,8 @@ FROM node:20-alpine AS frontend-build
 
 WORKDIR /build
 
-COPY react_frontend/package*.json ./
+# Copy package.json first — layer cache busted when package.json changes
+COPY react_frontend/package.json ./
 RUN npm install --legacy-peer-deps
 
 COPY react_frontend/ ./
