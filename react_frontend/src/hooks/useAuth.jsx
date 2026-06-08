@@ -14,7 +14,11 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await apiLogin(email.trim(), password.trim())
       const roles = (data.roles || []).map(r => String(r).trim().toLowerCase())
-      const u = { ...data, is_admin: roles.includes('admin') }
+      const u = {
+        ...data,
+        roles:    roles,
+        is_admin: roles.includes('admin'),
+      }
 
       // Fetch current plan and modules on login so they're always fresh
       try {

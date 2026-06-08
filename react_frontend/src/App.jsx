@@ -51,11 +51,12 @@ import LicencePage           from './pages/LicencePage.jsx'
 import PricingAdminPage      from './pages/PricingAdminPage.jsx'
 import ResetPasswordPage     from './pages/ResetPasswordPage.jsx'
 import SetupPage             from './pages/SetupPage.jsx'
+import CompanyDBPage         from './pages/CompanyDBPage.jsx'
 
 function Guard({ children, adminOnly }) {
   const { user } = useAuth()
   if (!user) return <Navigate to="/login" replace />
-  const isAdmin = Array.isArray(user.roles) && user.roles.includes('admin')
+  const isAdmin = (Array.isArray(user.roles) && user.roles.includes('admin')) || user?.is_admin === true
   if (adminOnly && !isAdmin) return <Navigate to="/" replace />
   return children
 }
@@ -78,6 +79,7 @@ function AppRoutes() {
         <Route path="file-manager"      element={<Guard adminOnly><FileManagerPage /></Guard>} />
         <Route path="licence"           element={<Guard adminOnly><LicencePage /></Guard>} />
         <Route path="pricing-admin"      element={<Guard adminOnly><PricingAdminPage /></Guard>} />
+        <Route path="company-db"           element={<Guard adminOnly><CompanyDBPage /></Guard>} />
       </Route>
     </Routes>
   )

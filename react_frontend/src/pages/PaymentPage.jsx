@@ -195,7 +195,7 @@ export default function PaymentPage() {
             </button>
             {myPlan && (
               <span style={{ fontSize:'.75rem', color:'var(--text-3)' }}>
-                Current: <strong>{plans[myPlan.plan_id]?.name || myPlan.plan_id}</strong>
+                Current: <strong>{plans[myPlan.plan_id]?.name || (myPlan.plan_id === 'admin' ? 'Ultra' : myPlan.plan_id)}</strong>
               </span>
             )}
           </div>

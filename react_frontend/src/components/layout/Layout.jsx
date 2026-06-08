@@ -4,7 +4,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.jsx'
 import UpgradeBanner from '../UpgradeBanner.jsx'
 import { licenceMyModules, getMyPlan } from '../../lib/api.js'
-import { LayoutDashboard, ArrowLeftRight, TrendingUp, BarChart2, FileText, ShieldCheck, ChevronLeft, ChevronRight, FolderOpen, BadgeCheck, Settings } from 'lucide-react'
+import { Building2, LayoutDashboard, ArrowLeftRight, TrendingUp, BarChart2, FileText, ShieldCheck, ChevronLeft, ChevronRight, FolderOpen, BadgeCheck, Settings } from 'lucide-react'
 
 // ── Reconciliation session context — persists across route navigation ─────────
 export const ReconciliationContext = React.createContext(null)
@@ -20,6 +20,7 @@ const NAV = [
   { to:'/file-manager',   icon:FolderOpen,      label:'File Manager',    sub:'Files, tables, data',     key:'file-manager',   adminOnly:true  },
   { to:'/licence',        icon:BadgeCheck,      label:'Admin & Licence', sub:'Users, roles & licences', key:'licence',        adminOnly:true  },
   { to:'/pricing-admin',  icon:BadgeCheck,      label:'Plan Pricing',    sub:'Edit plan prices',        key:'pricing-admin',  adminOnly:true  },
+  { to:'/company-db',     icon:Building2,       label:'Company DB',      sub:'AU & world organisations', key:'company-db',     adminOnly:true  },
 ]
 
 export default function Layout() {
@@ -57,7 +58,7 @@ export default function Layout() {
 
   const showUpgradeBtn = myPlan && !(myPlan.plan_id === 'premium' && myPlan.billing_period === 'yearly')
 
-  const isAdmin = Array.isArray(user?.roles) && user.roles.includes('admin')
+  const isAdmin = (Array.isArray(user?.roles) && user.roles.includes('admin')) || user?.is_admin === true
 
   const canAccess = (moduleKey) => {
     if (moduleKey === 'setup') return true   // Setup always accessible — all users
