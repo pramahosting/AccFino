@@ -130,5 +130,22 @@ export const activateAfterPayment = (body) => http.post('/payments/activate-afte
 
 // ── Pricing Management (admin) ────────────────────────────────────────────────
 export const getPricingPlans    = ()              => http.get('/pricing/plans')
+
+// Home company — used for internal transfer auto-detection
+export const getHomeCompany = (username)          => http.get('/profile/home-company', { params: { username } })
+export const setHomeCompany = (username, company) => http.post('/profile/home-company', { username, home_company: company })
+
+// Company database — search, list, manage
+export const companySearch   = (q)           => http.get('/company/search', { params: { q } })
+export const companyList     = (params)      => http.get('/company/list', { params })
+export const companyCreate   = (data)        => http.post('/company', data)
+export const companyUpdate   = (id, data)    => http.put(`/company/${id}`, data)
+export const companyDelete   = (id)          => http.delete(`/company/${id}`)
+export const companyAddAlias = (id, alias)   => http.post(`/company/${id}/alias`, alias)
+export const companyDelAlias = (id, alias)   => http.delete(`/company/${id}/alias/${encodeURIComponent(alias)}`)
+export const companyApprove  = (id)          => http.post(`/company/approve/${id}`)
+export const companyCategories = ()          => http.get('/company/categories')
+export const captureWho      = (who, desc, username) =>
+  http.post('/company/capture-who', { who, description: desc, username })
 export const savePricingPlans   = (data)          => http.post('/pricing/plans', data)
 export const updatePricingPlan  = (planId, data)  => http.patch(`/pricing/plans/${planId}`, data)
