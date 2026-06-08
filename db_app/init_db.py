@@ -18,8 +18,31 @@ ROLE_PERMISSIONS = {
     "user":  ["read", "write"],
 }
 
+def _ensure_home_company_column():
+    """Add home_company column to users table if it doesn't exist yet.
+    Must run BEFORE any ORM query on User, since the shipped hsledger.db
+    was created before this column was added."""
+    import sqlite3
+    from db_app.database import _DATABASE_URL
+    if not _DATABASE_URL.startswith("sqlite"):
+        return  # Postgres handles this via Base.metadata.create_all
+    db_path = _DATABASE_URL.replace("sqlite:///", "")
+    try:
+        conn = sqlite3.connect(db_path)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+        if "home_company" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN home_company VARCHAR(255) DEFAULT ''")
+            conn.commit()
+            print("Migration: added users.home_company column")
+        conn.close()
+    except Exception as e:
+        print(f"Warning: home_company migration skipped: {e}")
+
+
 def init_db():
     print("Initializing database...")
+    # Patch missing columns BEFORE any ORM query (shipped DB may be older schema)
+    _ensure_home_company_column()
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
@@ -83,6 +106,24 @@ def init_db():
 
     finally:
         db.close()
+
+    # Seed company database (runs every startup — skips existing entries)
+    _seed_companies_safe()
+
+
+def _seed_companies_safe():
+    """Seed company database — safe to run multiple times."""
+    try:
+        from db_app.company_seed import seed_companies
+        db2 = SessionLocal()
+        n = seed_companies(db2)
+        if n > 0:
+            print(f"Company DB: {n} new companies seeded.")
+        else:
+            print("Company DB: already seeded, no new entries.")
+        db2.close()
+    except Exception as e:
+        print(f"Warning: company seed failed (non-fatal): {e}")
 
 
 def ensure_demo_licences():
@@ -160,6 +201,11 @@ def migrate_db():
             ("stripe_sub_id",      "VARCHAR(100)"),
             ("amount_paid",        "VARCHAR(20)"),
         ]
+        # Users table migrations
+        user_cols = [r[1] for r in db.execute("PRAGMA table_info(users)").fetchall()]
+        if "home_company" not in user_cols:
+            db.execute("ALTER TABLE users ADD COLUMN home_company VARCHAR(255) DEFAULT ''")
+            print("Migration: added column users.home_company")
         for col, typ in new_cols:
             if col not in cols:
                 db.execute(f"ALTER TABLE licence_records ADD COLUMN {col} {typ} DEFAULT ''")
