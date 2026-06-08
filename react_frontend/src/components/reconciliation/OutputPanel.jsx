@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { saveSession, saveToDB, classifyGL, reclassifyGL, exportExcel } from '../../lib/api.js'
+import { saveSession, saveToDB, classifyGL, reclassifyGL, exportExcel, captureWho } from '../../lib/api.js'
 import {
   Download, Trash2, Pencil, X, Check, ChevronLeft, ChevronRight,
   BookOpen, Database, Plus, ChevronDown, ChevronUp,
@@ -544,7 +544,7 @@ export default function OutputPanel({
   const [showAdd,     setShowAdd]     = useState(false)
   const [newRow,      setNewRow]      = useState({...BLANK})
   const [saving,      setSaving]      = useState(false)
-  const [showSummary, setShowSummary] = useState(true)
+  const [showSummary, setShowSummary] = useState(false)  // collapsed by default
   const [showTxn,     setShowTxn]     = useState(true)
   const [glAccounts,  setGlAccounts]  = useState([
     'Revenue','Direct Costs','Expense','Inventory','Fixed Asset','GST','Equity','Transfer','Liability',''
@@ -679,6 +679,13 @@ export default function OutputPanel({
   // Save all inline edits to transactions state
   const commitEdits = () => {
     if (!hasEdits) return
+    // Collect rows that had Who changes before clearing edits
+    const whoChangedRows = Object.entries(inlineEdits)
+      .filter(([_, edits]) => edits.who !== undefined)
+      .map(([ai, edits]) => ({
+        ...transactions[parseInt(ai)],
+        ...edits,
+      }))
     setTransactions(prev => prev.map((t,i) => {
       const edits = inlineEdits[i]
       return edits ? {...t,...edits} : t
@@ -686,6 +693,36 @@ export default function OutputPanel({
     setInlineEdits({})
     setOriginalVals({})
     toast.success('Changes applied — click Save to DB to persist')
+    // Capture Who edits to company DB (async, best-effort)
+    captureWhoEdits(whoChangedRows)
+  }
+
+  // ── Capture Who edits to company DB ────────────────────────────────────────
+  // Called after commitEdits — finds rows where Who was changed, sends to backend
+  // for auto-capture as pending company + alias creation.
+  const captureWhoEdits = async (editedRows) => {
+    if (!editedRows || editedRows.length === 0) return
+    const whoEdits = editedRows.filter(r => r.who && r.who.trim())
+    if (!whoEdits.length) return
+    // Deduplicate by who name — one capture per unique company name
+    const seen = new Set()
+    for (const row of whoEdits) {
+      const key = (row.who || '').trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      try {
+        const res = await captureWho(row.who.trim(), row.description || '', username)
+        const d = res.data
+        if (d?.action === 'company_created_pending') {
+          toast(`🏢 "${row.who}" added as pending company — approve in Company DB`,
+            { duration: 5000, icon: '🔔' })
+        } else if (d?.action === 'aliases_added' && d.aliases_added > 0) {
+          // Silent — existing company got new aliases, no need to notify
+        }
+      } catch (_) {
+        // Silent — capturing is best-effort, never block the save flow
+      }
+    }
   }
 
   // ── selection ─────────────────────────────────────────────────────────────
