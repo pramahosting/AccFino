@@ -25,6 +25,7 @@ except Exception:
     _ST = False
 
 from backend.classifier.engine import classify_df, warm as _warm
+from backend.reconciliation.company_resolver import CompanyResolver
 
 _TRANSFER_KW = [
     "transfer","trf","tfr","internet transfer","inter-bank","interbank",
@@ -83,6 +84,8 @@ def _round2(v) -> float:
 
 def classify_transactions(
     df:            pd.DataFrame,
+    home_company:  str = "",
+    db=None,
     account_id:    str            = "__default__",
     coa_path:      Optional[Path] = None,
     show_progress: bool            = True,
@@ -344,15 +347,33 @@ def classify_transactions(
 
     df["classification"] = df["classification"].fillna("⚪Unclassified")
 
-    # FIX 6: Populate Who field for auto-matched internal pairs from description
+    # ── Who field: CompanyResolver (home company, DB, bank patterns) ─────────
     if "Who" not in df.columns:
         df["Who"] = ""
+
+    resolver = CompanyResolver(db=db, home_company=home_company)
+
     for idx in df.index:
-        if df.at[idx, "classification"] == "🟢Internal":
-            desc = str(df.at[idx, "description"]) if "description" in df.columns else ""
-            who  = _extract_who(desc)
-            if who:
-                df.at[idx, "Who"] = who
+        desc   = str(df.at[idx, "description"]) if "description" in df.columns else ""
+        debit  = float(df.at[idx, "debit"])     if "debit"       in df.columns else 0.0
+        credit = float(df.at[idx, "credit"])    if "credit"      in df.columns else 0.0
+        cl     = str(df.at[idx, "classification"])
+
+        who, is_internal = resolver.resolve(desc, debit, credit)
+
+        # Home company match → upgrade to Internal
+        if is_internal and cl not in ("🟢Internal",):
+            df.at[idx, "classification"] = "🟢Internal"
+            df.at[idx, "GL Account"]     = ""
+            df.at[idx, "GST Category"]   = ""
+            df.at[idx, "GST"]            = 0.0
+
+        if who:
+            df.at[idx, "Who"] = who
+        elif cl == "🟢Internal":
+            extracted = _extract_who(desc)
+            if extracted:
+                df.at[idx, "Who"] = extracted
 
     # ── 4. Date parts ────────────────────────────────────────────────────
     if has_date:
