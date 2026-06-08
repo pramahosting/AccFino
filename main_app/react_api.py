@@ -378,7 +378,7 @@ async def reset_admin_full(request: Request):
     db = _SL()
     try:
         admin = db.query(_User).filter(
-            (_User.username == "admin") | (_User.email == "admin@ex.com")
+            (_User.username == "admin") | (_User.email == "admin@accfino.com")
         ).first()
         if not admin:
             raise HTTPException(404, "Admin user not found")
@@ -402,6 +402,157 @@ def readiness_probe():
         return JSONResponse({"status": "ready"}, status_code=200)
     from fastapi.responses import JSONResponse
     return JSONResponse({"status": "starting"}, status_code=503)
+
+
+@app.post("/reconcile/process-with-session")
+async def reconcile_process_with_session(
+    files: Optional[List[UploadFile]] = File(default=None),
+    bank_names:      Optional[List[str]] = Form(default=None),
+    account_numbers: Optional[List[str]] = Form(default=None),
+    account_names:   Optional[List[str]] = Form(default=None),
+    session_id: str  = Form(...),
+    username:   str  = Form(...),
+):
+    """
+    Re-run reconciliation using:
+      - All CSV files saved from a previous session
+      - Plus any NEW files uploaded in this request
+
+    Creates a NEW session with all combined data.
+    """
+    import json as _json
+
+    # ── Load saved files from previous session ────────────────────────────────
+    prev_sid = session_id
+    prev_data = session_manager.load_session_data(norm_username(username), prev_sid)
+    saved_files = prev_data.get("files_data", {})          # filename → bytes
+    prev_accounts = prev_data.get("accounts", [])           # accounts_meta from prev session
+
+    normed = []
+    _acc_files: dict = {}
+    _all_saved: dict = {}
+
+    # Process previously saved files
+    for acc in prev_accounts:
+        bank    = acc.get("bank_name", "Unknown")
+        account = acc.get("account_number", "Unknown")
+        acc_name = acc.get("account_name", "")
+        for fname in (acc.get("files") or []):
+            raw = saved_files.get(fname)
+            if not raw:
+                # Try to find by filename without path
+                raw = next((v for k, v in saved_files.items()
+                            if k.endswith(fname) or fname.endswith(k)), None)
+            if not raw:
+                logger.warning(f"Saved file {fname} not found in session {prev_sid}")
+                continue
+            _acc_files.setdefault((bank, account), []).append((fname, acc_name))
+            _all_saved[fname] = raw
+            try:
+                df = pd.read_csv(io.BytesIO(raw))
+                normalized = normalize_transactions(df, bank, account)
+                if acc_name:
+                    normalized["account_name"] = acc_name
+                normed.append(normalized)
+            except Exception as e:
+                logger.warning(f"Failed to process saved file {fname}: {e}")
+
+    # Process newly uploaded files
+    for i, upload in enumerate(files or []):
+        bank    = (bank_names or [])[i]      if bank_names    and i < len(bank_names)      else "Unknown"
+        account = (account_numbers or [])[i] if account_numbers and i < len(account_numbers) else "Unknown"
+        acc_name = (account_names or [])[i]  if account_names and i < len(account_names)   else ""
+        fname   = upload.filename or f"new_file_{i}.csv"
+        _acc_files.setdefault((bank, account), []).append((fname, acc_name))
+        try:
+            raw = await upload.read()
+            _all_saved[fname] = raw
+            df = pd.read_csv(io.BytesIO(raw))
+            normalized = normalize_transactions(df, bank, account)
+            if acc_name:
+                normalized["account_name"] = acc_name
+            normed.append(normalized)
+        except Exception as e:
+            logger.warning(f"Failed to process new file {fname}: {e}")
+
+    if not normed:
+        raise HTTPException(400, "No valid files found — check session files and new uploads")
+
+    # ── Classify ──────────────────────────────────────────────────────────────
+    combined = pd.concat(normed, ignore_index=True)
+    combined.columns = combined.columns.str.strip().str.lower()
+    if "account_name" not in combined.columns:
+        combined["account_name"] = ""
+
+    _home_company = ""
+    try:
+        from db_app.database import SessionLocal as _SL
+        from db_app.models.user import User as _User
+        _db2 = _SL()
+        _uname = norm_username(username)
+        _usr = _db2.query(_User).filter(_User.username == _uname).first()
+        if _usr and _usr.home_company:
+            _home_company = _usr.home_company
+        _db2.close()
+    except Exception:
+        pass
+
+    classified = rec_classifier.classify_transactions(
+        combined, show_progress=False, home_company=_home_company)
+    classified = _norm_cols(classified)
+    if "Account Name" not in classified.columns:
+        classified["Account Name"] = combined.get("account_name", "").values[:len(classified)]
+    for col, default in [("GL Account",""),("GL Type",""),("GST Category",""),
+                         ("GST",0.0),("Who",""),("PairID","")]:
+        if col not in classified.columns:
+            classified[col] = default
+    classified = _run_classify_gl(classified, username=username)
+    monthly = _build_monthly_summary(classified)
+
+    # ── Create new session ────────────────────────────────────────────────────
+    uname = norm_username(username)
+    sid   = session_manager.create_session(uname)
+    session_manager.save_output_data(uname, sid, classified, {}, set(), 1)
+
+    accounts_meta = [
+        {
+            "bank_name":      bank,
+            "account_number": account,
+            "account_name":   tuples[0][1] if tuples else "",
+            "files":          [t[0] for t in tuples],
+        }
+        for (bank, account), tuples in _acc_files.items()
+    ]
+    try:
+        input_dir = session_manager.get_session_dir(uname, sid) / "input"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        (input_dir / "accounts.json").write_text(
+            _json.dumps(accounts_meta, indent=2), encoding="utf-8")
+        files_dir = input_dir / "files"
+        files_dir.mkdir(exist_ok=True)
+        for fname, raw in _all_saved.items():
+            (files_dir / fname).write_bytes(raw)
+    except Exception as _e:
+        logger.warning(f"Failed to save session input for {sid}: {_e}")
+
+    return {
+        "session_id":     sid,
+        "transactions":   _to_frontend(classified),
+        "monthly_summary": monthly,
+        "count":          len(classified),
+        "accounts_meta":  accounts_meta,
+    }
+
+
+@app.post("/shutdown", include_in_schema=False)
+async def shutdown():
+    """Graceful shutdown — closes DB connections then exits."""
+    import threading, os, signal
+    def _stop():
+        import time; time.sleep(0.5)
+        os.kill(os.getpid(), signal.SIGTERM)
+    threading.Thread(target=_stop, daemon=True).start()
+    return {"ok": True}
 
 
 @app.get("/health", include_in_schema=False)
@@ -833,8 +984,8 @@ async def reconcile_process(
     username: str=Form(...),
 ):
     normed = []
-    # Track filenames per (bank, account) as we read — files can only be read once
     _acc_files: dict = {}   # (bank, account) -> [filename, ...]
+    _saved_files: dict = {} # filename -> raw bytes (for session restore)
     for i, upload in enumerate(files):
         bank         = bank_names[i]      if i < len(bank_names)      else "Unknown"
         account      = account_numbers[i] if i < len(account_numbers) else "Unknown"
@@ -842,7 +993,9 @@ async def reconcile_process(
         fname        = upload.filename or f"file_{i}.csv"
         _acc_files.setdefault((bank, account), []).append((fname, account_name))
         try:
-            df = pd.read_csv(io.BytesIO(await upload.read()))
+            raw = await upload.read()
+            _saved_files[fname] = raw          # save raw bytes for session restore
+            df = pd.read_csv(io.BytesIO(raw))
             normalized = normalize_transactions(df, bank, account)
             if account_name:
                 normalized["account_name"] = account_name
@@ -918,8 +1071,13 @@ async def reconcile_process(
         (input_dir / "accounts.json").write_text(
             _json.dumps(accounts_meta, indent=2), encoding="utf-8"
         )
+        # Save raw CSV files so session can be re-run later
+        files_dir = input_dir / "files"
+        files_dir.mkdir(exist_ok=True)
+        for fname, raw in _saved_files.items():
+            (files_dir / fname).write_bytes(raw)
     except Exception as _e:
-        logger.warning(f"Failed to save accounts.json for session {sid}: {_e}")
+        logger.warning(f"Failed to save session input for {sid}: {_e}")
 
     return {
         "session_id": sid,
