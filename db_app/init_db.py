@@ -51,7 +51,7 @@ def _ensure_admin_exists(db):
         import bcrypt as _bcrypt
 
         admin = db.query(User).filter(
-            (User.email == "admin@ex.com") | (User.username == "admin")
+            (User.email == "admin@accfino.com") | (User.username == "admin")
         ).first()
 
         if not admin:
@@ -63,14 +63,14 @@ def _ensure_admin_exists(db):
             admin = User(
                 username="admin",
                 full_name="Administrator",
-                email="admin@ex.com",
+                email="admin@accfino.com",
                 password=hashed,
             )
             if admin_role:
                 admin.roles.append(admin_role)
             db.add(admin)
             db.commit()
-            print("Admin user created with password '1'.")
+            print("Admin user created with password 'Accfino$1'.")
             return
 
         # Admin exists — ensure it has the admin role
