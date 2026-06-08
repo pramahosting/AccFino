@@ -428,6 +428,7 @@ function ChartOfAccountsModal({ onClose, glAccounts, setGlAccounts, onSaveAndRec
       toast.success(`${result.message || `Saved ${names.length} accounts`} — re-classifying…`)
       onClose()
       if (onSaveAndReclassify) onSaveAndReclassify()
+      // Mark COA as changed so Reclassify button activates
     } catch(err) {
       toast.error(`Save failed: ${err.message}`)
     } finally { setSaving(false) }
@@ -545,6 +546,7 @@ export default function OutputPanel({
   const [newRow,      setNewRow]      = useState({...BLANK})
   const [saving,      setSaving]      = useState(false)
   const [showSummary, setShowSummary] = useState(false)  // collapsed by default
+  const [coaChanged, setCoaChanged]   = useState(false)  // true when user has edited GL fields
   const [showTxn,     setShowTxn]     = useState(true)
   const [glAccounts,  setGlAccounts]  = useState([
     'Revenue','Direct Costs','Expense','Inventory','Fixed Asset','GST','Equity','Transfer','Liability',''
@@ -773,6 +775,8 @@ export default function OutputPanel({
         setTransactions(data.transactions)
         if (data.monthly_summary) setMonthlySummary(data.monthly_summary)
         toast.success('GL & GST classification complete')
+        // Auto-save session after classify completes
+        try { await saveSession({session_id:sessionId,username,transactions:data.transactions,pending_changes:{},page_number:safePage}) } catch {}
       }
     } catch (e) { toast.error(e.response?.data?.detail||'Classification failed') }
   }
@@ -788,6 +792,9 @@ export default function OutputPanel({
         setTransactions(data.transactions)
         if (data.monthly_summary) setMonthlySummary(data.monthly_summary)
         toast.success('Reclassification complete', {id:'reclassify'})
+        setCoaChanged(false)
+        // Auto-save session after reclassify completes
+        try { await saveSession({session_id:sessionId,username,transactions:data.transactions,pending_changes:{},page_number:safePage}) } catch {}
       }
     } catch (e) {
       toast.error(e.response?.data?.detail||'Reclassification failed', {id:'reclassify'})
@@ -1039,8 +1046,10 @@ export default function OutputPanel({
               </button>
             )}
 
-            <button className="btn btn-accent btn-sm" onClick={handleReclassify}
-              title="Re-classify all rows using current Chart of Accounts (COA)">
+            <button className="btn btn-accent btn-sm" onClick={()=>{setCoaChanged(false);handleReclassify()}}
+              disabled={false}
+              title={coaChanged ? "Re-classify all rows using current COA" : "Make GL edits first, or just click to force re-classify"}
+              style={{opacity: coaChanged ? 1 : 0.5}}>
               <RefreshCw size={13}/> Reclassify
             </button>
             {hasEdits && (
@@ -1048,7 +1057,6 @@ export default function OutputPanel({
                 <Check size={13}/> Apply Edits ({Object.keys(inlineEdits).length})
               </button>
             )}
-            <button className="btn btn-outline btn-sm" onClick={handleSaveSession}>💾 Save Session</button>
             <button className="btn btn-outline btn-sm" onClick={handleExport}><Download size={13}/> Excel</button>
             <button className="btn btn-primary btn-sm" onClick={handleSaveDB} disabled={saving}>
               <Database size={13}/> {saving?'Saving…':'Save to DB'}
@@ -1061,11 +1069,10 @@ export default function OutputPanel({
         </div>}
       </div>
 
-      {/* FIX 2: Filter chips — outside the collapsible section, always visible,
-          positioned flush below the Transaction Details header, not inside overflow */}
+      {/* Filter chips — inline below toolbar */}
       <div style={{display:'flex',alignItems:'center',gap:4,margin:'6px 0 8px',
         padding:'6px 10px',background:'var(--surface-2)',borderRadius:'var(--r-md)',
-        border:'1px solid var(--border)',flexWrap:'wrap'}}>
+        border:'1px solid var(--border)',flexWrap:'wrap',display: showTxn ? 'flex' : 'none'}}>
         <span style={{fontSize:'.72rem',color:'var(--text-3)',marginRight:4,fontWeight:600}}>Show:</span>
         {[['internal','🟢','active-int'],['incoming','🔵','active-in'],
           ['outgoing','🟡','active-out'],['unclassified','⚪','']].map(([k,emoji,activeClass])=>{
