@@ -99,6 +99,11 @@ except Exception:
 
 app = FastAPI(title="Accfino API", version="2.0")
 
+# Startup readiness flag — set to True after all heavy modules are loaded.
+# The /ready endpoint returns 503 until this is True so Northflank's
+# load balancer doesn't route traffic before the app is initialised.
+_app_ready = False
+
 # Register company API router
 from db_app.api.company import router as _company_router
 app.include_router(_company_router, prefix="/company", tags=["company"])
@@ -315,6 +320,27 @@ def capture_who_edit(
         return {"ok": False, "reason": str(e)}
     finally:
         db.close()
+
+
+@app.on_event("startup")
+async def _on_startup():
+    """Mark app as ready after all modules have finished loading."""
+    global _app_ready
+    _app_ready = True
+
+
+@app.get("/ready", include_in_schema=False)
+def readiness_probe():
+    """
+    Northflank / Kubernetes readiness probe.
+    Returns 200 once the app is fully initialised, 503 during startup.
+    Configure Northflank to use this as the health check path.
+    """
+    if _app_ready:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"status": "ready"}, status_code=200)
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"status": "starting"}, status_code=503)
 
 
 @app.get("/health", include_in_schema=False)
