@@ -5,7 +5,7 @@ import { licenceMyModules, getMyPlan } from '../lib/api'
 import InputPanel       from '../components/reconciliation/InputPanel.jsx'
 import OpenBankingInput from '../components/reconciliation/OpenBankingInput.jsx'
 import OutputPanel      from '../components/reconciliation/OutputPanel.jsx'
-import { processFiles, getSession, getBanks } from '../lib/api.js'
+import { processFiles, processFilesWithSession, getSession, getBanks } from '../lib/api.js'
 import { ReconciliationContext } from '../components/layout/Layout.jsx'
 import toast from 'react-hot-toast'
 
@@ -102,32 +102,69 @@ export default function ReconciliationPage() {
   }
 
   const handleProcess = useCallback(async () => {
-    // Include ALL accounts that have files — both new and restored with new files
-    const active = accounts.filter(a => a.files.length > 0)
-    if (!active.length) {
+    const newAccounts      = accounts.filter(a => a.files.length > 0)
+    const restoredAccounts = accounts.filter(a => a.restored && a.fileNames.length > 0)
+
+    // Case 1: Has new files + a previous session → combine old + new
+    // Case 2: Has only new files → normal process
+    // Case 3: No new files at all → error
+    if (!newAccounts.length && !restoredAccounts.length) {
       toast.error('Add at least one CSV file'); return
     }
+
     setRunning(true)
     try {
-      const fd = new FormData()
-      active.forEach(acc => {
-        acc.files.forEach(f => {
-          fd.append('files',           f, f.name)
-          fd.append('bank_names',      acc.bankName)
-          fd.append('account_numbers', acc.accountNumber)
-          fd.append('account_names',   acc.accountName || '')
+      let data
+
+      if (restoredAccounts.length > 0 && sessionId) {
+        // Mix of restored session files + new uploads
+        const fd = new FormData()
+        fd.append('session_id', sessionId)
+        fd.append('username', username)
+        // Only append the NEW files (restored ones are loaded from saved session)
+        newAccounts.forEach(acc => {
+          acc.files.forEach(f => {
+            fd.append('files',           f, f.name)
+            fd.append('bank_names',      acc.bankName)
+            fd.append('account_numbers', acc.accountNumber)
+            fd.append('account_names',   acc.accountName || '')
+          })
         })
-      })
-      fd.append('username', username)
-      const { data } = await processFiles(fd)
+        // If no new files, send empty files array — backend uses saved files only
+        if (!newAccounts.length) {
+          fd.append('files', new Blob([]), 'empty.csv')
+          fd.append('bank_names', '_empty')
+          fd.append('account_numbers', '_empty')
+          fd.append('account_names', '')
+        }
+        const res = await processFilesWithSession(fd)
+        data = res.data
+        toast.success(`Re-processed ${(data.transactions||[]).length} transactions (${restoredAccounts.length} saved + ${newAccounts.length} new file${newAccounts.length!==1?'s':''})`)
+      } else {
+        // Normal: only new files
+        const fd = new FormData()
+        newAccounts.forEach(acc => {
+          acc.files.forEach(f => {
+            fd.append('files',           f, f.name)
+            fd.append('bank_names',      acc.bankName)
+            fd.append('account_numbers', acc.accountNumber)
+            fd.append('account_names',   acc.accountName || '')
+          })
+        })
+        fd.append('username', username)
+        const res = await processFiles(fd)
+        data = res.data
+        toast.success(`Agent processed ${(data.transactions||[]).length} transactions`)
+      }
+
       setTransactions(data.transactions || [])
       setMonthlySummary(data.monthly_summary || [])
       setSessionId(data.session_id || null)
-      // Restore accounts from server response so Input panel stays populated
       if (data.accounts_meta?.length) {
         const restored = data.accounts_meta.map(a => ({
           bankName:      a.bank_name || '',
           accountNumber: a.account_number || '',
+          accountName:   a.account_name || '',
           files:         [],
           fileNames:     a.files || [],
           restored:      true,
@@ -135,13 +172,12 @@ export default function ReconciliationPage() {
         setAccounts(restored)
       }
       setMainTab('output')
-      toast.success(`Agent processed ${(data.transactions||[]).length} transactions`)
     } catch (e) {
       toast.error(e.response?.data?.detail || 'Agent run failed — check CSV format')
     } finally {
       setRunning(false)
     }
-  }, [accounts, username])
+  }, [accounts, username, sessionId])
 
   const handleObTransactions = (rows) => {
     if (!rows.length) { toast.error('No transactions retrieved from Open Banking'); return }
@@ -203,7 +239,7 @@ export default function ReconciliationPage() {
           <button
             className="btn btn-primary btn-sm"
             onClick={handleProcess}
-            disabled={running || !accounts.filter(a=>a.files.length>0).length}
+            disabled={running || (!accounts.filter(a=>a.files.length>0).length && !accounts.filter(a=>a.restored&&a.fileNames.length>0).length)}
             style={{height:34}}>
             {running ? <><span className="spinner spinner-sm"/> Running…</> : <>⚡ Run Agent</>}
           </button>
