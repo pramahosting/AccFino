@@ -539,7 +539,7 @@ export default function LoginPage() {
                 </div>
 
                 <div className="input-group">
-                  <label>Phone (optional)</label>
+                  <label>Phone</label>
 
                   <input
                     className="input"
@@ -549,9 +549,11 @@ export default function LoginPage() {
                     placeholder="+61 4xx xxx xxx"
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Company Name</label>
-                  <input className="form-input" name="home_company"
+                <div className="input-group">
+                  <label>Company Name</label>
+                  <input
+                    className="input"
+                    type="text"
                     value={form.home_company||''}
                     onChange={e=>setForm(f=>({...f,home_company:e.target.value}))}
                     placeholder="e.g. Headstart Finances Australia Pty Ltd"
