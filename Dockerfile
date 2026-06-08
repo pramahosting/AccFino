@@ -1,12 +1,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1: Build the React frontend
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:20-slim AS frontend-build
+FROM node:20-alpine AS frontend-build
 
 WORKDIR /build
 
-COPY react_frontend/package.json react_frontend/package-lock.json ./
-RUN npm ci --silent
+COPY react_frontend/package*.json ./
+RUN npm install --silent --legacy-peer-deps
 
 COPY react_frontend/ ./
 RUN npm run build
