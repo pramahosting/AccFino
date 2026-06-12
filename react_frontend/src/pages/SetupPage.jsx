@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { BookOpen, Plus, Pencil, Trash2, Check, X, Upload, Save, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { BookOpen, Plus, Pencil, Trash2, Check, X, Upload, Save, Download, ArrowUp, ArrowDown, ArrowUpDown, Zap } from 'lucide-react'
+import { rdrList, rdrCreate, rdrUpdate, rdrDelete, coaAccounts } from '../lib/api.js'
 import toast from 'react-hot-toast'
 
 // ── Column filter popover (same pattern as OutputPanel) ───────────────────────
@@ -342,7 +343,197 @@ function CoaTab() {
 }
 
 // ── SetupPage ─────────────────────────────────────────────────────────────────
-const TABS = [{ key:'coa', label:'Chart of Accounts', icon:'📒' }]
+// ── Business Rules (RDR) tab ──────────────────────────────────────────────────
+const DIRECTION_OPTS = [
+  { value:'', label:'Any direction' },
+  { value:'debit_only', label:'🟡 Outgoing only' },
+  { value:'credit_only', label:'🔵 Incoming only' },
+]
+const GST_OPTS = ['','GST on Expenses','GST on Capital','GST on Income','GST Free Expenses','GST Free Income','BAS Excluded']
+const BLANK = { name:'', priority:100, keywords:'', gl:'', gst:'', direction:'' }
+
+function RdrTab() {
+  const [rules,    setRules]   = useState([])
+  const [glList,   setGlList]  = useState([])
+  const [form,     setForm]    = useState(BLANK)
+  const [editId,   setEditId]  = useState(null)
+  const [saving,   setSaving]  = useState(false)
+
+  useEffect(()=>{
+    rdrList().then(r=>setRules(r.data||[])).catch(()=>{})
+    coaAccounts().then(r=>setGlList(r.data||[])).catch(()=>{})
+  },[])
+
+  const set = k => e => setForm(f=>({...f,[k]:e.target.value}))
+
+  const save = async () => {
+    const kws = form.keywords.split(',').map(k=>k.trim().toLowerCase()).filter(Boolean)
+    if(!kws.length){ toast.error('Add at least one keyword'); return }
+    if(!form.gl && !form.gst){ toast.error('Set GL Account or GST Category'); return }
+    const cond = { contains_any: kws }
+    if(form.direction==='debit_only')  cond.debit_only  = true
+    if(form.direction==='credit_only') cond.credit_only = true
+    const rule = { id: editId||`rule_${Date.now()}`, name: form.name||kws[0],
+      priority: parseInt(form.priority)||100, if: cond,
+      then: form.gl, then_gst_category: form.gst }
+    setSaving(true)
+    try {
+      if(editId) {
+        const {data} = await rdrUpdate(editId, rule)
+        setRules(r=>r.map(x=>x.id===editId?data:x))
+        toast.success('Rule updated')
+      } else {
+        const {data} = await rdrCreate(rule)
+        setRules(r=>[data,...r])
+        toast.success('Rule created')
+      }
+      setForm(BLANK); setEditId(null)
+    } catch { toast.error('Save failed') }
+    setSaving(false)
+  }
+
+  const startEdit = r => {
+    const dir = r.if?.debit_only?'debit_only':r.if?.credit_only?'credit_only':''
+    setForm({ name:r.name||'', priority:r.priority||100,
+      keywords:(r.if?.contains_any||[]).join(', '),
+      gl: typeof r.then==='string'?r.then:'',
+      gst: r.then_gst_category||'', direction:dir })
+    setEditId(r.id)
+    window.scrollTo({top:0,behavior:'smooth'})
+  }
+
+  const del = async id => {
+    if(!confirm('Delete this rule?')) return
+    await rdrDelete(id).catch(()=>{})
+    setRules(r=>r.filter(x=>x.id!==id))
+    toast.success('Deleted')
+  }
+
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'1fr',gap:16}}>
+
+      {/* Editor */}
+      <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',
+        padding:'16px 18px',border:'1px solid var(--border)'}}>
+        <h3 style={{marginBottom:14,fontSize:'.95rem'}}>
+          {editId?'Edit Rule':'New Rule'}
+          <span style={{fontSize:'.75rem',fontWeight:400,color:'var(--text-3)',marginLeft:8}}>
+            Rules fire before TF-IDF — higher priority wins
+          </span>
+        </h3>
+        <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:10,marginBottom:10}}>
+          <div className="input-group">
+            <label>Rule Name</label>
+            <input className="input" value={form.name} onChange={set('name')} placeholder="e.g. Uber rides"/>
+          </div>
+          <div className="input-group">
+            <label>Priority</label>
+            <input className="input" type="number" value={form.priority} onChange={set('priority')}/>
+          </div>
+        </div>
+        <div className="input-group" style={{marginBottom:10}}>
+          <label>Keywords — IF description contains any <span style={{fontWeight:400,color:'var(--text-3)'}}>(comma-separated)</span></label>
+          <input className="input" value={form.keywords} onChange={set('keywords')}
+            placeholder="uber, didi, taxi, ride share"/>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'2fr 2fr 1fr',gap:10,marginBottom:14}}>
+          <div className="input-group">
+            <label>GL Account (THEN)</label>
+            <select className="input" value={form.gl} onChange={set('gl')}>
+              <option value="">-- Select --</option>
+              {glList.map(g=><option key={g.name} value={g.name}>{g.name} ({g.type})</option>)}
+            </select>
+          </div>
+          <div className="input-group">
+            <label>GST Category</label>
+            <select className="input" value={form.gst} onChange={set('gst')}>
+              {GST_OPTS.map(g=><option key={g} value={g}>{g||'-- Same as COA --'}</option>)}
+            </select>
+          </div>
+          <div className="input-group">
+            <label>Direction</label>
+            <select className="input" value={form.direction} onChange={set('direction')}>
+              {DIRECTION_OPTS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>
+            <Check size={13}/> {saving?'Saving...':(editId?'Update Rule':'Save Rule')}
+          </button>
+          {editId && (
+            <button className="btn btn-ghost btn-sm" onClick={()=>{setForm(BLANK);setEditId(null)}}>
+              <X size={13}/> Cancel
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Rules list */}
+      <div style={{borderRadius:'var(--r-md)',border:'1px solid var(--border)',overflow:'hidden'}}>
+        <div style={{padding:'10px 16px',borderBottom:'1px solid var(--border)',
+          display:'flex',alignItems:'center',gap:10,background:'var(--surface-2)'}}>
+          <Zap size={14} color="var(--brand)"/>
+          <span style={{fontWeight:700,fontSize:'.9rem'}}>Active Rules</span>
+          <span style={{background:'var(--surface-3)',borderRadius:100,padding:'1px 8px',
+            fontSize:'.72rem',fontWeight:700}}>{rules.length}</span>
+          <span style={{marginLeft:'auto',fontSize:'.72rem',color:'var(--text-3)'}}>
+            Higher priority = checked first
+          </span>
+        </div>
+        {rules.length===0
+          ? <div style={{padding:32,textAlign:'center',color:'var(--text-3)',fontSize:'.85rem'}}>
+              No rules yet. Create one above, or edit a GL Account in Reconciliation to auto-create.
+            </div>
+          : <table className="data-table" style={{width:'100%'}}>
+              <thead>
+                <tr>
+                  <th style={{width:50}}>Pri.</th>
+                  <th>Name</th>
+                  <th>Keywords</th>
+                  <th style={{width:60}}>Dir.</th>
+                  <th>GL Account</th>
+                  <th>GST</th>
+                  <th style={{width:70}}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...rules].sort((a,b)=>(b.priority||0)-(a.priority||0)).map(r=>(
+                  <tr key={r.id}>
+                    <td style={{fontFamily:'var(--font-mono)',fontWeight:700,fontSize:'.8rem'}}>{r.priority||0}</td>
+                    <td style={{fontWeight:600,fontSize:'.85rem'}}>{r.name||r.id}</td>
+                    <td style={{fontSize:'.75rem',color:'var(--text-2)'}}>
+                      {(r.if?.contains_any||[]).slice(0,5).join(', ')}{(r.if?.contains_any||[]).length>5?'...':''}
+                    </td>
+                    <td style={{fontSize:'.78rem'}}>
+                      {r.if?.debit_only?'🟡 Out':r.if?.credit_only?'🔵 In':'↔'}
+                    </td>
+                    <td><span className="badge badge-neutral" style={{fontSize:'.75rem'}}>{r.then||'—'}</span></td>
+                    <td style={{fontSize:'.72rem',color:'var(--text-3)'}}>{r.then_gst_category||'—'}</td>
+                    <td>
+                      <div style={{display:'flex',gap:4}}>
+                        <button className="btn btn-ghost btn-icon btn-sm" onClick={()=>startEdit(r)} title="Edit">
+                          <Pencil size={13}/>
+                        </button>
+                        <button className="btn btn-ghost btn-icon btn-sm" onClick={()=>del(r.id)} title="Delete"
+                          style={{color:'var(--text-3)'}}
+                          onMouseEnter={e=>e.currentTarget.style.color='var(--danger)'}
+                          onMouseLeave={e=>e.currentTarget.style.color='var(--text-3)'}>
+                          <Trash2 size={13}/>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+        }
+      </div>
+    </div>
+  )
+}
+
+const TABS = [{ key:'coa', label:'Chart of Accounts', icon:'📒' }, { key:'rdr', label:'Business Rules', icon:'⚡' }]
 
 export default function SetupPage() {
   const [tab, setTab] = useState('coa')
@@ -364,6 +555,7 @@ export default function SetupPage() {
       <div style={{background:'var(--surface)',borderRadius:'0 0 var(--r-lg) var(--r-lg)',
         border:'1px solid var(--border)',borderTop:'none',padding:'20px 24px',boxShadow:'var(--sh-sm)'}}>
         {tab==='coa' && <CoaTab/>}
+        {tab==='rdr' && <RdrTab/>}
       </div>
     </div>
   )
