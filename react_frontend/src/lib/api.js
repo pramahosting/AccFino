@@ -66,6 +66,12 @@ export const mlSampleCsv   = ()              => http.get('/ml/sample-csv', { res
 export const mlTrain       = (fd)            => http.post('/ml/train', fd, { headers:{'Content-Type':'multipart/form-data'} })
 
 // ── RDR Rules ─────────────────────────────────────────────────────────────────
+export const kbGet            = ()                    => http.get('/kb')
+export const kbVendorUpsert   = (key, entry)           => http.put(`/kb/vendor/${encodeURIComponent(key)}`, entry)
+export const kbVendorDelete   = (key)                  => http.delete(`/kb/vendor/${encodeURIComponent(key)}`)
+export const kbKeywordUpsert  = (kw, entry)            => http.put(`/kb/keyword/${encodeURIComponent(kw)}`, entry)
+export const kbKeywordDelete  = (kw)                   => http.delete(`/kb/keyword/${encodeURIComponent(kw)}`)
+export const kbMetaUpdate     = (body)                 => http.put('/kb/meta', body)
 export const coaAccounts  = ()              => http.get('/coa/accounts')
 export const rdrList       = ()              => http.get('/rdr/rules')
 export const rdrCreate     = (rule)          => http.post('/rdr/rules', rule)
