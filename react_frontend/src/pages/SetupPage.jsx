@@ -591,7 +591,7 @@ function KbTab() {
     kbGet().then(r=>setKb(r.data||{})).catch(()=>setKb({}))
     coaAccounts().then(r=>setGlList(r.data||[])).catch(()=>{})
     setLoading(true)
-    companyList({limit:600,skip:0}).then(r=>{
+    companyList({limit:500,skip:0}).then(r=>{
       setCompanies(Array.isArray(r.data)?r.data:[])
     }).catch(()=>setCompanies([])).finally(()=>setLoading(false))
   },[])
@@ -756,10 +756,10 @@ function KbTab() {
                         <td style={{fontSize:'.78rem',color:'var(--text-2)'}}>{c.short_name||'-'}</td>
                         <td style={{fontSize:'.75rem',color:'var(--text-3)'}}>{c.category||'-'}</td>
                         <td style={{fontSize:'.72rem'}}>
-                          {(c.aliases||[]).map(a=>(
-                            <span key={a} style={{display:'inline-block',background:'var(--surface-3)',
+                          {(c.aliases||[]).map((a,ai)=>(
+                            <span key={ai} style={{display:'inline-block',background:'var(--surface-3)',
                               borderRadius:3,padding:'1px 5px',margin:'1px 2px',whiteSpace:'nowrap'}}>
-                              {a}
+                              {typeof a === 'string' ? a : a.alias}
                             </span>
                           ))}
                         </td>
