@@ -66,6 +66,7 @@ export const mlSampleCsv   = ()              => http.get('/ml/sample-csv', { res
 export const mlTrain       = (fd)            => http.post('/ml/train', fd, { headers:{'Content-Type':'multipart/form-data'} })
 
 // ── RDR Rules ─────────────────────────────────────────────────────────────────
+export const coaAccounts  = ()              => http.get('/coa/accounts')
 export const rdrList       = ()              => http.get('/rdr/rules')
 export const rdrCreate     = (rule)          => http.post('/rdr/rules', rule)
 export const rdrUpdate     = (id, rule)      => http.put(`/rdr/rules/${id}`, rule)

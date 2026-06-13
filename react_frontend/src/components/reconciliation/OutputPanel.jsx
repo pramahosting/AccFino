@@ -8,10 +8,28 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, Upload, Save,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { rdrCreate } from '../../lib/api.js'
 
 const GST_CATS = ['GST on Expenses','GST on Income','GST on Capital','GST Free Expenses','GST Free Income','BAS Excluded','']
 const CLASSES  = ['🟢Internal','🔵Incoming','🟡Outgoing','⚪Unclassified']
 const PAGE_SZ  = 25
+
+// Normalize backend classification values (e.g. "-Internal") to emoji-prefixed
+// frontend values (e.g. "🟢Internal") used throughout the UI.
+function normalizeClassification(val) {
+  if (!val) return '⚪Unclassified'
+  const v = String(val).trim()
+  if (v.startsWith('🟢') || v.startsWith('🔵') || v.startsWith('🟡') || v.startsWith('⚪')) return v
+  if (v.includes('Internal'))     return '🟢Internal'
+  if (v.includes('Incoming'))     return '🔵Incoming'
+  if (v.includes('Outgoing'))     return '🟡Outgoing'
+  if (v.includes('Unclassified')) return '⚪Unclassified'
+  return '⚪Unclassified'
+}
+function normalizeTransactions(txns) {
+  if (!Array.isArray(txns)) return txns
+  return txns.map(t => ({...t, classification: normalizeClassification(t.classification)}))
+}
 
 const fmtN   = n => (n == null || n === 0) ? '' : Number(n).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})
 const fmtAUD = n => new Intl.NumberFormat('en-AU',{style:'currency',currency:'AUD',maximumFractionDigits:2}).format(n||0)
@@ -531,6 +549,224 @@ function ChartOfAccountsModal({ onClose, glAccounts, setGlAccounts, onSaveAndRec
 }
 
 // ── Main OutputPanel ──────────────────────────────────────────────────────────
+// ── Save as RDR Rule modal ─────────────────────────────────────────────────
+function SaveAsRuleModal({ row, onClose, onSaved }) {
+  const [name,     setName]     = useState(row.who || '')
+  const [keywords, setKeywords] = useState(
+    [row.who?.toLowerCase(),
+     ...(row.desc||'').toLowerCase().split(/\s+/)
+       .filter(w=>w.length>4&&!/\d/.test(w)&&!['from','with','card','date','value'].includes(w))
+       .slice(0,4)
+    ].filter(Boolean).join(', ')
+  )
+  const [priority, setPriority] = useState(100)
+  const [saving,   setSaving]   = useState(false)
+
+  const save = async () => {
+    const kws = keywords.split(',').map(k=>k.trim().toLowerCase()).filter(Boolean)
+    if (!kws.length) { toast.error('Add at least one keyword'); return }
+    const cond = { contains_any: kws }
+    if (row.direction === 'debit_only')  cond.debit_only  = true
+    if (row.direction === 'credit_only') cond.credit_only = true
+    setSaving(true)
+    try {
+      await rdrCreate({ id:`rule_${Date.now()}`, name:name||kws[0],
+        priority:parseInt(priority)||100, if:cond,
+        then:row.gl, then_gst_category:row.gst })
+      onSaved()
+    } catch { toast.error('Failed to save rule') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:9999,
+      display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onClose}>
+      <div style={{background:'var(--surface)',borderRadius:'var(--r-lg)',padding:24,
+        width:500,maxWidth:'95vw',boxShadow:'var(--sh-lg)'}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
+          <span>📋</span>
+          <h3 style={{margin:0,fontSize:'1rem'}}>Save as RDR Rule</h3>
+          <button className="btn btn-ghost btn-icon btn-sm" style={{marginLeft:'auto'}} onClick={onClose}>✕</button>
+        </div>
+        <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',padding:'10px 14px',
+          marginBottom:14,fontSize:'.82rem'}}>
+          GL: <strong>{row.gl}</strong> · GST: {row.gst||'—'} ·{' '}
+          {row.direction==='debit_only'?'🟡 Outgoing only':row.direction==='credit_only'?'🔵 Incoming only':'↔ Any direction'}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:16}}>
+          <div className="input-group">
+            <label>Rule Name</label>
+            <input className="input input-sm" value={name} onChange={e=>setName(e.target.value)}/>
+          </div>
+          <div className="input-group">
+            <label>Keywords (comma-separated) — match if description contains any</label>
+            <input className="input input-sm" value={keywords} onChange={e=>setKeywords(e.target.value)}/>
+            <div style={{fontSize:'.72rem',color:'var(--text-3)',marginTop:3}}>Broaden keywords to catch similar transactions</div>
+          </div>
+          <div className="input-group" style={{maxWidth:140}}>
+            <label>Priority</label>
+            <input className="input input-sm" type="number" value={priority} onChange={e=>setPriority(e.target.value)}/>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>
+            {saving?'Saving…':'✅ Save Rule'}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Rule Reclassification Preview Modal ──────────────────────────────────────
+function RulePreviewModal({ preview, onAccept, onReject, onClose }) {
+  const [pending, setPending] = useState(preview.matches.map(m=>m.ai))
+
+  const accept = (ai) => {
+    onAccept(ai, preview.matches.find(m=>m.ai===ai))
+    setPending(p=>p.filter(x=>x!==ai))
+  }
+  const reject = (ai) => {
+    setPending(p=>p.filter(x=>x!==ai))
+    onReject(ai)
+  }
+
+  const visibleMatches = preview.matches.filter(m=>pending.includes(m.ai))
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:9999,
+      display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div style={{background:'var(--surface)',borderRadius:'var(--r-lg)',
+        width:700,maxWidth:'96vw',maxHeight:'85vh',display:'flex',flexDirection:'column',
+        boxShadow:'var(--sh-lg)'}}>
+
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'center',gap:10,padding:'14px 18px',
+          borderBottom:'1px solid var(--border)',flexShrink:0}}>
+          <span style={{fontSize:'1.1rem'}}>📋</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:'.95rem'}}>
+              Rule: {preview.rule.name}
+            </div>
+            <div style={{fontSize:'.75rem',color:'var(--text-3)',marginTop:1}}>
+              GL: <strong>{preview.rule.then}</strong> · {preview.matches.length} similar transaction{preview.matches.length!==1?'s':''} found
+            </div>
+          </div>
+          <button onClick={onClose} className="btn btn-ghost btn-icon btn-sm"
+            style={{marginLeft:'auto',fontSize:'1.1rem',lineHeight:1}}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{overflowY:'auto',flex:1}}>
+          {visibleMatches.length === 0 ? (
+            <div style={{padding:40,textAlign:'center',color:'var(--text-3)'}}>
+              All transactions reviewed.
+              <div style={{marginTop:12}}>
+                <button onClick={onClose} className="btn btn-primary btn-sm">Done</button>
+              </div>
+            </div>
+          ) : (
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.82rem'}}>
+              <thead>
+                <tr style={{background:'var(--surface-2)'}}>
+                  <th style={{padding:'8px 12px',textAlign:'left',fontWeight:600,color:'var(--text-2)'}}>Date</th>
+                  <th style={{padding:'8px 12px',textAlign:'left',fontWeight:600,color:'var(--text-2)'}}>Description</th>
+                  <th style={{padding:'8px 12px',textAlign:'right',fontWeight:600,color:'var(--text-2)'}}>Amount</th>
+                  <th style={{padding:'8px 12px',textAlign:'left',fontWeight:600,color:'var(--text-2)'}}>Who</th>
+                  <th style={{padding:'8px 12px',textAlign:'left',fontWeight:600,color:'var(--text-2)'}}>New GL</th>
+                  <th style={{padding:'8px 12px',textAlign:'center',fontWeight:600,color:'var(--text-2)',width:110}}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleMatches.map(({ai, row, newGl}) => (
+                  <tr key={ai} style={{borderBottom:'1px solid var(--border)'}}>
+                    <td style={{padding:'8px 12px',color:'var(--text-3)',whiteSpace:'nowrap'}}>
+                      {row.date||''}
+                    </td>
+                    <td style={{padding:'8px 12px',maxWidth:200,overflow:'hidden',
+                      textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={row.description}>
+                      {row.description||''}
+                    </td>
+                    <td style={{padding:'8px 12px',textAlign:'right',
+                      color:(row.debit||0)>0?'var(--danger)':'var(--success)',fontWeight:600,whiteSpace:'nowrap'}}>
+                      {(row.debit||0)>0 ? `-$${(row.debit).toFixed(2)}` : `+$${(row.credit||0).toFixed(2)}`}
+                    </td>
+                    <td style={{padding:'8px 12px',color:'var(--text-2)',whiteSpace:'nowrap'}}>
+                      {row.who||'—'}
+                    </td>
+                    <td style={{padding:'8px 12px'}}>
+                      <span style={{background:'var(--brand-bg,#eff6ff)',color:'var(--brand)',
+                        borderRadius:4,padding:'2px 6px',fontSize:'.75rem',fontWeight:600}}>
+                        {newGl}
+                      </span>
+                    </td>
+                    <td style={{padding:'8px 12px',textAlign:'center'}}>
+                      <div style={{display:'flex',gap:4,justifyContent:'center'}}>
+                        <button onClick={()=>accept(ai)}
+                          className="btn btn-sm"
+                          style={{padding:'2px 10px',fontSize:'.72rem',
+                            background:'var(--success,#22c55e)',color:'#fff',border:'none',
+                            borderRadius:4,cursor:'pointer'}}>
+                          OK
+                        </button>
+                        <button onClick={()=>reject(ai)}
+                          className="btn btn-ghost btn-sm"
+                          style={{padding:'2px 8px',fontSize:'.72rem'}}>
+                          No
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer */}
+        {visibleMatches.length > 0 && (
+          <div style={{padding:'10px 18px',borderTop:'1px solid var(--border)',
+            display:'flex',gap:8,justifyContent:'flex-end',flexShrink:0}}>
+            <button onClick={()=>visibleMatches.forEach(m=>accept(m.ai))}
+              className="btn btn-primary btn-sm">
+              Accept All ({visibleMatches.length})
+            </button>
+            <button onClick={()=>visibleMatches.forEach(m=>reject(m.ai))}
+              className="btn btn-ghost btn-sm">
+              Reject All
+            </button>
+            <button onClick={onClose} className="btn btn-ghost btn-sm">Close</button>
+          </div>
+        )}
+      </div>
+      {/* Rule Preview Popup — fires when + Save Rule is clicked */}
+      {rulePreview && (
+        <RulePreviewModal
+          preview={rulePreview}
+          onAccept={(matchAi, match) => {
+            setTransactions(prev => prev.map((t,i) =>
+              i === matchAi
+                ? {...t, gl_account: match.newGl,
+                    gst_category: match.newGst||t.gst_category,
+                    gl_type: match.newGlType||t.gl_type}
+                : t
+            ))
+          }}
+          onReject={()=>{}}
+          onClose={() => setRulePreview(null)}
+        />
+      )}
+      {saveRuleRow && (
+        <SaveAsRuleModal row={saveRuleRow}
+          onClose={()=>setSaveRuleRow(null)}
+          onSaved={()=>{setSaveRuleRow(null);toast.success('Rule saved')}}
+        />
+      )}
+    </div>
+  )
+}
+
 export default function OutputPanel({
   transactions, setTransactions, monthlySummary, setMonthlySummary,
   sessionId, username, userId, onRefresh, classifying: externalClassifying
@@ -546,7 +782,11 @@ export default function OutputPanel({
   const [newRow,      setNewRow]      = useState({...BLANK})
   const [saving,      setSaving]      = useState(false)
   const [showSummary, setShowSummary] = useState(false)  // collapsed by default
-  const [coaChanged, setCoaChanged]   = useState(false)  // true when user has edited GL fields
+  const [coaChanged, setCoaChanged]   = useState(false)
+  const [saveRuleRow, setSaveRuleRow] = useState(null)
+  const [editedRows,   setEditedRows]   = useState({})
+  const [rulePreview,  setRulePreview]  = useState(null) // {rule, matches:[{ai, row, newGl, newGst}]}
+  const [userChecked, setUserChecked] = useState({})    // {rowIndex: true} — user reviewed rows
   const [showTxn,     setShowTxn]     = useState(true)
   const [glAccounts,  setGlAccounts]  = useState([
     'Revenue','Direct Costs','Expense','Inventory','Fixed Asset','GST','Equity','Transfer','Liability',''
@@ -576,7 +816,10 @@ export default function OutputPanel({
 
   // ── filtered + sorted rows ────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    let rows = transactions.map((t,i)=>({...t,_origIdx:i})).filter(t => {
+    let rows = transactions.map((t,i)=>({...t,_origIdx:i,
+      // Normalize classification at display time — handles both "-Internal" and "🟢Internal"
+      classification: normalizeClassification(t.classification)
+    })).filter(t => {
       const cl = t.classification || ''
       if (!filters.internal     && cl.includes('Internal'))    return false
       if (!filters.incoming     && cl.includes('Incoming'))    return false
@@ -772,7 +1015,7 @@ export default function OutputPanel({
     try {
       const { data } = await classifyGL(sessionId, username)
       if (data?.transactions) {
-        setTransactions(data.transactions)
+        setTransactions(normalizeTransactions(data.transactions))
         if (data.monthly_summary) setMonthlySummary(data.monthly_summary)
         toast.success('GL & GST classification complete')
         // Auto-save session after classify completes
@@ -789,7 +1032,7 @@ export default function OutputPanel({
       toast.loading('Reclassifying all rows…', {id:'reclassify'})
       const { data } = await reclassifyGL(sessionId, username)
       if (data?.transactions) {
-        setTransactions(data.transactions)
+        setTransactions(normalizeTransactions(data.transactions))
         if (data.monthly_summary) setMonthlySummary(data.monthly_summary)
         toast.success('Reclassification complete', {id:'reclassify'})
         setCoaChanged(false)
@@ -1086,6 +1329,10 @@ export default function OutputPanel({
             )}
             <span style={{marginLeft:'auto',fontSize:'.72rem',color:'var(--text-3)'}}>
               {filtered.length} row{filtered.length!==1?'s':''}
+              {Object.values(userChecked).filter(Boolean).length > 0 &&
+                <span style={{marginLeft:6,color:'#22c55e',fontWeight:600}}>
+                  · ✅ {Object.values(userChecked).filter(Boolean).length} reviewed
+                </span>}
             </span>
           </div>
 
@@ -1163,6 +1410,12 @@ export default function OutputPanel({
                 <SortTh {...thProps('GST',         'gst',            {textAlign:'right'})}/>
                 <SortTh {...thProps('GST Cat',     'gst_category',   {})}/>
                 <SortTh {...thProps('Who',         'who',            {})}/>
+                <th style={{padding:'8px 10px',textAlign:'center',cursor:'default',
+                  fontSize:'.72rem',fontWeight:700,whiteSpace:'nowrap',
+                  background:'var(--surface-2)',position:'sticky',top:0,zIndex:2}}
+                  title="Tick to mark row as reviewed">
+                  User<br/>Checked
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1273,7 +1526,7 @@ export default function OutputPanel({
                     </td>
                     {/* GL Account — select from CoA; FIX 1 warning + FIX 5 auto GST */}
                     <td>
-                      <select value={v('gl_account')||''} onChange={e=>{
+                      <select value={v('gl_account')||''} onChange={e=>{setEditedRows(p=>({...p,[ai]:true}));
                           const name = e.target.value
                           const coa  = coaMap[name]
                           const cls  = v('classification') || ''
@@ -1314,6 +1567,84 @@ export default function OutputPanel({
                         title={v('gl_account')||''} className="select-compact" style={{width:'100%'}}>
                         {glAccounts.map(o=><option key={o} value={o}>{o||'—'}</option>)}
                       </select>
+                      {editedRows[ai] === true && (
+                        <div style={{display:'flex',gap:3,marginTop:3}}>
+                          <button
+                            onClick={async ()=>{
+                              const gl   = v('gl_account')||''
+                              const gst  = v('gst_category')||''
+                              const glTp = v('gl_type')||''
+                              const cls  = v('classification')||''
+                              const desc = v('description')||''
+                              const who  = v('who')||''
+                              if(!gl){ toast.error('Set a GL Account first'); return }
+                              const dir = cls.includes('Incoming')?'credit_only'
+                                        : cls.includes('Outgoing')?'debit_only':''
+
+                              // Keywords: WHO is most reliable; add desc words as fallback
+                              const whoKw = who.toLowerCase().trim()
+                              const descKws = desc.toLowerCase().split(/[\s\-#*.,]+/)
+                                .filter(w=>w.length>4&&!/\d/.test(w)&&!w.includes(':')
+                                  &&!['from','with','card','date','value','direct',
+                                      'credit','debit','transfer','sydney','melbourne',
+                                      'brisbane','perth','adelaide','australia'].includes(w))
+                                .slice(0,2)
+                              // If WHO is available, use it alone (most precise)
+                              // If no WHO, fall back to desc keywords
+                              const kws = [...new Set(
+                                whoKw ? [whoKw] : descKws
+                              )].filter(Boolean)
+                              if(!kws.length){ toast.error('Cannot determine keywords'); return }
+
+                              const cond = { contains_any: kws }
+                              if(dir==='debit_only')  cond.debit_only  = true
+                              if(dir==='credit_only') cond.credit_only = true
+
+                              const rule = { id:`rule_${Date.now()}`,
+                                name: who||kws[0]||gl, priority:100,
+                                if: cond, then: gl, then_gst_category: gst }
+
+                              // Find all similar transactions immediately
+                              const matches = transactions.reduce((acc, row, idx) => {
+                                if(idx === ai) return acc
+                                const rowWho  = (row.who||'').toLowerCase()
+                                const rowDesc = (row.description||'').toLowerCase()
+                                const combined = rowDesc + ' ' + rowWho
+                                const _rd = parseFloat(row.debit||0)
+                                const _rc = parseFloat(row.credit||0)
+                                const dirOk = dir===''
+                                  || (dir==='debit_only'  && _rd>0 && _rc===0)
+                                  || (dir==='credit_only' && _rc>0 && _rd===0)
+                                if(dirOk && kws.some(k=>k && combined.includes(k))) {
+                                  acc.push({ai:idx, row, newGl:gl, newGst:gst, newGlType:glTp})
+                                }
+                                return acc
+                              }, [])
+
+                              try {
+                                await rdrCreate(rule)
+                                setEditedRows(p=>({...p,[ai]:'done'}))
+                                if(matches.length > 0) {
+                                  setRulePreview({rule, matches})
+                                } else {
+                                  toast.success('Rule saved — no other similar transactions found')
+                                }
+                              } catch { toast.error('Failed to save rule') }
+                            }}
+                            className="btn btn-ghost btn-xs"
+                            style={{flex:1,fontSize:'.65rem',padding:'1px 4px',
+                              color:'var(--brand)',border:'1px dashed var(--brand-light)'}}>
+                            + Save Rule
+                          </button>
+                          <button
+                            onClick={()=>setEditedRows(p=>({...p,[ai]:'done'}))}
+                            className="btn btn-ghost btn-xs"
+                            style={{fontSize:'.65rem',padding:'1px 6px',
+                              color:'var(--text-3)',border:'1px solid var(--border)'}}>
+                            No
+                          </button>
+                        </div>
+                      )}
                     </td>
                     {/* GL Type — read-only, auto-populated from COA */}
                     <td>
@@ -1366,6 +1697,14 @@ export default function OutputPanel({
                           onMouseLeave={e=>{e.currentTarget.style.background='none';e.currentTarget.style.color='var(--danger,#ef4444)'}}
                         >↩ Cancel</button>
                       )}
+                    </td>
+                    {/* User Checked */}
+                    <td style={{textAlign:'center',width:60,padding:'4px 10px 4px 4px',cursor:'pointer',verticalAlign:'middle'}}
+                      onClick={()=>setUserChecked(prev=>({...prev,[ai]:!prev[ai]}))}
+                      title={userChecked[ai] ? 'Reviewed — click to unmark' : 'Click to mark as reviewed'}>
+                      {userChecked[ai]
+                        ? <span style={{color:'#22c55e',fontSize:'1.15rem',lineHeight:1}}>✅</span>
+                        : <span style={{color:'var(--border)',fontSize:'1rem',lineHeight:1}}>☐</span>}
                     </td>
                   </tr>
                 )

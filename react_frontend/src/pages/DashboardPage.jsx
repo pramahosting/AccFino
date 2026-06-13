@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useContext } from 'react'
+import { ReconciliationContext } from '../components/layout/Layout.jsx'
 import toast from 'react-hot-toast'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
@@ -32,6 +33,7 @@ function StatCard({label,value,sub,colorVar,iconColor,icon:Icon}) {
 export default function DashboardPage() {
   const { user }  = useAuth()
   const nav            = useNavigate()
+  const recon          = useContext(ReconciliationContext)
   const [searchParams, setSearchParams] = useSearchParams()
   const [myPlan, setMyPlan] = useState(null)
   const [allowedModules, setAllowedModules] = useState(null)
@@ -159,6 +161,9 @@ export default function DashboardPage() {
   const delSession = async (sid) => {
     const uname = usernameRef.current
     await apiDeleteSession(uname, sid).catch(() => {})
+    // If the deleted session is currently loaded in the Reconciliation page,
+    // reset that page so it doesn't keep showing stale data.
+    if (recon?.resetRecon) recon.resetRecon(sid)
     setSessions(prev => {
       const next = prev.filter(x => x.session_id !== sid)
       // Reset stats immediately if no sessions remain

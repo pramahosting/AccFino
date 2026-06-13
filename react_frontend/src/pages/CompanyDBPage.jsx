@@ -43,7 +43,7 @@ function CompanyRow({ co, onSaved, onDeleted }) {
       toast.success(`${updated.name} updated`)
       setEditing(false)
       onSaved(updated)
-    } catch (e) { toast.error(e.message) }
+    } catch (e) { setError(e.message); toast.error('Company DB error: ' + e.message) }
     finally { setSaving(false) }
   }
 
@@ -66,7 +66,7 @@ function CompanyRow({ co, onSaved, onDeleted }) {
       setNewAlias('')
       // Refresh by triggering parent reload
       onSaved({ ...co })
-    } catch (e) { toast.error(e.message) }
+    } catch (e) { setError(e.message); toast.error('Company DB error: ' + e.message) }
   }
 
   const removeAlias = async (alias) => {
@@ -74,7 +74,7 @@ function CompanyRow({ co, onSaved, onDeleted }) {
       await API('DELETE', `/${co.id}/alias/${encodeURIComponent(alias)}`)
       toast.success(`Alias "${alias}" removed`)
       onSaved({ ...co })
-    } catch (e) { toast.error(e.message) }
+    } catch (e) { setError(e.message); toast.error('Company DB error: ' + e.message) }
   }
 
   const f = (k) => e => setForm(p => ({ ...p, [k]: e.target.value }))
@@ -210,7 +210,7 @@ function AddCompanyForm({ onAdded, onClose }) {
       toast.success(`${co.name} added`)
       onAdded(co)
       onClose()
-    } catch (e) { toast.error(e.message) }
+    } catch (e) { setError(e.message); toast.error('Company DB error: ' + e.message) }
     finally { setSaving(false) }
   }
 
@@ -292,21 +292,23 @@ export default function CompanyDBPage() {
   const [loading,    setLoading]    = useState(false)
   const [showAdd,    setShowAdd]    = useState(false)
   const [categories, setCategories] = useState([])
+  const [error,      setError]      = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError('')
     try {
       if (search.trim().length >= 2) {
         const r = await API('GET', `/search?q=${encodeURIComponent(search)}&limit=50`)
         setCompanies(r)
       } else {
-        const params = new URLSearchParams({ limit: 200, skip: 0 })
+        const params = new URLSearchParams({ limit: 500, skip: 0 })
         if (pending) params.set('approved', 'false')
         if (catFilter) params.set('category', catFilter)
         const r = await API('GET', `/list?${params}`)
         setCompanies(r)
       }
-    } catch (e) { toast.error(e.message) }
+    } catch (e) { setError(e.message); toast.error('Company DB error: ' + e.message) }
     finally { setLoading(false) }
   }, [search, pending, catFilter])
 
@@ -368,6 +370,15 @@ export default function CompanyDBPage() {
         </label>
       </div>
 
+      {/* Error banner */}
+      {error && (
+        <div style={{background:'var(--danger-bg,#fef2f2)',border:'1px solid var(--danger,#ef4444)',
+          borderRadius:8,padding:'10px 14px',marginBottom:12,fontSize:'.82rem',color:'var(--danger,#ef4444)',
+          display:'flex',gap:8,alignItems:'center'}}>
+          <AlertCircle size={14}/>
+          <span><strong>API Error:</strong> {error}</span>
+        </div>
+      )}
       {/* Info banner */}
       <div style={{display:'flex',gap:8,alignItems:'flex-start',
         background:'var(--info-bg,#eff6ff)',border:'1px solid var(--info,#3b82f6)',

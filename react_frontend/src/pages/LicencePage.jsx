@@ -87,9 +87,11 @@ export default function LicencePage() {
     try {
       // Update user details
       await licenceUpdateUser(rec.user_id, {
-        username:  editData.username,
-        email:     editData.email,
-        full_name: editData.full_name,
+        username:     editData.username,
+        email:        editData.email,
+        full_name:    editData.full_name,
+        phone:        editData.phone        || '',
+        home_company: editData.home_company || '',
       })
       // Save licence record
       await licenceSave({
@@ -195,7 +197,7 @@ export default function LicencePage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)', borderBottom: '2px solid var(--border)' }}>
-                {['Username', 'Full Name', 'Email', 'Roles', 'Licence', 'Payment', 'Start', 'End', 'Notes', 'Modules', 'Actions']
+                {['Username', 'Full Name', 'Email', 'Phone', 'Company Name', 'Roles', 'Licence', 'Payment', 'Start', 'End', 'Notes', 'Modules', 'Actions']
                   .map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'left',
                       fontWeight: 600, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
@@ -232,6 +234,22 @@ export default function LicencePage() {
                       {isEdit
                         ? <input className="input input-sm" type="email" value={editData.email} onChange={set('email')} style={{ width: 160 }} />
                         : <span style={{ color: 'var(--text-2)' }}>{rec.email}</span>}
+                    </td>
+
+                    {/* Phone */}
+                    <td style={{ padding: '8px 12px' }}>
+                      {isEdit
+                        ? <input className="input input-sm" value={editData.phone||''} onChange={set('phone')}
+                            placeholder="+61 4xx xxx xxx" style={{ width: 130 }} />
+                        : <span style={{ color: 'var(--text-2)', fontSize: '.82rem' }}>{rec.phone || '—'}</span>}
+                    </td>
+
+                    {/* Company Name */}
+                    <td style={{ padding: '8px 12px' }}>
+                      {isEdit
+                        ? <input className="input input-sm" value={editData.home_company||''} onChange={set('home_company')}
+                            placeholder="e.g. Acme Pty Ltd" style={{ width: 150 }} />
+                        : <span style={{ color: 'var(--text-2)', fontSize: '.82rem' }}>{rec.home_company || '—'}</span>}
                     </td>
 
                     {/* Roles */}
