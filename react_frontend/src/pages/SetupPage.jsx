@@ -572,6 +572,228 @@ function RdrTab() {
 // - Knowledge Base tab ------------------
 const DIRECTION_LABELS = { '': '-', 'debit': '- Out', 'credit': '- In' }
 
+// Companies sub-tab component (must be a real component to use hooks)
+function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, totalPages, page, setPage }) {
+  const BLANK_CO = {name:'',short_name:'',category:'',subcategory:'',country:'AU',abn:'',is_government:false}
+  const [coForm,   setCoForm]   = useState(BLANK_CO)
+  const [coEdit,   setCoEdit]   = useState(null)
+  const [coSaving, setCoSaving] = useState(false)
+  const [newAlias, setNewAlias] = useState('')
+
+  const startCoEdit = c => {
+    setCoEdit(c)
+    setCoForm({name:c.name||'',short_name:c.short_name||'',category:c.category||'',
+      subcategory:c.subcategory||'',country:c.country||'AU',abn:c.abn||'',
+      is_government:!!c.is_government})
+    setNewAlias('')
+  }
+  const resetCo = () => { setCoEdit(null); setCoForm(BLANK_CO); setNewAlias('') }
+
+  const saveCo = async () => {
+    if(!coForm.name.trim()){toast.error('Company name required');return}
+    setCoSaving(true)
+    try {
+      if(coEdit){
+        const {data} = await companyUpdate(coEdit.id, coForm)
+        const updated = {...data, aliases: coEdit.aliases||[]}
+        setCompanies(prev=>prev.map(c=>c.id===coEdit.id?updated:c))
+        setCoEdit(updated)
+        toast.success('Company updated')
+      } else {
+        const {data} = await companyCreate(coForm)
+        setCompanies(prev=>[{...data,aliases:[]},...prev])
+        resetCo()
+        toast.success('Company added')
+      }
+    } catch(e){ toast.error(e?.response?.data?.detail||'Save failed') }
+    setCoSaving(false)
+  }
+
+  const delCo = async c => {
+    if(!confirm(`Delete "${c.name}"?`)) return
+    await companyDelete(c.id).catch(()=>{})
+    setCompanies(prev=>prev.filter(x=>x.id!==c.id))
+    if(coEdit?.id===c.id) resetCo()
+    toast.success('Deleted')
+  }
+
+  const addAlias = async () => {
+    if(!coEdit){toast.error('Select a company first');return}
+    if(!newAlias.trim()){toast.error('Enter alias text');return}
+    try {
+      const {data} = await companyAddAlias(coEdit.id,{alias:newAlias.trim().toLowerCase(),priority:0})
+      const updated = {...coEdit,aliases:[...(coEdit.aliases||[]),data]}
+      setCoEdit(updated)
+      setCompanies(prev=>prev.map(c=>c.id===coEdit.id?updated:c))
+      setNewAlias('')
+      toast.success('Alias added')
+    } catch(e){ toast.error(e?.response?.data?.detail||'Failed') }
+  }
+
+  const delAlias = async (txt) => {
+    if(!coEdit) return
+    await fetch(`/api/company/${coEdit.id}/alias/${encodeURIComponent(txt)}`,
+      {method:'DELETE'}).catch(()=>{})
+    const updated = {...coEdit,aliases:(coEdit.aliases||[]).filter(a=>(a.alias||a)!==txt)}
+    setCoEdit(updated)
+    setCompanies(prev=>prev.map(c=>c.id===coEdit.id?updated:c))
+    toast.success('Alias removed')
+  }
+
+  const Pager = ({total,cur,set}) => total<=1?null:(
+    <div style={{display:'flex',gap:4,alignItems:'center',justifyContent:'center',
+      padding:'8px 0',fontSize:'.8rem',borderTop:'1px solid var(--border)'}}>
+      <button className="btn btn-ghost btn-sm" onClick={()=>set(1)} disabled={cur===1}>«</button>
+      <button className="btn btn-ghost btn-sm" onClick={()=>set(cur-1)} disabled={cur===1}>‹</button>
+      <span style={{padding:'0 10px',color:'var(--text-2)'}}>Page {cur} / {total}</span>
+      <button className="btn btn-ghost btn-sm" onClick={()=>set(cur+1)} disabled={cur===total}>›</button>
+      <button className="btn btn-ghost btn-sm" onClick={()=>set(total)} disabled={cur===total}>»</button>
+    </div>)
+
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16,alignItems:'start',
+      height:'calc(100vh - 280px)',minHeight:400}}>
+
+      {/* Left: Add/Edit form */}
+      <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',
+        padding:16,border:'1px solid var(--border)',
+        overflowY:'auto',maxHeight:'calc(100vh - 300px)',
+        display:'flex',flexDirection:'column',gap:8}}>
+        <div style={{display:'flex',alignItems:'center',marginBottom:4}}>
+          <h3 style={{margin:0,fontSize:'.9rem',flex:1}}>
+            {coEdit ? `Edit: ${coEdit.name}` : 'New Company'}
+          </h3>
+          {coEdit && (
+            <button className="btn btn-ghost btn-sm"
+              style={{fontSize:'.75rem',padding:'2px 8px'}} onClick={resetCo}>
+              <Plus size={12}/> New
+            </button>
+          )}
+        </div>
+        {[['name','Name *','e.g. Microsoft Australia'],
+          ['short_name','Short Name','e.g. Microsoft'],
+          ['category','Category','e.g. Software'],
+          ['subcategory','Subcategory','e.g. Cloud Services'],
+          ['country','Country','AU'],
+          ['abn','ABN','e.g. 12 345 678 901'],
+        ].map(([k,lbl,ph])=>(
+          <div key={k} className="input-group">
+            <label>{lbl}</label>
+            <input className="input input-sm" placeholder={ph}
+              value={coForm[k]||''}
+              onChange={e=>setCoForm(f=>({...f,[k]:e.target.value}))}/>
+          </div>
+        ))}
+        <label style={{display:'flex',alignItems:'center',gap:6,fontSize:'.82rem',cursor:'pointer'}}>
+          <input type="checkbox" checked={!!coForm.is_government}
+            onChange={e=>setCoForm(f=>({...f,is_government:e.target.checked}))}/>
+          Government entity
+        </label>
+        <button className="btn btn-primary btn-sm" onClick={saveCo} disabled={coSaving}>
+          <Check size={13}/> {coSaving?'Saving...': coEdit?'Update':'Add Company'}
+        </button>
+        {coEdit && (
+          <button className="btn btn-ghost btn-sm"
+            style={{color:'var(--danger)',fontSize:'.78rem'}} onClick={()=>delCo(coEdit)}>
+            <Trash2 size={12}/> Delete Company
+          </button>
+        )}
+        {coEdit && (
+          <div style={{borderTop:'1px solid var(--border)',paddingTop:10,marginTop:4}}>
+            <div style={{fontWeight:700,fontSize:'.82rem',marginBottom:6}}>Aliases</div>
+            <div style={{display:'flex',gap:4,marginBottom:6}}>
+              <input className="input input-sm" style={{flex:1}} placeholder="add alias…"
+                value={newAlias} onChange={e=>setNewAlias(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&addAlias()}/>
+              <button className="btn btn-outline btn-sm" onClick={addAlias}>
+                <Plus size={12}/>
+              </button>
+            </div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+              {(coEdit.aliases||[]).map((a,i)=>{
+                const txt=typeof a==='string'?a:a.alias
+                return (
+                  <span key={i} style={{display:'inline-flex',alignItems:'center',gap:3,
+                    background:'var(--surface-3)',borderRadius:4,padding:'2px 6px',fontSize:'.72rem'}}>
+                    {txt}
+                    <button onClick={()=>delAlias(txt)}
+                      style={{background:'none',border:'none',cursor:'pointer',
+                        color:'var(--text-3)',lineHeight:1,padding:'0 1px'}}
+                      onMouseEnter={e=>e.currentTarget.style.color='var(--danger)'}
+                      onMouseLeave={e=>e.currentTarget.style.color='var(--text-3)'}>
+                      x
+                    </button>
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Right: Company list */}
+      <div style={{border:'1px solid var(--border)',borderRadius:'var(--r-md)',
+        overflow:'hidden',display:'flex',flexDirection:'column',
+        maxHeight:'calc(100vh - 300px)'}}>
+        <div style={{padding:'10px 16px',background:'var(--surface-2)',
+          borderBottom:'1px solid var(--border)',
+          display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+          <span style={{fontWeight:700,fontSize:'.85rem'}}>Company Database</span>
+          <span style={{background:'var(--surface-3)',borderRadius:100,padding:'1px 8px',
+            fontSize:'.72rem',fontWeight:700}}>{filteredCo.length}</span>
+          <span style={{fontSize:'.72rem',color:'var(--text-3)'}}>· click row to edit</span>
+        </div>
+        {loading
+          ? <div style={{padding:32,textAlign:'center',color:'var(--text-3)'}}>Loading...</div>
+          : <><div style={{overflowX:'auto',overflowY:'auto',flex:1}}>
+              <table className="data-table" style={{width:'100%'}}>
+                <thead><tr>
+                  <th>Company</th>
+                  <th style={{width:90}}>Short</th>
+                  <th style={{width:110}}>Category</th>
+                  <th>Aliases</th>
+                  <th style={{width:36}}></th>
+                </tr></thead>
+                <tbody>
+                  {pageCo.map((c,i)=>(
+                    <tr key={c.id||i} style={{cursor:'pointer',
+                      background:coEdit?.id===c.id?'var(--brand-bg,#eff6ff)':undefined}}
+                      onClick={()=>startCoEdit(c)}>
+                      <td style={{fontWeight:600,fontSize:'.82rem'}}>{c.name}</td>
+                      <td style={{fontSize:'.78rem',color:'var(--text-2)'}}>{c.short_name||'—'}</td>
+                      <td style={{fontSize:'.75rem',color:'var(--text-3)'}}>{c.category||'—'}</td>
+                      <td style={{fontSize:'.72rem'}}>
+                        {(c.aliases||[]).slice(0,3).map((a,ai)=>(
+                          <span key={ai} style={{display:'inline-block',
+                            background:'var(--surface-3)',borderRadius:3,
+                            padding:'1px 4px',margin:'1px 2px',whiteSpace:'nowrap'}}>
+                            {typeof a==='string'?a:a.alias}
+                          </span>
+                        ))}
+                        {(c.aliases||[]).length>3&&
+                          <span style={{color:'var(--text-3)',fontSize:'.7rem'}}>
+                            +{(c.aliases||[]).length-3}
+                          </span>}
+                      </td>
+                      <td onClick={ev=>ev.stopPropagation()}>
+                        <button className="btn btn-ghost btn-icon btn-sm"
+                          onMouseEnter={e=>e.currentTarget.style.color='var(--danger)'}
+                          onMouseLeave={e=>e.currentTarget.style.color=''}
+                          onClick={()=>delCo(c)}><Trash2 size={11}/></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pager total={totalPages} cur={page} set={setPage}/>
+          </>
+        }
+      </div>
+    </div>
+  )
+}
+
 function KbTab() {
   const [kb,         setKb]        = useState(null)
   const [glList,     setGlList]    = useState([])
@@ -728,220 +950,11 @@ function KbTab() {
           onChange={e=>setSearch(e.target.value)} style={{marginLeft:'auto',width:220}}/>
       </div>
 
-      {subTab==='companies' && (() => {
-        const BLANK_CO = {name:'',short_name:'',category:'',subcategory:'',country:'AU',abn:'',is_government:false}
-        const [coForm,    setCoForm]   = React.useState(BLANK_CO)
-        const [coEdit,    setCoEdit]   = React.useState(null)
-        const [coSaving,  setCoSaving] = React.useState(false)
-        const [newAlias,  setNewAlias] = React.useState('')
-
-        const startCoEdit = c => {
-          setCoEdit(c)
-          setCoForm({name:c.name||'',short_name:c.short_name||'',category:c.category||'',
-            subcategory:c.subcategory||'',country:c.country||'AU',abn:c.abn||'',
-            is_government:!!c.is_government})
-          setNewAlias('')
-        }
-        const resetCo = () => { setCoEdit(null); setCoForm(BLANK_CO); setNewAlias('') }
-
-        const saveCo = async () => {
-          if(!coForm.name.trim()){toast.error('Company name required');return}
-          setCoSaving(true)
-          try {
-            if(coEdit){
-              const {data} = await companyUpdate(coEdit.id, coForm)
-              const updated = {...data, aliases: coEdit.aliases||[]}
-              setCompanies(prev=>prev.map(c=>c.id===coEdit.id?updated:c))
-              setCoEdit(updated)
-              toast.success('Company updated')
-            } else {
-              const {data} = await companyCreate(coForm)
-              setCompanies(prev=>[{...data,aliases:[]},...prev])
-              resetCo()
-              toast.success('Company added')
-            }
-          } catch(e){ toast.error(e?.response?.data?.detail||'Save failed') }
-          setCoSaving(false)
-        }
-
-        const delCo = async c => {
-          if(!confirm(`Delete "${c.name}"?`)) return
-          await companyDelete(c.id).catch(()=>{})
-          setCompanies(prev=>prev.filter(x=>x.id!==c.id))
-          if(coEdit?.id===c.id) resetCo()
-          toast.success('Deleted')
-        }
-
-        const addAlias = async () => {
-          if(!coEdit){toast.error('Select a company first');return}
-          if(!newAlias.trim()){toast.error('Enter alias text');return}
-          try {
-            const {data} = await companyAddAlias(coEdit.id,{alias:newAlias.trim().toLowerCase(),priority:0})
-            const updated = {...coEdit,aliases:[...(coEdit.aliases||[]),data]}
-            setCoEdit(updated)
-            setCompanies(prev=>prev.map(c=>c.id===coEdit.id?updated:c))
-            setNewAlias('')
-            toast.success('Alias added')
-          } catch(e){ toast.error(e?.response?.data?.detail||'Failed') }
-        }
-
-        const delAlias = async (txt) => {
-          if(!coEdit) return
-          await fetch(`/api/company/${coEdit.id}/alias/${encodeURIComponent(txt)}`,
-            {method:'DELETE'}).catch(()=>{})
-          const updated = {...coEdit,aliases:(coEdit.aliases||[]).filter(a=>(a.alias||a)!==txt)}
-          setCoEdit(updated)
-          setCompanies(prev=>prev.map(c=>c.id===coEdit.id?updated:c))
-        }
-
-        return (
-          <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16,alignItems:'start',
-            height:'calc(100vh - 280px)',minHeight:400}}>
-
-            {/* Left: Add/Edit form */}
-            <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',
-              padding:16,border:'1px solid var(--border)',
-              overflowY:'auto',maxHeight:'calc(100vh - 300px)',
-              display:'flex',flexDirection:'column',gap:8}}>
-              <div style={{display:'flex',alignItems:'center',marginBottom:4}}>
-                <h3 style={{margin:0,fontSize:'.9rem',flex:1}}>
-                  {coEdit ? `Edit: ${coEdit.name}` : 'New Company'}
-                </h3>
-                {coEdit && (
-                  <button className="btn btn-ghost btn-sm"
-                    style={{fontSize:'.75rem',padding:'2px 8px'}} onClick={resetCo}>
-                    <Plus size={12}/> New
-                  </button>
-                )}
-              </div>
-              {[['name','Name *','e.g. Microsoft Australia'],
-                ['short_name','Short Name','e.g. Microsoft'],
-                ['category','Category','e.g. Software'],
-                ['subcategory','Subcategory','e.g. Cloud Services'],
-                ['country','Country','AU'],
-                ['abn','ABN','e.g. 12 345 678 901'],
-              ].map(([k,lbl,ph])=>(
-                <div key={k} className="input-group">
-                  <label>{lbl}</label>
-                  <input className="input input-sm" placeholder={ph}
-                    value={coForm[k]||''}
-                    onChange={e=>setCoForm(f=>({...f,[k]:e.target.value}))}/>
-                </div>
-              ))}
-              <label style={{display:'flex',alignItems:'center',gap:6,
-                fontSize:'.82rem',cursor:'pointer'}}>
-                <input type="checkbox" checked={!!coForm.is_government}
-                  onChange={e=>setCoForm(f=>({...f,is_government:e.target.checked}))}/>
-                Government entity
-              </label>
-              <button className="btn btn-primary btn-sm" onClick={saveCo} disabled={coSaving}>
-                <Check size={13}/> {coSaving?'Saving...': coEdit?'Update':'Add Company'}
-              </button>
-              {coEdit && (
-                <button className="btn btn-ghost btn-sm"
-                  style={{color:'var(--danger)',fontSize:'.78rem'}} onClick={()=>delCo(coEdit)}>
-                  <Trash2 size={12}/> Delete Company
-                </button>
-              )}
-              {/* Aliases */}
-              {coEdit && (
-                <div style={{borderTop:'1px solid var(--border)',paddingTop:10,marginTop:4}}>
-                  <div style={{fontWeight:700,fontSize:'.82rem',marginBottom:6}}>Aliases</div>
-                  <div style={{display:'flex',gap:4,marginBottom:6}}>
-                    <input className="input input-sm" style={{flex:1}} placeholder="add alias…"
-                      value={newAlias} onChange={e=>setNewAlias(e.target.value)}
-                      onKeyDown={e=>e.key==='Enter'&&addAlias()}/>
-                    <button className="btn btn-outline btn-sm" onClick={addAlias}>
-                      <Plus size={12}/>
-                    </button>
-                  </div>
-                  <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-                    {(coEdit.aliases||[]).map((a,i)=>{
-                      const txt=typeof a==='string'?a:a.alias
-                      return (
-                        <span key={i} style={{display:'inline-flex',alignItems:'center',gap:3,
-                          background:'var(--surface-3)',borderRadius:4,
-                          padding:'2px 6px',fontSize:'.72rem'}}>
-                          {txt}
-                          <button onClick={()=>delAlias(txt)}
-                            style={{background:'none',border:'none',cursor:'pointer',
-                              color:'var(--text-3)',lineHeight:1,padding:'0 1px'}}
-                            onMouseEnter={e=>e.currentTarget.style.color='var(--danger)'}
-                            onMouseLeave={e=>e.currentTarget.style.color='var(--text-3)'}>
-                            x
-                          </button>
-                        </span>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Right: Company list */}
-            <div style={{border:'1px solid var(--border)',borderRadius:'var(--r-md)',
-              overflow:'hidden',display:'flex',flexDirection:'column',
-              maxHeight:'calc(100vh - 300px)'}}>
-              <div style={{padding:'10px 16px',background:'var(--surface-2)',
-                borderBottom:'1px solid var(--border)',
-                display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-                <span style={{fontWeight:700,fontSize:'.85rem'}}>Company Database</span>
-                <span style={{background:'var(--surface-3)',borderRadius:100,padding:'1px 8px',
-                  fontSize:'.72rem',fontWeight:700}}>{filteredCo.length}</span>
-                <span style={{fontSize:'.72rem',color:'var(--text-3)'}}>
-                  · click row to edit
-                </span>
-              </div>
-              {loading
-                ? <div style={{padding:32,textAlign:'center',color:'var(--text-3)'}}>Loading...</div>
-                : <><div style={{overflowX:'auto',overflowY:'auto',flex:1}}>
-                    <table className="data-table" style={{width:'100%'}}>
-                      <thead><tr>
-                        <th>Company</th>
-                        <th style={{width:90}}>Short</th>
-                        <th style={{width:110}}>Category</th>
-                        <th>Aliases</th>
-                        <th style={{width:36}}></th>
-                      </tr></thead>
-                      <tbody>
-                        {pageCo.map((c,i)=>(
-                          <tr key={c.id||i} style={{cursor:'pointer',
-                            background:coEdit?.id===c.id?'var(--brand-bg,#eff6ff)':undefined}}
-                            onClick={()=>startCoEdit(c)}>
-                            <td style={{fontWeight:600,fontSize:'.82rem'}}>{c.name}</td>
-                            <td style={{fontSize:'.78rem',color:'var(--text-2)'}}>{c.short_name||'—'}</td>
-                            <td style={{fontSize:'.75rem',color:'var(--text-3)'}}>{c.category||'—'}</td>
-                            <td style={{fontSize:'.72rem'}}>
-                              {(c.aliases||[]).slice(0,3).map((a,ai)=>(
-                                <span key={ai} style={{display:'inline-block',
-                                  background:'var(--surface-3)',borderRadius:3,
-                                  padding:'1px 4px',margin:'1px 2px',whiteSpace:'nowrap'}}>
-                                  {typeof a==='string'?a:a.alias}
-                                </span>
-                              ))}
-                              {(c.aliases||[]).length>3&&
-                                <span style={{color:'var(--text-3)',fontSize:'.7rem'}}>
-                                  +{(c.aliases||[]).length-3}
-                                </span>}
-                            </td>
-                            <td onClick={ev=>ev.stopPropagation()}>
-                              <button className="btn btn-ghost btn-icon btn-sm"
-                                onMouseEnter={e=>e.currentTarget.style.color='var(--danger)'}
-                                onMouseLeave={e=>e.currentTarget.style.color=''}
-                                onClick={()=>delCo(c)}><Trash2 size={11}/></button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <Pager total={totalPages} cur={page} set={setPage}/>
-                </>
-              }
-            </div>
-          </div>
-        )
-      })()}
+      {subTab==='companies' && (
+        <CompaniesPane companies={companies} setCompanies={setCompanies}
+          loading={loading} filteredCo={filteredCo} pageCo={pageCo}
+          totalPages={totalPages} page={page} setPage={setPage}/>
+      )}
       {subTab==='vendors' && (
         <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16,alignItems:'start',
           height:'calc(100vh - 280px)',minHeight:400}}>
