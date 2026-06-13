@@ -1,5 +1,5 @@
 """
-Accfino React API — Full REST backend replacing ALL Streamlit modules.
+Accfino React API - Full REST backend replacing ALL Streamlit modules.
 Preserves ALL original logic from render_output_ui.py and render_input_ui.py
 Run: python -m uvicorn main_app.react_api:app --host 127.0.0.1 --port 8001 --reload
 """
@@ -42,16 +42,27 @@ from backend.trading.data_parser import parse_trading_file
 from backend.trading.report_presentation import generate_report_df
 from backend.trading.trading_exporter import export_report_trading
 
-from backend.cash_flow.pipeline import (
-    auto_detect_columns, preprocess, validate_date_span,
-    monthly_features, train_leaderboard, predict_next_month,
-    LEADERBOARD_CSV, NEXT_MONTH_CSV, LEADERBOARD_PLOT, NEXT_MONTH_PLOT,
-)
+try:
+    from backend.cash_flow.pipeline import (
+        auto_detect_columns, preprocess, validate_date_span,
+        monthly_features, train_leaderboard, predict_next_month,
+        LEADERBOARD_CSV, NEXT_MONTH_CSV, LEADERBOARD_PLOT, NEXT_MONTH_PLOT,
+    )
+except Exception:
+    auto_detect_columns = preprocess = validate_date_span = monthly_features = None
+    train_leaderboard = predict_next_month = None
+    LEADERBOARD_CSV = NEXT_MONTH_CSV = LEAD = None
 
-from backend.transaction_classifier.train_model import train_from_df, DEFAULT_MODEL_DIR
+try:
+    from backend.transaction_classifier.train_model import train_from_df, DEFAULT_MODEL_DIR
+    _TRAINER_AVAILABLE = True
+except Exception:
+    _TRAINER_AVAILABLE = False
+    DEFAULT_MODEL_DIR = Path("main_app/data/models")
+    def train_from_df(*a, **kw): raise ImportError("Trainer not available")
 from backend.classifier.engine import classify as _engine_classify, warm as _engine_warm, DEFAULT_COA_PATH as _DEFAULT_COA_PATH
 
-# ── COA name/type lookup — built once at startup ──────────────────────────────
+# -- COA name/type lookup - built once at startup ------------------------------
 def _load_coa_names(path=None) -> tuple:
     """Return (sorted *Name list, {name: type} dict) from ChartOfAccounts.csv."""
     import csv
@@ -76,7 +87,7 @@ _ACTIVE_COA_PATH = None   # tracks which COA file is in use; None = DEFAULT
 from backend.llm_classifier.classify_category import (
     CATEGORY_ENUM,
 )
-# extract_who_bank removed — Who field is now resolved by CompanyResolver only
+# extract_who_bank removed - Who field is now resolved by CompanyResolver only
 def extract_who_bank(desc): return ""
 from backend.reconciliation.gst_calculator import GST_CATEGORY_OPTIONS
 
@@ -99,20 +110,20 @@ except Exception:
 
 app = FastAPI(title="Accfino API", version="2.0")
 
-# Startup readiness flag — set to True after all heavy modules are loaded.
+# Startup readiness flag - set to True after all heavy modules are loaded.
 # The /ready endpoint returns 503 until this is True so Northflank's
 # load balancer doesn't route traffic before the app is initialised.
 _app_ready = False
 
-# Register company API router — graceful degradation if model files are missing
+# Register company API router - graceful degradation if model files are missing
 try:
     from db_app.api.company import router as _company_router
     app.include_router(_company_router, prefix="/company", tags=["company"])
-    print("[accfino] Company DB router registered ✅")
+    print("[accfino] Company DB router registered OK")
 except Exception as _company_err:
     print(f"[accfino] WARNING: Company DB router not loaded: {_company_err}")
-    print("[accfino] Company features disabled — ensure db_app/models/company.py exists")
-# CORS — extend via CORS_ORIGINS env var (comma-separated) for custom domains.
+    print("[accfino] Company features disabled ? ensure db_app/models/company.py exists")
+# CORS - extend via CORS_ORIGINS env var (comma-separated) for custom domains.
 # E.g. in Northflank env vars: CORS_ORIGINS=https://myapp.northflank.app
 import os as _os
 _extra_origins = [o.strip() for o in _os.environ.get("CORS_ORIGINS","").split(",") if o.strip()]
@@ -140,7 +151,7 @@ async def global_exception_handler(request: _Request, exc: Exception):
         content={"detail": f"Server error: {type(exc).__name__}: {str(exc)[:500]}"}
     )
 
-# ── Health check endpoint (used by Northflank / Docker HEALTHCHECK) ───────────
+# -- Health check endpoint (used by Northflank / Docker HEALTHCHECK) -----------
 @app.post("/debug/parse-csv", include_in_schema=False)
 async def debug_parse_csv(
     file: UploadFile = File(...),
@@ -204,16 +215,16 @@ def capture_who_edit(
     Called when a user manually sets/corrects the Who field in the output table.
 
     Behaviour:
-      1. If a company with this name already exists (approved) — add the description
+      1. If a company with this name already exists (approved) - add the description
          as a new alias so future transactions auto-resolve.
-      2. If the company does NOT exist — create it as pending (approved=False)
+      2. If the company does NOT exist - create it as pending (approved=False)
          so admin can review before it affects all future reconciliations.
       3. In both cases, derive alias keywords from the description text and
          attach them to the company record.
 
     Frontend flow:
-      User edits Who → commitEdits/saveDB → also calls POST /api/company/capture-who
-      Admin sees pending companies in the Company DB admin page → approves them
+      User edits Who - commitEdits/saveDB - also calls POST /api/company/capture-who
+      Admin sees pending companies in the Company DB admin page - approves them
       On next reconciliation, CompanyResolver picks up the new aliases automatically
     """
     from db_app.database import SessionLocal as _SL
@@ -228,14 +239,14 @@ def capture_who_edit(
 
     db = _SL()
     try:
-        # ── Look for existing approved company with this name ───────────────
+        # -- Look for existing approved company with this name ---------------
         existing = (
             db.query(Company)
             .filter(Company.name.ilike(f"%{who}%"), Company.approved == True)
             .first()
         )
 
-        # ── Build alias set from who name + description keywords ────────────
+        # -- Build alias set from who name + description keywords ------------
         new_aliases: set = set()
 
         # Aliases from the who name itself
@@ -261,7 +272,7 @@ def capture_who_edit(
                 new_aliases.add(token.lower())
 
         if existing:
-            # ── Add new aliases to existing company ─────────────────────────
+            # -- Add new aliases to existing company -------------------------
             existing_set = {a.alias for a in existing.aliases}
             added = 0
             for alias in new_aliases:
@@ -270,7 +281,7 @@ def capture_who_edit(
                         db.add(CompanyAlias(
                             company_id=existing.id,
                             alias=alias.lower().strip(),
-                            priority=1,  # user-confirmed → higher priority
+                            priority=1,  # user-confirmed - higher priority
                         ))
                         db.flush()
                         added += 1
@@ -285,7 +296,7 @@ def capture_who_edit(
             }
 
         else:
-            # ── Create new pending company ──────────────────────────────────
+            # -- Create new pending company ----------------------------------
             company = Company(
                 name=who,
                 short_name=who[:80],
@@ -317,7 +328,7 @@ def capture_who_edit(
                 "action": "company_created_pending",
                 "company": who,
                 "aliases_added": len(seen),
-                "message": f"'{who}' added as pending — visit Company DB to approve",
+                "message": f"'{who}' added as pending - visit Company DB to approve",
             }
 
     except Exception as e:
@@ -337,7 +348,7 @@ async def _on_startup():
 @app.post("/auth/reset-admin", include_in_schema=False)
 def reset_admin_password(secret: str = Body(...)):
     """
-    Emergency endpoint — resets admin password to a new value.
+    Emergency endpoint - resets admin password to a new value.
     Requires the ADMIN_RESET_SECRET env var to be set and passed as 'secret'.
     Use when locked out of Northflank deployment.
 
@@ -357,7 +368,7 @@ def reset_admin_password(secret: str = Body(...)):
 
 @app.post("/auth/reset-admin-full", include_in_schema=False)
 async def reset_admin_full(request: Request):
-    """Full admin reset — body: {secret, new_password}"""
+    """Full admin reset - body: {secret, new_password}"""
     import os as _os
     from db_app.database import SessionLocal as _SL
     from db_app.models.user import User as _User
@@ -422,10 +433,10 @@ async def reconcile_process_with_session(
     """
     import json as _json
 
-    # ── Load saved files from previous session ────────────────────────────────
+    # -- Load saved files from previous session --------------------------------
     prev_sid = session_id
     prev_data = session_manager.load_session_data(norm_username(username), prev_sid)
-    saved_files = prev_data.get("files_data", {})          # filename → bytes
+    saved_files = prev_data.get("files_data", {})          # filename - bytes
     prev_accounts = prev_data.get("accounts", [])           # accounts_meta from prev session
 
     normed = []
@@ -476,9 +487,9 @@ async def reconcile_process_with_session(
             logger.warning(f"Failed to process new file {fname}: {e}")
 
     if not normed:
-        raise HTTPException(400, "No valid files found — check session files and new uploads")
+        raise HTTPException(400, "No valid files found - check session files and new uploads")
 
-    # ── Classify ──────────────────────────────────────────────────────────────
+    # -- Classify --------------------------------------------------------------
     combined = pd.concat(normed, ignore_index=True)
     combined.columns = combined.columns.str.strip().str.lower()
     if "account_name" not in combined.columns:
@@ -509,7 +520,7 @@ async def reconcile_process_with_session(
     classified = _run_classify_gl(classified, username=username)
     monthly = _build_monthly_summary(classified)
 
-    # ── Create new session ────────────────────────────────────────────────────
+    # -- Create new session ----------------------------------------------------
     uname = norm_username(username)
     sid   = session_manager.create_session(uname)
     session_manager.save_output_data(uname, sid, classified, {}, set(), 1)
@@ -546,7 +557,7 @@ async def reconcile_process_with_session(
 
 @app.post("/shutdown", include_in_schema=False)
 async def shutdown():
-    """Graceful shutdown — closes DB connections then exits."""
+    """Graceful shutdown - closes DB connections then exits."""
     import threading, os, signal
     def _stop():
         import time; time.sleep(0.5)
@@ -557,7 +568,7 @@ async def shutdown():
 
 @app.get("/health", include_in_schema=False)
 def health_check():
-    """Simple liveness probe — returns 200 if the API process is running."""
+    """Simple liveness probe - returns 200 if the API process is running."""
     return {"status": "ok", "service": "accfino-api"}
 
 
@@ -585,9 +596,9 @@ except Exception:
 _cf_cache: dict = {}
 
 
-# ── GST normalization ────────────────────────────────────────────────────────
+# -- GST normalization --------------------------------------------------------
 # GST category values come directly from COA *Tax Code column via the engine.
-# No alias mapping — values are passed through unchanged if they match COA.
+# No alias mapping - values are passed through unchanged if they match COA.
 def normalize_gst_category(value) -> str:
     text = "" if pd.isna(value) else str(value).strip()
     if not text: return ""
@@ -596,7 +607,7 @@ def normalize_gst_category(value) -> str:
     return text  # pass through unknown values rather than blanking them
 
 def normalize_gl_account(value) -> str:
-    """Validate against COA *Name values — not *Type/CATEGORY_ENUM."""
+    """Validate against COA *Name values - not *Type/CATEGORY_ENUM."""
     text = "" if pd.isna(value) else str(value).strip()
     if not text: return ""
     tl = text.lower()
@@ -605,7 +616,7 @@ def normalize_gl_account(value) -> str:
     return ""
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 def _clean(df: pd.DataFrame) -> list:
     out = []
     for row in df.to_dict(orient="records"):
@@ -692,13 +703,16 @@ def _build_monthly_summary(df: pd.DataFrame) -> list:
 
     months_by_year = {}
     for (year, month), group in df.groupby(["Year", "Month"]):
-        internal_count = (group["Classification"] == "🟢Internal").sum()
-        incoming_count = (group["Classification"] == "🔵Incoming").sum()
-        outgoing_count = (group["Classification"] == "🟡Outgoing").sum()
-        total_income   = group.loc[group["Classification"] == "🔵Incoming", "Credit"].sum()
-        total_expense  = group.loc[group["Classification"] == "🟡Outgoing", "Debit"].sum()
-        gst_in         = group.loc[group["Classification"] == "🔵Incoming", "GST"].sum()
-        gst_out        = group.loc[group["Classification"] == "🟡Outgoing", "GST"].sum()
+        _cls = group["Classification"].fillna("")
+        internal_count = _cls.str.contains("Internal", na=False).sum()
+        incoming_count = _cls.str.contains("Incoming", na=False).sum()
+        outgoing_count = _cls.str.contains("Outgoing", na=False).sum()
+        _in_m  = _cls.str.contains("Incoming", na=False)
+        _out_m = _cls.str.contains("Outgoing", na=False)
+        total_income   = group.loc[_in_m,  "Credit"].sum() if "Credit" in group.columns else 0
+        total_expense  = group.loc[_out_m, "Debit"].sum()  if "Debit"  in group.columns else 0
+        gst_in         = group.loc[_in_m,  "GST"].sum()    if "GST"    in group.columns else 0
+        gst_out        = group.loc[_out_m, "GST"].sum()    if "GST"    in group.columns else 0
         row = {
             "Year/Month":               f"{int(year)}/{int(month):02d}",
             "_row_type":                "month",
@@ -726,9 +740,9 @@ def _build_monthly_summary(df: pd.DataFrame) -> list:
     return result
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # BANKS / GST
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 @app.get("/banks")
 def get_banks(): return sorted(BANK_PRESETS.keys())
 
@@ -756,17 +770,17 @@ async def upload_gl_accounts(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(500, f"COA write failed: {e}")
 
-    # Step 2: atomic replace — may fail on Windows if file is open in Excel
+    # Step 2: atomic replace - may fail on Windows if file is open in Excel
     saved_path = coa_path
     try:
         if coa_path.exists():
             coa_path.unlink()
         shutil.move(str(tmp_path), str(coa_path))
     except PermissionError:
-        # File locked — save to alternate and use that for this session
+        # File locked - save to alternate and use that for this session
         shutil.move(str(tmp_path), str(alt_path))
         saved_path = alt_path
-        logger.warning("ChartOfAccounts.csv locked — saved to ChartOfAccounts_updated.csv")
+        logger.warning("ChartOfAccounts.csv locked - saved to ChartOfAccounts_updated.csv")
     finally:
         if tmp_path.exists():
             try: tmp_path.unlink()
@@ -783,7 +797,7 @@ async def upload_gl_accounts(file: UploadFile = File(...)):
 
     msg = f"COA saved and index rebuilt ({len(_COA_NAMES)} accounts)"
     if saved_path != coa_path:
-        msg += " — NOTE: original file was locked (close Excel). Saved as ChartOfAccounts_updated.csv. Restart app to make permanent."
+        msg += " - NOTE: original file was locked (close Excel). Saved as ChartOfAccounts_updated.csv. Restart app to make permanent."
     return {"ok": True, "message": msg}
 
 @app.get("/gl/accounts/all")
@@ -820,7 +834,7 @@ def calc_gst(debit: float=0, credit: float=0, category: str="Unknown"):
     return {"gst": calculate_gst_value(debit, credit, category)}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # USERNAME NORMALISATION
 # The session folder is always the username string used at creation time.
 # norm_username() must return exactly that string for both create and lookup.
@@ -830,7 +844,7 @@ def calc_gst(debit: float=0, credit: float=0, category: str="Unknown"):
 #   2. If it looks like an email (has @), try the local part (before @)
 #      and check if that folder exists
 #   3. Fall back to the local part anyway (new sessions use local part)
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 _DATA_DIR = Path(__file__).parent / "data"
 
 def norm_username(username: str) -> str:
@@ -844,24 +858,24 @@ def norm_username(username: str) -> str:
     if not raw:
         return "default_user"
 
-    # 1. Exact match — folder already exists under this exact string
+    # 1. Exact match - folder already exists under this exact string
     if (_DATA_DIR / raw).is_dir():
         return raw
 
-    # 2. Email → strip domain and check
+    # 2. Email - strip domain and check
     if "@" in raw:
         local = raw.split("@")[0].strip()
         if local and (_DATA_DIR / local).is_dir():
             return local
-        # 3. No existing folder yet — use local part for new sessions
+        # 3. No existing folder yet - use local part for new sessions
         return local or "default_user"
 
     return raw
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # SESSIONS
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 class SaveSessReq(BaseModel):
     session_id: str; username: str; transactions: list
     pending_changes: dict = {}; page_number: int = 1
@@ -912,7 +926,7 @@ def list_sessions(username: str):
                 s["account_count"] = len(accs)
                 s["file_count"]    = sum(len(a.get("files", [])) for a in accs)
             else:
-                # No accounts.json — fall back to disk file count
+                # No accounts.json - fall back to disk file count
                 disk_count = (
                     sum(1 for f in files_dir.iterdir() if f.is_file())
                     if files_dir.exists() else 0
@@ -941,10 +955,59 @@ def get_session(username: str, sid: str):
         # Ensure all required columns exist
         for col, default in [("GL Account",""),("GL Type",""),("GST Category",""),("GST",0.0),("Who",""),("PairID","")]:
             if col not in df.columns: df[col] = default
-        # Internal transfer rows — blank GL Account, GL Type, GST Category
+
+        # ── Fix stale Internal classifications from old sessions ──────────────
+        # Old sessions may have saved transactions as Internal that were not
+        # actually transfers to/from the user's own company.
+        # Re-evaluate: if a row is marked Internal but has no PairID (not a
+        # pair-matched transfer) and is not to/from home company — restore it
+        # to Incoming/Outgoing based on debit/credit direction.
+        if "Classification" in df.columns and "Debit" in df.columns and "Credit" in df.columns:
+            _home_co_check = ""
+            try:
+                from db_app.database import SessionLocal as _SL_r
+                from db_app.models.user import User as _UUser_r
+                _db_r = _SL_r()
+                _ur = _db_r.query(_UUser_r).filter(
+                    _UUser_r.username == norm_username(username)
+                ).first()
+                if _ur and _ur.home_company:
+                    _home_co_check = _ur.home_company.strip().lower()
+                _db_r.close()
+            except Exception:
+                pass
+
+            for _ri in df.index:
+                _cl = str(df.at[_ri, "Classification"])
+                if "Internal" not in _cl:
+                    continue
+                _pid = str(df.at[_ri, "PairID"] if "PairID" in df.columns else "")
+                # Keep Internal if it has a pair ID (genuine matched transfer)
+                if _pid and _pid not in ("", "nan", "None"):
+                    continue
+                # Keep Internal if description/who contains home company name
+                _desc_r = str(df.at[_ri, "Description"] if "Description" in df.columns else "").lower()
+                _who_r  = str(df.at[_ri, "Who"] if "Who" in df.columns else "").lower()
+                if _home_co_check and (
+                    _home_co_check in _desc_r or
+                    _home_co_check in _who_r or
+                    (_home_co_check.split()[0] if _home_co_check.split() else "") in _desc_r
+                ):
+                    continue
+                # Not a genuine internal — restore based on direction
+                _deb = float(df.at[_ri, "Debit"]  or 0)
+                _crd = float(df.at[_ri, "Credit"] or 0)
+                if _deb > 0:
+                    df.at[_ri, "Classification"] = "🟡Outgoing"
+                elif _crd > 0:
+                    df.at[_ri, "Classification"] = "🔵Incoming"
+
+        # Clear GL/GST for remaining genuine Internal rows
         if "Classification" in df.columns:
             _int_mask = df["Classification"].str.contains("Internal", na=False)
             df.loc[_int_mask, ["GL Account","GL Type","GST Category"]] = ""
+            df.loc[_int_mask, "GST"] = 0.0
+
         monthly = _build_monthly_summary(df)
         txns = _to_frontend(df)
     # accounts from load_session_data is the accounts.json list
@@ -972,9 +1035,9 @@ def save_session(body: SaveSessReq):
     return {"ok": True}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # RECONCILIATION
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 @app.post("/reconcile/process")
 async def reconcile_process(
     files: List[UploadFile]=File(...),
@@ -1091,7 +1154,7 @@ async def reconcile_process(
 def _run_classify_gl(df: pd.DataFrame, username: str = "") -> pd.DataFrame:
     """
     Classify GL account, GST category and GST amount for every row.
-    Delegates to backend.classifier.engine — single call per transaction,
+    Delegates to backend.classifier.engine - single call per transaction,
     all three fields resolved from COA in one TF-IDF pass.
     """
     if "Description" not in df.columns:
@@ -1103,15 +1166,14 @@ def _run_classify_gl(df: pd.DataFrame, username: str = "") -> pd.DataFrame:
     if "GST"          not in df.columns: df["GST"]          = 0.0
     if "Who"          not in df.columns: df["Who"]          = ""
 
-    # Build CompanyResolver for this request — uses company DB + home company
+    # Build CompanyResolver for this request - uses company DB + home company
     _who_resolver = None
+    _home_co = ""  # Always defined at function scope - pulled from logged-in user profile
     try:
-        from backend.reconciliation.company_resolver import CompanyResolver
         from db_app.database import SessionLocal as _SL_who
+        from db_app.models.user import User as _UWho
         _who_db = _SL_who()
-        _home_co = ""
         try:
-            from db_app.models.user import User as _UWho
             _uw = _who_db.query(_UWho).filter(
                 _UWho.username == norm_username(username)
             ).first()
@@ -1119,6 +1181,7 @@ def _run_classify_gl(df: pd.DataFrame, username: str = "") -> pd.DataFrame:
                 _home_co = _uw.home_company
         except Exception:
             pass
+        from backend.reconciliation.company_resolver import CompanyResolver
         _who_resolver = CompanyResolver(db=_who_db, home_company=_home_co)
     except Exception:
         pass
@@ -1141,79 +1204,56 @@ def _run_classify_gl(df: pd.DataFrame, username: str = "") -> pd.DataFrame:
         desc = str(df.at[idx, "Description"]) if pd.notnull(df.at[idx, "Description"]) else ""
         cl   = str(df.at[idx, "Classification"]) if "Classification" in df.columns and pd.notnull(df.at[idx, "Classification"]) else ""
 
-        # Internal transfers: equity account / BAS Excluded / $0 GST
-        if "Internal" in cl:
-            # Internal transfers — always blank GL Account, GL Type, GST Category
+        # Internal — trust classifier.py result OR detect from description text
+        # (engine also detects via knowledge_base.json internal_keywords)
+        _desc_lower_int = desc.lower()
+        from pathlib import Path as _Path
+        try:
+            import json as _json
+            _kb_path = _Path(__file__).parent / "data" / "knowledge_base.json"
+            _kb_int  = _json.loads(_kb_path.read_text(encoding="utf-8")).get("internal_keywords", [])
+        except Exception:
+            _kb_int = ["internal transfer","funds transfer","fund transfer",
+                       "own account transfer","inter account","account transfer"]
+        _is_text_internal = any(kw in _desc_lower_int for kw in _kb_int)
+        if "Internal" in cl or _is_text_internal:
             df.at[idx, "GL Account"]   = ""
             df.at[idx, "GL Type"]      = ""
             df.at[idx, "GST Category"] = ""
             df.at[idx, "GST"]          = 0.0
             df.at[idx, "Who"]          = _resolve_who(desc)
             continue
-
         if not desc.strip():
             continue
 
         debit  = _to_float(df.at[idx, "Debit"]  if "Debit"  in df.columns else 0)
         credit = _to_float(df.at[idx, "Credit"] if "Credit" in df.columns else 0)
 
-        # Only fill empty cells — preserve any manual edits already present
+        # Resolve Who first so TF-IDF/RDR can use it via description enrichment
+        _who_resolved = _resolve_who(desc)
+        df.at[idx, "Who"] = _who_resolved
+
         existing_gl  = normalize_gl_account(df.at[idx, "GL Account"])
         existing_gst = normalize_gst_category(df.at[idx, "GST Category"])
 
-        if not existing_gl or existing_gst in ("", "Unknown"):
-            result = _engine_classify(desc, debit, credit)
-            if not existing_gl:
-                gl_candidate = result.gl_account
-                gl_type      = result.gl_type or (_COA_NAME_TO_TYPE.get(gl_candidate, ""))
+        # Run classifier - RDR rules (rdr_rules.json) fire first, then TF-IDF
+        # Direction safety is built into the engine (credit_only/debit_only in RDR,
+        # restrict_types in TF-IDF Stage 3)
+        # Pass WHO to engine so vendor_map can match by company name
+        _who_val = str(df.at[idx, "Who"]).strip() if "Who" in df.columns else ""
+        _desc_with_who = f"{desc}|who:{_who_val.lower()}" if _who_val else desc
+        result = _engine_classify(_desc_with_who, debit, credit)
 
-                # FIX 1: During AUTO-ALLOCATION, prevent assigning an Expense-type
-                # GL to an Incoming (credit) transaction and vice versa.
-                # The user can still manually override in the UI.
-                _income_types  = {"revenue", "income", "other income", "sales"}
-                _expense_types = {"expense", "direct costs", "overhead", "other expense"}
-                _is_incoming   = "Incoming" in cl or "🔵" in cl
-                _is_outgoing   = "Outgoing" in cl or "🟡" in cl
-                _type_lower    = gl_type.lower()
+        # Write GL Account if: RDR/TF-IDF found something AND field is empty
+        # (preserve manual edits - only overwrite blank fields)
+        if result.matched and not existing_gl:
+            df.at[idx, "GL Account"] = result.gl_account
+            df.at[idx, "GL Type"]    = result.gl_type or _COA_NAME_TO_TYPE.get(result.gl_account, "")
 
-                _direction_ok = True
-                if _is_incoming and _type_lower in _expense_types:
-                    # Incoming row got an Expense GL — find best Revenue-type account.
-                    # Prefer Revenue over Equity/neutral for income rows.
-                    _direction_ok = False
-                    # First pass: look for Revenue type specifically
-                    for _fn, _ft in _COA_NAME_TO_TYPE.items():
-                        if _ft.lower() == "revenue":
-                            gl_candidate = _fn
-                            gl_type      = _ft
-                            break
-                    else:
-                        # Second pass: any income-adjacent type (equity etc.)
-                        for _fn, _ft in _COA_NAME_TO_TYPE.items():
-                            if _ft.lower() in _income_types:
-                                gl_candidate = _fn
-                                gl_type      = _ft
-                                break
-                elif _is_outgoing and _type_lower in _income_types:
-                    # Outgoing row got an Income/Revenue GL — find nearest expense-type account
-                    _direction_ok = False
-                    for _fallback_name, _fallback_type in _COA_NAME_TO_TYPE.items():
-                        if _fallback_type.lower() in _expense_types:
-                            gl_candidate = _fallback_name
-                            gl_type      = _fallback_type
-                            break
-
-                df.at[idx, "GL Account"] = gl_candidate
-                df.at[idx, "GL Type"]    = gl_type
-
-            if existing_gst in ("", "Unknown"):
-                df.at[idx, "GST Category"] = result.gst_category
-                # FIX 5: Recalculate GST amount from actual debit/credit + tax code
-                from backend.reconciliation.gst_calculator import calculate_gst_value
-                df.at[idx, "GST"] = calculate_gst_value(debit, credit, result.gst_category)
-
-        df.at[idx, "Who"] = _resolve_who(desc)
-
+        if existing_gst in ("", "Unknown"):
+            df.at[idx, "GST Category"] = result.gst_category
+            from backend.reconciliation.gst_calculator import calculate_gst_value
+            df.at[idx, "GST"] = calculate_gst_value(debit, credit, result.gst_category)
     return df
 
 
@@ -1222,7 +1262,7 @@ class ClassifyReq(BaseModel):
 
 @app.post("/reconcile/classify")
 def reconcile_classify(body: ClassifyReq):
-    """Classify empty GL/GST cells only — preserves manual edits."""
+    """Classify empty GL/GST cells only - preserves manual edits."""
     username = norm_username(body.username)
     d = session_manager.load_session_data(username, body.session_id)
     if not d or d.get("results") is None:
@@ -1275,9 +1315,9 @@ def reconcile_export(body: ExportReq):
 
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# DASHBOARD STATS  — aggregates from ALL session pickles (no Save-to-DB needed)
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
+# DASHBOARD STATS  - aggregates from ALL session pickles (no Save-to-DB needed)
+# ------------------------------------------------------------------------------
 @app.get("/dashboard/stats")
 def dashboard_stats(username: str):
     """
@@ -1295,7 +1335,7 @@ def dashboard_stats(username: str):
     if not sessions:
         return ZERO
 
-    # Sort by datetime descending — pick the most recent session with results
+    # Sort by datetime descending - pick the most recent session with results
     def _sess_dt(s):
         try: return str(s.get("datetime") or s.get("session_id") or "")
         except: return ""
@@ -1333,9 +1373,9 @@ def dashboard_stats(username: str):
         pass
     return totals
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # TRADING
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 @app.post("/trading/analyze")
 async def trading_analyze(file: UploadFile=File(...)):
     import tempfile, os as _os
@@ -1381,9 +1421,9 @@ async def trading_export(file: UploadFile=File(...)):
         headers={"Content-Disposition": "attachment; filename=trading_report.xlsx"})
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # CASH FLOW
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 @app.post("/cashflow/detect")
 async def cf_detect(file: UploadFile=File(...)):
     df = pd.read_csv(io.BytesIO(await file.read()))
@@ -1423,7 +1463,7 @@ def cf_run(body: CfRunReq):
 @app.post("/cashflow/predict/{run_id}")
 def cf_predict(run_id: str, model_name: str=Body(..., embed=True)):
     cache = _cf_cache.get(run_id)
-    if not cache: raise HTTPException(404, "Run expired — please re-run pipeline")
+    if not cache: raise HTTPException(404, "Run expired - please re-run pipeline")
     try:
         pred = predict_next_month(model_name, cache["trained_models"],
                                   cache["feature_cols"], cache["monthly"], cache["data"])
@@ -1434,9 +1474,9 @@ def cf_predict(run_id: str, model_name: str=Body(..., embed=True)):
     return {**pred, "forecast_plot_b64": plot_b64, "forecast_csv": csv_data}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # ML CLASSIFIER
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 SAMPLE_CSV = "date,description,amount,category,gst_category\n15/09/2025,BUNNINGS,65.38,Expense,GST on Expenses\n16/08/2025,CLIENT PAYMENT ABC PTY,339.55,Revenue,GST on Income\n19/08/2025,AMAZON,97.98,Expense,GST on Expenses\n1/10/2025,SUPPLIER DIRECT COST,566.31,Direct Costs,GST on Expenses\n"
 
 @app.get("/ml/status")
@@ -1469,10 +1509,27 @@ async def ml_train(file: UploadFile=File(...)):
             "message": "Models saved. Auto-classify will use them immediately."}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # RDR RULES  (uses EXACT same structure as transaction_classify.py)
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 RDR_PATH = ROOT / "data" / "rdr_rules.json"
+
+@app.get("/coa/accounts")
+def coa_accounts():
+    """Return all GL account names + types from active COA for RDR rule creation."""
+    try:
+        import csv as _csv
+        coa_path = _ACTIVE_COA_PATH if '_ACTIVE_COA_PATH' in dir() else ROOT / "data" / "ChartOfAccounts.csv"
+        rows = []
+        with open(coa_path, encoding="utf-8-sig", newline="") as f:
+            for r in _csv.DictReader(f):
+                name = (r.get("*Name") or r.get("Name") or "").strip()
+                atype = (r.get("*Type") or r.get("Type") or "").strip()
+                if name:
+                    rows.append({"name": name, "type": atype})
+        return rows
+    except Exception as e:
+        return []
 
 def _load_rdr():
     return json.loads(RDR_PATH.read_text("utf-8")) if RDR_PATH.exists() else []
@@ -1519,15 +1576,17 @@ def rdr_test(body: dict=Body(...)):
         cond = rule.get("if", {}) or {}
         if "debit_gt"     in cond and not debit  > float(cond["debit_gt"]):  continue
         if "credit_gt"    in cond and not credit > float(cond["credit_gt"]): continue
+        if "debit_only"   in cond and cond["debit_only"]  and not (debit > 0 and credit == 0): continue
+        if "credit_only"  in cond and cond["credit_only"] and not (credit > 0 and debit == 0): continue
         if "contains_any" in cond and not any(str(k).lower() in d for k in cond["contains_any"]): continue
         if "regex_any"    in cond and not any(re.search(rx, d) for rx in cond["regex_any"]): continue
         return {"matched": True, "rule": rule}
     return {"matched": False, "rule": None}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # INVOICE EXTRACTOR
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 @app.get("/invoice-extractor/status")
 def ie_status():
     if not IE_AVAILABLE: return {"available": False, "reason": "Module not installed"}
@@ -1568,9 +1627,9 @@ async def ie_process(
             except: pass
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # OPEN BANKING
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 @app.get("/openbanking/status")
 def ob_status():
     configured = bool(os.getenv("BASIQ_API_KEY"))
@@ -1603,9 +1662,9 @@ def ob_transactions(user_id: str):
     except Exception as e: raise HTTPException(500, str(e))
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # STOCK / EQUITY TRADING  (integrated in backend/trading/)
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 import tempfile as _tempfile, uuid as _uuid
 
 # The equity module lives at main_app/backend/trading/
@@ -1757,9 +1816,9 @@ async def stocks_export(
         _shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# OPEN BANKING → CSV (normalised, ready for reconciliation)
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
+# OPEN BANKING - CSV (normalised, ready for reconciliation)
+# ------------------------------------------------------------------------------
 @app.post("/openbanking/fetch-and-normalise")
 def ob_fetch_normalise(body: dict = Body(...)):
     """
@@ -1800,9 +1859,9 @@ def ob_fetch_normalise(body: dict = Body(...)):
         raise HTTPException(500, str(e))
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FILE MANAGER — browse main_app/data, read/write files & SQLite tables
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
+# FILE MANAGER - browse main_app/data, read/write files & SQLite tables
+# ------------------------------------------------------------------------------
 import csv        as _csv
 import math       as _math
 import pickle     as _pickle
@@ -1810,7 +1869,7 @@ import sqlite3    as _sqlite3
 from urllib.parse import unquote as _unquote
 import pandas     as _pd_fm
 
-# _DATA_ROOT is resolved once at import time — absolute, immune to cwd changes
+# _DATA_ROOT is resolved once at import time - absolute, immune to cwd changes
 _DATA_ROOT = Path(__file__).parent.joinpath("data").resolve()
 
 
@@ -1836,7 +1895,7 @@ def _safe_val(v) -> str:
 
 
 def _safe_rows(raw: list, cols: list) -> list:
-    """Return list of {col: safe_str} dicts — every value is JSON-safe."""
+    """Return list of {col: safe_str} dicts - every value is JSON-safe."""
     str_cols = [str(c) for c in cols]
     result   = []
     for row in raw:
@@ -1854,7 +1913,7 @@ def _resolve_path(raw: str) -> Path:
     Raises HTTPException 403 if path escapes DATA_ROOT.
     Raises HTTPException 404 if path does not exist.
     """
-    # 1. URL-decode (%20 → space, %2F → /, etc.)
+    # 1. URL-decode (%20 - space, %2F - /, etc.)
     decoded = _unquote(raw or "")
     # 2. Normalise: forward slashes only, no leading slash
     clean   = decoded.replace("\\", "/").replace("\\\\", "/").strip("/")
@@ -1870,7 +1929,7 @@ def _resolve_path(raw: str) -> Path:
     return target
 
 
-# ── Tree ──────────────────────────────────────────────────────────────────────
+# -- Tree ----------------------------------------------------------------------
 
 @app.get("/filemanager/tree")
 def fm_tree():
@@ -1909,7 +1968,7 @@ def fm_tree():
     return {"tree": _walk(_DATA_ROOT, ""), "data_root": str(_DATA_ROOT)}
 
 
-# ── Read ──────────────────────────────────────────────────────────────────────
+# -- Read ----------------------------------------------------------------------
 
 @app.get("/filemanager/read/{file_path:path}")
 def fm_read(file_path: str, table: str = ""):
@@ -1921,11 +1980,11 @@ def fm_read(file_path: str, table: str = ""):
     target = _resolve_path(file_path)
 
     if not target.exists():
-        raise HTTPException(404, f"File not found: {file_path!r} → {target}")
+        raise HTTPException(404, f"File not found: {file_path!r} - {target}")
 
     ext = target.suffix.lower()
 
-    # ── SQLite table ──────────────────────────────────────────────────────────
+    # -- SQLite table ----------------------------------------------------------
     if table and ext in (".db", ".sqlite"):
         try:
             cx   = _sqlite3.connect(str(target))
@@ -1937,13 +1996,13 @@ def fm_read(file_path: str, table: str = ""):
                     cx.execute(f'SELECT * FROM "{table}" LIMIT 1000').fetchall()]
             cx.close()
             return {"columns": cols, "rows": _safe_rows(raw, cols),
-                    "source": f"sqlite · {len(raw)} rows"}
+                    "source": f"sqlite - {len(raw)} rows"}
         except HTTPException:
             raise
         except Exception as e:
             raise HTTPException(500, f"SQLite error: {e}")
 
-    # ── CSV — parse into columns/rows for tabular editing ───────────────────
+    # -- CSV - parse into columns/rows for tabular editing -------------------
     if ext == ".csv":
         try:
             import csv as _csv_r, io as _io
@@ -1959,12 +2018,12 @@ def fm_read(file_path: str, table: str = ""):
             return {
                 "columns": cols,
                 "rows":    rows,
-                "source":  f"csv · {len(rows)} rows",
+                "source":  f"csv - {len(rows)} rows",
             }
         except Exception as e:
             raise HTTPException(500, f"CSV read error: {e}")
 
-    # ── JSON — always tabular ─────────────────────────────────────────────────
+    # -- JSON - always tabular -------------------------------------------------
     if ext in (".json", ".jsonl"):
         try:
             import json as _j
@@ -1981,7 +2040,7 @@ def fm_read(file_path: str, table: str = ""):
                 all_keys = list(dict.fromkeys(k for row in items[:500] for k in row))
                 cols = [str(c) for c in all_keys]
                 return {"columns": cols, "rows": _safe_rows(items[:500], all_keys),
-                        "source": f"json · {len(items)} rows"}
+                        "source": f"json - {len(items)} rows"}
             elif isinstance(items, dict):
                 # If values are dicts (e.g. pricing.json), expand into tabular rows
                 first_val = next(iter(items.values()), None)
@@ -1999,24 +2058,24 @@ def fm_read(file_path: str, table: str = ""):
                             row = {"_key": _safe_val(k), **{c: "" for c in all_keys}}
                         rows.append(row)
                     return {"columns": cols, "rows": rows,
-                            "source": f"json · {len(rows)} entries"}
+                            "source": f"json - {len(rows)} entries"}
                 else:
                     rows = [{"key": _safe_val(k), "value": _safe_val(v)}
                             for k, v in list(items.items())[:500]]
                     return {"columns": ["key", "value"], "rows": rows,
-                            "source": f"json · {len(rows)} entries"}
+                            "source": f"json - {len(rows)} entries"}
             elif isinstance(items, list):
                 rows = [{"#": str(i+1), "value": _safe_val(v)}
                         for i, v in enumerate(items[:500])]
                 return {"columns": ["#", "value"], "rows": rows,
-                        "source": f"json · {len(items)} items"}
+                        "source": f"json - {len(items)} items"}
             else:
                 return {"columns": ["value"], "rows": [{"value": _safe_val(items)}],
                         "source": "json"}
         except Exception as e:
             raise HTTPException(500, f"JSON read error: {e}")
 
-    # ── Pickle ────────────────────────────────────────────────────────────────
+    # -- Pickle ----------------------------------------------------------------
     if ext in (".pkl", ".pickle"):
         try:
             obj = _pd_fm.read_pickle(str(target))
@@ -2027,26 +2086,26 @@ def fm_read(file_path: str, table: str = ""):
                 for _, row in df.iterrows():
                     rows.append({c: _safe_val(v) for c, v in zip(cols, row)})
                 return {"columns": cols, "rows": rows,
-                        "source": f"pickle · DataFrame {len(df)}r × {len(cols)}c"}
+                        "source": f"pickle - DataFrame {len(df)}r - {len(cols)}c"}
             elif isinstance(obj, dict):
                 rows = [{"key": _safe_val(k), "value": _safe_val(v)}
                         for k, v in list(obj.items())[:500]]
-                return {"columns": ["key", "value"], "rows": rows, "source": "pickle · dict"}
+                return {"columns": ["key", "value"], "rows": rows, "source": "pickle - dict"}
             elif isinstance(obj, list):
                 if obj and isinstance(obj[0], dict):
                     cols = [str(k) for k in obj[0].keys()]
-                    return {"columns": cols, "rows": _safe_rows(obj[:500], cols), "source": "pickle · list"}
+                    return {"columns": cols, "rows": _safe_rows(obj[:500], cols), "source": "pickle - list"}
                 rows = [{"#": str(i), "value": _safe_val(v)} for i, v in enumerate(obj[:500])]
-                return {"columns": ["#", "value"], "rows": rows, "source": "pickle · list"}
+                return {"columns": ["#", "value"], "rows": rows, "source": "pickle - list"}
             else:
                 return {"columns": ["type", "repr"],
                         "rows": [{"type": type(obj).__name__, "repr": _safe_val(obj)[:2000]}],
                         "source": "pickle"}
         except Exception as e:
             return {"columns": ["error"], "rows": [{"error": f"Cannot read pickle: {e}"}],
-                    "source": "pickle · error"}
+                    "source": "pickle - error"}
 
-    # ── PDF ───────────────────────────────────────────────────────────────────
+    # -- PDF -------------------------------------------------------------------
     # Run PDF extraction in a separate subprocess so any crash cannot
     # kill the uvicorn worker process.
     if ext == ".pdf":
@@ -2069,7 +2128,7 @@ try:
                 if line:
                     rows.append({{"page": str(pnum), "text": line[:400]}})
     if not rows:
-        rows = [{{"page": "-", "text": "(No extractable text — may be scanned PDF)"}}]
+        rows = [{{"page": "-", "text": "(No extractable text - may be scanned PDF)"}}]
     print(json.dumps({{"ok": True, "rows": rows[:500], "n_pages": n_pages}}))
 except Exception as e:
     print(json.dumps({{"ok": False, "error": str(e)[:300]}}))
@@ -2086,14 +2145,14 @@ except Exception as e:
                     return {
                         "columns": ["page", "text"],
                         "rows":    data["rows"],
-                        "source":  f"pdf · {data['n_pages']} page(s) · {target.stat().st_size // 1024} KB",
+                        "source":  f"pdf - {data['n_pages']} page(s) - {target.stat().st_size // 1024} KB",
                         "display": "raw",
                     }
                 else:
                     return {
                         "columns": ["error"],
                         "rows":    [{"error": data.get("error", "Unknown PDF error")}],
-                        "source":  "pdf · error",
+                        "source":  "pdf - error",
                     }
         except subprocess.TimeoutExpired:
             return {"columns": ["error"], "rows": [{"error": "PDF processing timed out (30s)"}], "source": "pdf"}
@@ -2109,10 +2168,10 @@ except Exception as e:
                 {"property": "size",     "value": f"{size_kb} KB"},
                 {"property": "note",     "value": "PDF text extraction unavailable"},
             ],
-            "source": "pdf · info only",
+            "source": "pdf - info only",
         }
 
-    # ── Plain text fallback ───────────────────────────────────────────────────
+    # -- Plain text fallback ---------------------------------------------------
     try:
         raw_bytes = target.read_bytes()
         if raw_bytes.startswith(b"\xef\xbb\xbf"):
@@ -2122,12 +2181,12 @@ except Exception as e:
         lines = text.splitlines()[:1000]
         rows  = [{"#": str(i + 1), "line": _safe_val(ln)} for i, ln in enumerate(lines)]
         return {"columns": ["#", "line"], "rows": rows,
-                "source": f"text · {len(rows)} lines"}
+                "source": f"text - {len(rows)} lines"}
     except Exception as e:
         raise HTTPException(500, f"Cannot read file: {e}")
 
 
-# ── Save ──────────────────────────────────────────────────────────────────────
+# -- Save ----------------------------------------------------------------------
 
 @app.post("/filemanager/save")
 def fm_save(body: dict = Body(...)):
@@ -2180,7 +2239,7 @@ def fm_save(body: dict = Body(...)):
     raise HTTPException(400, f"Save not supported for: {source or target.suffix}")
 
 
-# ── Delete row ────────────────────────────────────────────────────────────────
+# -- Delete row ----------------------------------------------------------------
 
 @app.delete("/filemanager/delete-row")
 def fm_delete_row(body: dict = Body(...)):
@@ -2203,9 +2262,9 @@ def fm_delete_row(body: dict = Body(...)):
         raise HTTPException(500, f"Delete error: {e}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # LICENCE MANAGEMENT
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 from db_app.database import SessionLocal as _SL
 from db_app.models.user import User as _User
 
@@ -2248,7 +2307,7 @@ def licence_list():
         result = []
         for u in users:
             lic = db.query(LicenceRecord).filter(LicenceRecord.user_id == u.id).first()
-            # Parse modules — empty = base plan (dashboard + reconciliation)
+            # Parse modules - empty = base plan (dashboard + reconciliation)
             BASE_MODULES = ["dashboard", "reconciliation"]
             raw_mods = (lic.modules if lic and lic.modules else "")
             try:
@@ -2270,6 +2329,8 @@ def licence_list():
                 "end_date":     lic.end_date     if lic else "",
                 "notes":        lic.notes        if lic else "",
                 "modules":      mods,
+                "phone":        getattr(u, "phone", "") or "",
+                "home_company": getattr(u, "home_company", "") or "",
             })
         return result
     finally:
@@ -2375,9 +2436,11 @@ def licence_update_user(user_id: int, body: dict = Body(...)):
         user = db.query(_User).filter(_User.id == user_id).first()
         if not user:
             raise HTTPException(404, "User not found")
-        if "username"  in body: user.username  = body["username"]
-        if "email"     in body: user.email     = body["email"]
-        if "full_name" in body: user.full_name = body["full_name"]
+        if "username"     in body: user.username     = body["username"]
+        if "email"        in body: user.email        = body["email"]
+        if "full_name"    in body: user.full_name    = body["full_name"]
+        if "phone"        in body: user.phone        = body.get("phone", "") or ""
+        if "home_company" in body: user.home_company = body.get("home_company", "") or ""
         db.commit()
         return {"ok": True}
     except HTTPException:
@@ -2388,10 +2451,10 @@ def licence_update_user(user_id: int, body: dict = Body(...)):
     finally:
         db.close()
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PRICING MANAGEMENT — admin editable pricing from JSON file
-# ══════════════════════════════════════════════════════════════════════════════
-# Try multiple candidate paths — robust for local, Docker and Northflank layouts
+# ------------------------------------------------------------------------------
+# PRICING MANAGEMENT - admin editable pricing from JSON file
+# ------------------------------------------------------------------------------
+# Try multiple candidate paths - robust for local, Docker and Northflank layouts
 _PRICING_CANDIDATES = [
     Path(__file__).parent / "data" / "pricing.json",   # main_app/data/ (normal)
     Path("/app/main_app/data/pricing.json"),            # Docker /app layout
@@ -2406,7 +2469,7 @@ def _find_pricing():
 _PRICING_FILE = _find_pricing() or Path(__file__).parent / "data" / "pricing.json"
 
 def _load_pricing() -> dict:
-    """Load pricing from JSON file — single source of truth for all plan data."""
+    """Load pricing from JSON file - single source of truth for all plan data."""
     if _PRICING_FILE.exists():
         try:
             return json.loads(_PRICING_FILE.read_text(encoding="utf-8"))
@@ -2425,24 +2488,24 @@ def _save_pricing(data: dict):
 
 @app.get("/payments/plans")
 def payments_get_plans():
-    """Alias of /pricing/plans — kept for backward compatibility. Single source: pricing.json."""
+    """Alias of /pricing/plans - kept for backward compatibility. Single source: pricing.json."""
     return _load_pricing()
 
 
 @app.get("/pricing/plans")
 def pricing_get():
-    """Public — return all plan definitions."""
+    """Public - return all plan definitions."""
     return _load_pricing()
 
 @app.post("/pricing/plans")
 def pricing_save(body: dict = Body(...)):
-    """Admin — save full pricing config."""
+    """Admin - save full pricing config."""
     _save_pricing(body)
     return {"ok": True}
 
 @app.patch("/pricing/plans/{plan_id}")
 def pricing_update_plan(plan_id: str, body: dict = Body(...)):
-    """Admin — update a single plan's pricing fields."""
+    """Admin - update a single plan's pricing fields."""
     data = _load_pricing()
     if plan_id not in data:
         raise HTTPException(404, f"Plan {plan_id!r} not found")
@@ -2450,7 +2513,7 @@ def pricing_update_plan(plan_id: str, body: dict = Body(...)):
     _save_pricing(data)
     return {"ok": True, "plan": data[plan_id]}
 
-# ── Strip /api prefix middleware ──────────────────────────────────────────────
+# -- Strip /api prefix middleware ----------------------------------------------
 # In production the React frontend calls /api/banks, /api/sessions etc.
 # This middleware strips the /api prefix before FastAPI processes the request.
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -2461,7 +2524,7 @@ class StripApiPrefix(BaseHTTPMiddleware):
         scope = request.scope
         path  = scope.get("path", "")
         if path.startswith("/api/"):
-            new_path = path[4:]                    # "/api/banks" → "/banks"
+            new_path = path[4:]                    # "/api/banks" - "/banks"
             scope["path"] = new_path
             qs = scope.get("query_string", b"")
             scope["raw_path"] = (
@@ -2475,17 +2538,17 @@ class StripApiPrefix(BaseHTTPMiddleware):
 
 app.add_middleware(StripApiPrefix)
 
-# ── Serve React SPA + Marketing Site ─────────────────────────────────────────
+# -- Serve React SPA + Marketing Site -----------------------------------------
 # Registered LAST so all /api/* routes take priority.
 #
 # URL routing:
-#   /                        → index-marketing.html  (public marketing site)
-#   /login, /reset-password  → index.html            (React SPA — public)
-#   /upgrade                 → index.html            (React SPA — public)
+#   /                        - index-marketing.html  (public marketing site)
+#   /login, /reset-password  - index.html            (React SPA - public)
+#   /upgrade                 - index.html            (React SPA - public)
 #   /dashboard, /reconciliation, /trading, etc.
-#                            → index.html            (React SPA — auth guarded)
-#   /assets/*                → StaticFiles           (JS / CSS / images)
-# ─────────────────────────────────────────────────────────────────────────────
+#                            - index.html            (React SPA - auth guarded)
+#   /assets/*                - StaticFiles           (JS / CSS / images)
+# -----------------------------------------------------------------------------
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses   import FileResponse as _FileResponse
 
@@ -2502,9 +2565,9 @@ def _serve_marketing():
     """Return the marketing homepage with pricing always injected from pricing.json.
 
     Three-layer sync so homepage, login and upgrade always match pricing.json:
-      Layer 1 — server injects window.__ACCFINO_PRICING__ into <head> (instant, no flash)
-      Layer 2 — client JS uses window.__ACCFINO_PRICING__ before any fetch completes
-      Layer 3 — client fetches /api/pricing/plans and re-renders (updates after load)
+      Layer 1 - server injects window.__ACCFINO_PRICING__ into <head> (instant, no flash)
+      Layer 2 - client JS uses window.__ACCFINO_PRICING__ before any fetch completes
+      Layer 3 - client fetches /api/pricing/plans and re-renders (updates after load)
 
     Additionally regenerates the BUNDLES variable inside the marketing script so
     bundle vs module card layout stays correct when pricing.json changes.
@@ -2517,15 +2580,15 @@ def _serve_marketing():
     try:
         pricing = _load_pricing()
 
-        # ── Layer 1: inject window.__ACCFINO_PRICING__ into <head> ──────────
+        # -- Layer 1: inject window.__ACCFINO_PRICING__ into <head> ----------
         pricing_json = _json_mkt.dumps(pricing, ensure_ascii=False)
         inject = f'''<script>
-// Pricing injected server-side from pricing.json — single source of truth
+// Pricing injected server-side from pricing.json - single source of truth
 window.__ACCFINO_PRICING__ = {pricing_json};
 </script>'''
         html = html.replace("</head>", inject + "\n</head>", 1)
 
-        # ── Layer 2: keep DEFAULTS fallback in sync with pricing.json ────────
+        # -- Layer 2: keep DEFAULTS fallback in sync with pricing.json --------
         # Replace the hardcoded DEFAULTS object so the page renders correctly
         # even if window.__ACCFINO_PRICING__ is not set (e.g. cached HTML).
         defaults_js = _json_mkt.dumps(pricing, ensure_ascii=False, separators=(',', ':'))
@@ -2535,7 +2598,7 @@ window.__ACCFINO_PRICING__ = {pricing_json};
             html, count=1, flags=_re_mkt.DOTALL
         )
 
-        # ── Layer 3: regenerate BUNDLES array from pricing.json ───────────────
+        # -- Layer 3: regenerate BUNDLES array from pricing.json ---------------
         # A plan is a "bundle" if it includes 2+ non-base modules.
         _base_mods = {"dashboard", "reconciliation"}
         bundle_keys = _json_mkt.dumps([
@@ -2545,7 +2608,7 @@ window.__ACCFINO_PRICING__ = {pricing_json};
         html = _re_mkt.sub(r'BUNDLES=\[.*?\]', f'BUNDLES={bundle_keys}', html)
 
     except Exception:
-        pass  # Fall back gracefully — client-side fetch still works
+        pass  # Fall back gracefully - client-side fetch still works
     return _HTMLResponse(content=html, status_code=200)
 
 
@@ -2556,20 +2619,20 @@ def _serve_app() -> _FileResponse:
     return {"error": "React app not built. Run: cd react_frontend && npm run build"}
 
 
-# ── Marketing page — served at /index-marketing.html ─────────────────────────
-# "/" is intentionally NOT mapped here — React Router owns it.
+# -- Marketing page - served at /index-marketing.html -------------------------
+# "/" is intentionally NOT mapped here - React Router owns it.
 # In dev mode Vite serves index.html at "/" via SPA fallback.
 # In prod mode FastAPI serves index.html at "/" via spa_routes below.
 @app.get("/index-marketing.html", include_in_schema=False)
 def marketing_html():
     return _serve_marketing()
 
-# ── Static assets (only available in production after npm run build) ──────────
+# -- Static assets (only available in production after npm run build) ----------
 if _DIST.exists() and (_DIST / "assets").exists():
     app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
 
 
-# ── Legal document routes ─────────────────────────────────────────────────────
+# -- Legal document routes -----------------------------------------------------
 _LEGAL_DIR = _ROOT / "main_app" / "data" / "legal_documents"
 
 LEGAL_DOCS = {
@@ -2598,12 +2661,12 @@ def legal_index():
     from fastapi.responses import JSONResponse
     return JSONResponse({"documents": list(LEGAL_DOCS.keys())})
 
-# ── Root "/" → marketing home page (top of page) ─────────────────────────────
+# -- Root "/" - marketing home page (top of page) -----------------------------
 @app.get("/", include_in_schema=False)
 def root():
     return _serve_marketing()
 
-# ── SPA routes (only available in production; in dev Vite handles these) ──────
+# -- SPA routes (only available in production; in dev Vite handles these) ------
 if _DIST.exists() and _APP_INDEX.exists():
 
     # Public SPA routes (no auth required)
