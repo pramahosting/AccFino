@@ -18,7 +18,7 @@ if [ -z "$DATABASE_URL" ]; then
     echo "[accfino] Example: postgresql+psycopg2://user:pass@host/db?sslmode=require"
     exit 1
 fi
-echo "[accfino] DATABASE_URL: ${DATABASE_URL:0:40}..."
+echo "[accfino] DATABASE_URL is set (Neon PostgreSQL)"
 
 # ── Ensure required directories exist ────────────────────────────────────────
 mkdir -p /app/main_app/data
