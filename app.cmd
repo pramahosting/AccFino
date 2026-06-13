@@ -3,161 +3,105 @@ setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 title AccFino Launcher
 
-REM ── Config ────────────────────────────────────────────────────────────────
-set SMTP_HOST=smtp.gmail.com
-set SMTP_PORT=587
-set SMTP_USER=pramahosting@gmail.com
-set SMTP_PASSWORD=ocyyqtkmrsfpggsp
-set APP_URL=http://localhost:3000
 set PYTHONPATH=%~dp0
+set PYTHONIOENCODING=utf-8
+set PYTHONWARNINGS=ignore
+set APP_URL=http://localhost:3000
+set DATABASE_URL=postgresql+psycopg2://neondb_owner:npg_XH2QFas3gYDd@ep-dawn-scene-aqma9lhs.c-8.us-east-1.aws.neon.tech/neondb
 
 echo.
 echo  AccFino starting...
 echo.
 
-REM ── Python ────────────────────────────────────────────────────────────────
 python --version >nul 2>&1
 if errorlevel 1 ( echo ERROR: Python not found & pause & exit /b 1 )
 echo [OK] Python found.
 
-REM ── Node ──────────────────────────────────────────────────────────────────
 node --version >nul 2>&1
 if errorlevel 1 ( echo ERROR: Node.js not found & pause & exit /b 1 )
 echo [OK] Node.js found.
 
-REM ── Python packages ───────────────────────────────────────────────────────
+python -c "import psycopg2" >nul 2>&1
+if errorlevel 1 ( pip install psycopg2-binary >nul 2>&1 )
+
 python -c "import fastapi" >nul 2>&1
 if errorlevel 1 (
-    echo Installing Python packages, please wait...
+    echo Installing Python packages...
     pip install -r "%~dp0requirements.txt"
     if errorlevel 1 ( echo ERROR: pip install failed & pause & exit /b 1 )
 )
 echo [OK] Python packages ready.
 
-REM ── Node packages ─────────────────────────────────────────────────────────
 if not exist "%~dp0react_frontend\node_modules" (
-    echo Installing Node packages - this window will show progress...
-    echo DO NOT CLOSE THIS WINDOW
+    echo Installing Node packages...
     cd /d "%~dp0react_frontend"
     call npm install
-    if errorlevel 1 (
-        echo.
-        echo ERROR: npm install failed. See error above.
-        echo Try running manually: cd react_frontend then npm install
-        cd /d "%~dp0"
-        pause
-        exit /b 1
-    )
     cd /d "%~dp0"
-    echo [OK] Node packages installed.
-) else (
-    echo [OK] Node packages ready.
 )
+echo [OK] Node packages ready.
 
-REM ── Free ports ────────────────────────────────────────────────────────────
 echo Freeing ports...
 for /f "tokens=5" %%i in ('netstat -aon 2^>nul ^| findstr ":8000 "') do taskkill /PID %%i /F >nul 2>&1
 for /f "tokens=5" %%i in ('netstat -aon 2^>nul ^| findstr ":8001 "') do taskkill /PID %%i /F >nul 2>&1
 for /f "tokens=5" %%i in ('netstat -aon 2^>nul ^| findstr ":3000 "') do taskkill /PID %%i /F >nul 2>&1
 timeout /t 2 /nobreak >nul
 
-REM ── Write temp launchers ──────────────────────────────────────────────────
-set "TMPDB=%TEMP%\af_db.bat"
-set "TMPAPI=%TEMP%\af_api.bat"
-set "TMPUI=%TEMP%\af_ui.bat"
+set AFROOT=%~dp0
+set AFROOT=%AFROOT:~0,-1%
 
-(
-    echo @echo off
-    echo title AccFino Auth :8000
-    echo cd /d "%~dp0"
-    echo set PYTHONPATH=%~dp0
-    echo set SMTP_HOST=%SMTP_HOST%
-    echo set SMTP_PORT=%SMTP_PORT%
-    echo set SMTP_USER=%SMTP_USER%
-    echo set SMTP_PASSWORD=%SMTP_PASSWORD%
-    echo set APP_URL=%APP_URL%
-    echo python -m uvicorn main_app.api_call:app --host 127.0.0.1 --port 8000
-    echo pause
-) > "%TMPDB%"
-
-(
-    echo @echo off
-    echo title AccFino API :8001
-    echo cd /d "%~dp0"
-    echo set PYTHONPATH=%~dp0
-    echo set SMTP_HOST=%SMTP_HOST%
-    echo set SMTP_PORT=%SMTP_PORT%
-    echo set SMTP_USER=%SMTP_USER%
-    echo set SMTP_PASSWORD=%SMTP_PASSWORD%
-    echo set APP_URL=%APP_URL%
-    echo python -m uvicorn main_app.react_api:app --host 127.0.0.1 --port 8001
-    echo pause
-) > "%TMPAPI%"
-
-(
-    echo @echo off
-    echo title AccFino UI :3000
-    echo cd /d "%~dp0react_frontend"
-    echo npm run dev
-    echo pause
-) > "%TMPUI%"
-
-
-REM ── Launch Auth API (hidden) ───────────────────────────────────────────────
-powershell -WindowStyle Hidden -Command "Start-Process cmd -ArgumentList '/k ""%TMPDB%""' -WindowStyle Hidden"
+REM ── Auth API ────────────────────────────────────────────────────
 echo [OK] Auth API starting...
+start "AccFino Auth :8000" cmd /k "cd /d "%AFROOT%" && set PYTHONPATH=%AFROOT% && set PYTHONIOENCODING=utf-8 && set PYTHONWARNINGS=ignore && set DATABASE_URL=postgresql+psycopg2://neondb_owner:npg_XH2QFas3gYDd@ep-dawn-scene-aqma9lhs.c-8.us-east-1.aws.neon.tech/neondb && python -m uvicorn main_app.api_call:app --host 127.0.0.1 --port 8000 --workers 1 || (echo. && echo AUTH API CRASHED && pause)"
 
 :wait8000
-timeout /t 1 /nobreak >nul
-netstat -an | findstr "127.0.0.1:8000.*LISTENING" >nul 2>&1
-if errorlevel 1 goto wait8000
+timeout /t 2 /nobreak >nul
+netstat -an 2>nul | findstr "8000" >nul 2>&1
+if errorlevel 1 (
+    set /a W8000+=1
+    if !W8000! lss 30 goto wait8000
+    echo ERROR: Auth API failed. Check the Auth window.
+    pause & exit /b 1
+)
 echo [OK] Auth API ready.
 
-REM ── Launch Main API (hidden) ───────────────────────────────────────────────
-powershell -WindowStyle Hidden -Command "Start-Process cmd -ArgumentList '/k ""%TMPAPI%""' -WindowStyle Hidden"
-echo [OK] Main API starting (loading ML models, 15-60s)...
+REM ── Main API ────────────────────────────────────────────────────
+echo [OK] Main API starting (ML models 15-60s)...
+start "AccFino API :8001" cmd /k "cd /d "%AFROOT%" && set PYTHONPATH=%AFROOT% && set PYTHONIOENCODING=utf-8 && set PYTHONWARNINGS=ignore && set DATABASE_URL=postgresql+psycopg2://neondb_owner:npg_XH2QFas3gYDd@ep-dawn-scene-aqma9lhs.c-8.us-east-1.aws.neon.tech/neondb && python -m uvicorn main_app.react_api:app --host 127.0.0.1 --port 8001 --workers 1 || (echo. && echo MAIN API CRASHED && pause)"
 
 :wait8001
-timeout /t 1 /nobreak >nul
-netstat -an | findstr "127.0.0.1:8001.*LISTENING" >nul 2>&1
-if errorlevel 1 goto wait8001
+timeout /t 2 /nobreak >nul
+netstat -an 2>nul | findstr "8001" >nul 2>&1
+if errorlevel 1 (
+    set /a W8001+=1
+    if !W8001! lss 45 goto wait8001
+    echo ERROR: Main API failed. Check the API window.
+    pause & exit /b 1
+)
 echo [OK] Main API ready.
 
-REM ── Watcher ───────────────────────────────────────────────────────────────
+REM ── React UI ────────────────────────────────────────────────────
+start "AccFino UI :3000" cmd /k "cd /d "%AFROOT%\react_frontend" && npm run dev"
 
-REM ── Launch React UI (visible) ─────────────────────────────────────────────
-start "AccFino UI :3000" cmd /k "%TMPUI%"
-
+echo [..] Waiting for UI...
 :wait3000
 timeout /t 1 /nobreak >nul
-netstat -an | findstr ":3000.*LISTENING" >nul 2>&1
+netstat -an 2>nul | findstr "3000" >nul 2>&1
 if errorlevel 1 goto wait3000
+timeout /t 2 /nobreak >nul
 
 echo.
 echo ================================================
 echo   AccFino is READY
-echo   http://localhost:3000          Marketing
-echo   http://localhost:3000/login    Sign in
-echo   http://localhost:8001/docs     API docs
-echo   Email:    admin@ex.com
-echo   Password: 1
-echo   Keep this window open.
-echo   Run stop.bat to stop.
+echo   http://localhost:3000/login
+echo   Email:    admin@accfino.com
+echo   Password: Accfino@1
 echo ================================================
 echo.
-REM ── Open in Brave Browser ────────────────────────────────────────────────
-set "BRAVE1=%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe"
-set "BRAVE2=%PROGRAMFILES%\BraveSoftware\Brave-Browser\Application\brave.exe"
-set "BRAVE3=%PROGRAMFILES(X86)%\BraveSoftware\Brave-Browser\Application\brave.exe"
 
-if exist "%BRAVE1%" (
-    start "" "%BRAVE1%" http://localhost:3000/index-marketing.html
-) else if exist "%BRAVE2%" (
-    start "" "%BRAVE2%" http://localhost:3000/index-marketing.html
-) else if exist "%BRAVE3%" (
-    start "" "%BRAVE3%" http://localhost:3000/index-marketing.html
-) else (
-    echo WARNING: Brave not found. Opening with default browser.
-    start "" http://localhost:3000/index-marketing.html
-)
-pause
+set B1=%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe
+set B2=%PROGRAMFILES%\BraveSoftware\Brave-Browser\Application\brave.exe
+if exist "%B1%" ( start "" "%B1%" "http://localhost:3000/login"
+) else if exist "%B2%" ( start "" "%B2%" "http://localhost:3000/login"
+) else ( start "" "http://localhost:3000/login" )
+
+exit

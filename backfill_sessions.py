@@ -1,9 +1,9 @@
 """
-backfill_sessions.py  —  run once from the Accfino/ root.
+backfill_sessions.py  -  run once from the Accfino/ root.
 
 Repairs two problems in existing session folders:
-  1. Missing accounts.json  → creates one (bank/account from pickle, files from disk)
-  2. accounts.json with empty "files" arrays  → fills them from input/files/ on disk
+  1. Missing accounts.json  - creates one (bank/account from pickle, files from disk)
+  2. accounts.json with empty "files" arrays  - fills them from input/files/ on disk
 
     python backfill_sessions.py
 
@@ -19,7 +19,7 @@ ROOT     = Path(__file__).parent          # Accfino/
 DATA_DIR = ROOT / "main_app" / "data"
 
 if not DATA_DIR.exists():
-    print(f"ERROR: {DATA_DIR} not found — run from the Accfino/ root.")
+    print(f"ERROR: {DATA_DIR} not found - run from the Accfino/ root.")
     sys.exit(1)
 
 
@@ -64,7 +64,7 @@ for results_pkl in sorted(DATA_DIR.rglob("output/results/results.pkl")):
         if all(len(a.get("files", [])) == 0 for a in accs) and disk_names:
             accs = distribute_files(accs, disk_names)
             acct_file.write_text(json.dumps(accs, indent=2), encoding="utf-8")
-            print(f"  Repaired files: {username}/{session_id}  →  "
+            print(f"  Repaired files: {username}/{session_id}  -  "
                   f"{sum(len(a['files']) for a in accs)} file(s) across {len(accs)} account(s)")
             fixed_empty += 1
         else:
@@ -95,7 +95,7 @@ for results_pkl in sorted(DATA_DIR.rglob("output/results/results.pkl")):
 
     input_dir.mkdir(parents=True, exist_ok=True)
     acct_file.write_text(json.dumps(accs, indent=2), encoding="utf-8")
-    print(f"  Created:  {username}/{session_id}  →  "
+    print(f"  Created:  {username}/{session_id}  -  "
           f"{len(accs)} account(s), {sum(len(a.get('files',[]))for a in accs)} file(s)")
     fixed_missing += 1
 
