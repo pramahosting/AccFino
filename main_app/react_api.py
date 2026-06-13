@@ -880,6 +880,66 @@ class SaveSessReq(BaseModel):
     session_id: str; username: str; transactions: list
     pending_changes: dict = {}; page_number: int = 1
 
+# ── Knowledge Base endpoints ──────────────────────────────────────────────────
+_KB_PATH = ROOT / "data" / "knowledge_base.json"
+
+def _load_kb():
+    try:
+        return json.loads(_KB_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def _save_kb(kb: dict):
+    _KB_PATH.write_text(json.dumps(kb, indent=2, ensure_ascii=False), encoding="utf-8")
+
+@app.get("/kb")
+def kb_get():
+    """Return full knowledge base."""
+    return _load_kb()
+
+@app.put("/kb/vendor/{vendor_key}")
+def kb_vendor_upsert(vendor_key: str, body: dict):
+    """Add or update a vendor entry."""
+    kb = _load_kb()
+    kb.setdefault("vendor_map", {})[vendor_key.lower()] = body
+    _save_kb(kb)
+    return {"ok": True, "vendor": vendor_key, "entry": body}
+
+@app.delete("/kb/vendor/{vendor_key}")
+def kb_vendor_delete(vendor_key: str):
+    """Remove a vendor entry."""
+    kb = _load_kb()
+    kb.get("vendor_map", {}).pop(vendor_key.lower(), None)
+    _save_kb(kb)
+    return {"ok": True}
+
+@app.put("/kb/keyword/{keyword}")
+def kb_keyword_upsert(keyword: str, body: dict):
+    """Add or update a keyword entry."""
+    kb = _load_kb()
+    kb.setdefault("keyword_map", {})[keyword.lower()] = body
+    _save_kb(kb)
+    return {"ok": True, "keyword": keyword, "entry": body}
+
+@app.delete("/kb/keyword/{keyword}")
+def kb_keyword_delete(keyword: str):
+    """Remove a keyword entry."""
+    kb = _load_kb()
+    kb.get("keyword_map", {}).pop(keyword.lower(), None)
+    _save_kb(kb)
+    return {"ok": True}
+
+@app.put("/kb/meta")
+def kb_meta_update(body: dict):
+    """Update internal_keywords or return_prefixes lists."""
+    kb = _load_kb()
+    if "internal_keywords" in body:
+        kb["internal_keywords"] = body["internal_keywords"]
+    if "return_prefixes" in body:
+        kb["return_prefixes"] = body["return_prefixes"]
+    _save_kb(kb)
+    return {"ok": True}
+
 @app.get("/sessions")
 def list_sessions(username: str):
     username = norm_username(username)
