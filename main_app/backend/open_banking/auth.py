@@ -61,7 +61,7 @@ def get_access_token():
 
     ACCESS_TOKEN = data["access_token"]
 
-    # token valid for 60 min → refresh at 55 min
+    # token valid for 60 min - refresh at 55 min
     TOKEN_EXPIRY = current_time + (55 * 60)
     logger.info("New Basiq access token acquired (expires at %s)", TOKEN_EXPIRY)
 

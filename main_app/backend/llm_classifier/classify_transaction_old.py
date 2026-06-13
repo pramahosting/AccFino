@@ -48,7 +48,7 @@ def render():
             st.success("CSV Loaded Successfully!")
             st.dataframe(df.head(5)) # Show preview
             
-            if st.button("🚀 Run Classification"):
+            if st.button("- Run Classification"):
                 results = []
                 progress_bar = st.progress(0)
                 status_text = st.empty()

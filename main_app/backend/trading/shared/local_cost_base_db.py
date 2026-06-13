@@ -1,5 +1,5 @@
 """
-local_cost_base_db.py — HSLedger Trading Module
+local_cost_base_db.py - HSLedger Trading Module
 Persistent local JSON database for historical equity BUY lots.
 
 Lets users resolve "Missing Buys" permanently.  Every entry saved here
@@ -27,7 +27,7 @@ from shared.normaliser import _fingerprint, _parse_date, _safe_float, _t2
 DB_VERSION = "1.0"
 
 
-# ── Internal helpers ──────────────────────────────────────────────────────────
+# -- Internal helpers ----------------------------------------------------------
 
 def _now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
@@ -35,7 +35,7 @@ def _now_iso() -> str:
 
 def _lot_hash(code: str, trade_date: str, qty: float, price: float,
               broker: str, reference: str) -> str:
-    """Stable SHA-256 fingerprint for a lot — used to prevent duplicates."""
+    """Stable SHA-256 fingerprint for a lot - used to prevent duplicates."""
     raw = f"{code}|{trade_date}|{qty:.6f}|{price:.6f}|{broker}|{reference}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -62,12 +62,12 @@ def _save_db(path: str, db: dict) -> None:
         json.dump(db, f, indent=2, default=str)
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# -- Public API ----------------------------------------------------------------
 
 def ensure_local_db(path: str) -> None:
     """
     Create the data/ folder and local_cost_base_db.json if they don't exist.
-    Safe to call on every startup — no-op if the file already exists.
+    Safe to call on every startup - no-op if the file already exists.
     """
     folder = os.path.dirname(path)
     if folder:
@@ -119,7 +119,7 @@ def load_local_lots(path: str) -> pd.DataFrame:
         price     = float(lot.get("unit_price", 0))
         brok      = float(lot.get("brokerage", 0))
         gst_val   = float(lot.get("gst", 0))
-        notes     = str(lot.get("notes", f"Historical buy – {name}")).strip()
+        notes     = str(lot.get("notes", f"Historical buy - {name}")).strip()
         lot_id    = str(lot.get("lot_id", _fingerprint(trade_d, code, qty, price)))
 
         sett_raw = lot.get("settlement_date")
@@ -179,7 +179,7 @@ def add_historical_lot(
     Returns the added lot dict.
     Raises ValueError on validation failure or exact duplicate.
     """
-    # ── Required field validation ─────────────────────────────────────────────
+    # -- Required field validation ---------------------------------------------
     code = str(lot_data.get("code", "")).strip().upper()
     if not code:
         raise ValueError("'code' (ASX ticker) is required")
@@ -209,7 +209,7 @@ def add_historical_lot(
             f"Purchase date {trade_d} is after disposal date {disposal_date}"
         )
 
-    # ── Derived fields ────────────────────────────────────────────────────────
+    # -- Derived fields --------------------------------------------------------
     broker    = str(lot_data.get("broker", "manual_entry")).strip()
     reference = str(lot_data.get("reference", "")).strip()
     name      = str(lot_data.get("name", code)).strip()
@@ -275,7 +275,7 @@ def add_lot_for_missing_buy(
     missing_flag  : MissingBuyFlag from equity_engine
     user_input    : {purchase_date, qty, unit_price, brokerage, gst,
                      broker, reference, notes}
-    allow_extra   : If True, qty may exceed qty_unmatched — the surplus
+    allow_extra   : If True, qty may exceed qty_unmatched - the surplus
                     becomes an open position.  Default False.
 
     Returns the added lot dict.

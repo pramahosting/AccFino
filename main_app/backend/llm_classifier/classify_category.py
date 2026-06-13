@@ -14,14 +14,14 @@ from pathlib import Path
 from typing import Dict
 
 import pandas as pd
-# Optional imports — not required for CATEGORY_ENUM / extract_who_bank
+# Optional imports - not required for CATEGORY_ENUM / extract_who_bank
 try:
     import ollama as ollama
 except ImportError:
     ollama = None
 
 try:
-    import streamlit as st
+    pass  # streamlit removed
     _ST_OK = True
 except ImportError:
     # Stub streamlit so decorators and calls don't crash when running under FastAPI
@@ -242,7 +242,6 @@ def load_disk_cache() -> Dict[str, Dict[str, str]]:
 def save_disk_cache(cache: Dict[str, Dict[str, str]]) -> None:
     CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
 
-@st.cache_data(show_spinner=False)
 def list_ollama_models() -> list[str]:
     return [m.model for m in ollama.list().models]
 
@@ -339,7 +338,7 @@ def ollama_predict_gst(
     return {"gst_category": "Unknown"}
 
 # Optional: cache the function at Streamlit level too (helps reruns)
-@st.cache_data(show_spinner=False)
+
 def ollama_classify_gl_account_cached(
     model: str,
     prompt: str,
@@ -350,7 +349,7 @@ def ollama_classify_gl_account_cached(
 ) -> Dict[str, str]:
     return ollama_classify_gl_account(model, prompt, base_url, temperature, top_p)
 
-@st.cache_data(show_spinner=False)
+
 def ollama_predict_gst_cached(
     model: str,
     prompt: str,
@@ -395,7 +394,7 @@ def main():
         st.success("CSV Loaded Successfully!")
         st.dataframe(df.head(5))
 
-        if st.button("🚀 Run Classification"):
+        if st.button("- Run Classification"):
             start_time = time.time()
 
             # DEDUPE: classify only unique descriptions

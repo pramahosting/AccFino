@@ -1,5 +1,5 @@
 """
-Invoice Extractor — core processing engine.
+Invoice Extractor - core processing engine.
 Adapted from test16.py: all extraction logic is preserved;
 CLI / filesystem orchestration replaced with process_files().
 """
@@ -60,7 +60,7 @@ PDF_EXTS = {".pdf"}
 
 
 # ============================================================
-# ── SECTION 0: DATE / ABN / AMOUNT NORMALISERS ──
+# -- SECTION 0: DATE / ABN / AMOUNT NORMALISERS --
 # ============================================================
 
 MONTH_MAP = {
@@ -167,7 +167,7 @@ def normalise_gst(raw) -> str:
         return ""
 
 
-# ── Per-column validators ─────────────────────────────────────────────────────
+# -- Per-column validators -----------------------------------------------------
 
 _INV_BLACKLIST = {
     "DEBIT", "CREDIT", "PAYMENT", "BALANCE", "TOTAL", "CHANGE", "PURCHASE",
@@ -392,7 +392,7 @@ def _apply_column_validators(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ============================================================
-# ── SECTION A: BANK STATEMENT LOGIC ──
+# -- SECTION A: BANK STATEMENT LOGIC --
 # ============================================================
 
 BANK_SIGNATURES = {
@@ -635,10 +635,10 @@ def extract_meta(text, bank, acct):
             break
     period_start, period_end = "", ""
     for pattern in [
-        r"(?:statement\s+)?period[:\s]+(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})\s*[-–to]+\s*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})",
-        r"(?:statement\s+)?period[:\s]+(\d{1,2}\s+\w{3}\s+\d{4})\s+[-–to]+\s*(\d{1,2}\s+\w{3}\s+\d{4})",
-        r"(\d{1,2}\s+\w{3}\s+\d{4})\s*(?:to|-|–)\s*(\d{1,2}\s+\w{3}\s+\d{4})",
-        r"(\d{1,2}/\d{1,2}/\d{4})\s*[-–]\s*(\d{1,2}/\d{1,2}/\d{4})",
+        r"(-:statement\s+)-period[:\s]+(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})\s*[--to]+\s*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})",
+        r"(-:statement\s+)-period[:\s]+(\d{1,2}\s+\w{3}\s+\d{4})\s+[--to]+\s*(\d{1,2}\s+\w{3}\s+\d{4})",
+        r"(\d{1,2}\s+\w{3}\s+\d{4})\s*(-:to|-|-)\s*(\d{1,2}\s+\w{3}\s+\d{4})",
+        r"(\d{1,2}/\d{1,2}/\d{4})\s*[--]\s*(\d{1,2}/\d{1,2}/\d{4})",
         r"(\d{1,2}\s+[a-z]{3}\s+\d{2,4})\s+to\s+(\d{1,2}\s+[a-z]{3}\s+\d{2,4})",
     ]:
         m = re.search(pattern, t)
@@ -665,7 +665,7 @@ def parse_amount(raw):
     if raw is None:
         return None, None
     s = str(raw).strip()
-    if not s or s in ("-", "–"):
+    if not s or s in ("-", "-"):
         return None, None
     direction = None
     if s.endswith("-"):
@@ -1203,7 +1203,7 @@ def extract_from_pdf_bank(pdf_path):
 
 
 # ============================================================
-# ── SECTION B: INVOICE / RECEIPT LOGIC ──
+# -- SECTION B: INVOICE / RECEIPT LOGIC --
 # ============================================================
 
 def is_image(p: Path) -> bool:
@@ -1299,7 +1299,7 @@ def extract_text_and_lines(pdf_path: str, poppler_bin: str = None, tesseract_cmd
     return text, lines, "scanned", pages_count
 
 
-# ── Invoice / Receipt field extractors ───────────────────────────────────────
+# -- Invoice / Receipt field extractors ---------------------------------------
 
 _DATE_FMTS = [
     r"\b(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{4})\b",
@@ -1536,7 +1536,7 @@ def extract_line_items(lines: List[str], text: str = "") -> List[dict]:
                 qty = qm.group(1)
                 desc = qm.group(2).strip()
         if not qty:
-            qm = re.search(r"\s+[x×]\s*(\d+(?:\.\d+)?)\s*$", desc, re.IGNORECASE)
+            qm = re.search(r"\s+[x-]\s*(\d+(-:\.\d+)-)\s*$", desc, re.IGNORECASE)
             if qm:
                 qty = qm.group(1)
                 desc = desc[: qm.start()].strip()
@@ -1674,7 +1674,7 @@ def classify_document_type(text: str, source_is_image: bool) -> str:
     return "invoice"
 
 
-# ── Excel writers ─────────────────────────────────────────────────────────────
+# -- Excel writers -------------------------------------------------------------
 
 def _bank_excel_bytes(bank_results: list) -> bytes:
     if not _OPENPYXL_AVAILABLE:
@@ -1723,7 +1723,7 @@ def _bank_excel_bytes(bank_results: list) -> bytes:
         if meta.get("period_start"):
             period = meta["period_start"]
             if meta.get("period_end"):
-                period += f"  –  {meta['period_end']}"
+                period += f"  -  {meta['period_end']}"
 
         for i, txn in enumerate(txns):
             r = current_row
@@ -1804,7 +1804,7 @@ def _inv_rec_excel_bytes(df: pd.DataFrame) -> bytes:
     ws.title = "Invoices & Receipts"
 
     ws.merge_cells(f"A1:{get_column_letter(len(COLS))}1")
-    ws["A1"] = "Invoices & Receipts — Extraction Report"
+    ws["A1"] = "Invoices & Receipts - Extraction Report"
     ws["A1"].font = TTL_FONT_L
     ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
     ws.row_dimensions[1].height = 26
@@ -1870,7 +1870,7 @@ def _inv_rec_excel_bytes(df: pd.DataFrame) -> bytes:
 
 
 # ============================================================
-# ── PUBLIC API ──
+# -- PUBLIC API --
 # ============================================================
 
 def get_dependency_status() -> dict:
@@ -1917,7 +1917,7 @@ def process_files(
         image_originated: set = set()
         pdf_paths: List[Path] = []
 
-        # Write uploaded files to temp dir; convert images → PDF
+        # Write uploaded files to temp dir; convert images - PDF
         for filename, file_bytes in uploaded_files:
             p = tmpdir / filename
             p.write_bytes(file_bytes)
@@ -1942,7 +1942,7 @@ def process_files(
                 if mode == "scanned":
                     ocr_used += 1
                 doc_type = classify_document_type(text, source_is_image)
-                log.append(f"  → {doc_type.upper()} | mode={mode} | pages={pages_count}")
+                log.append(f"  - {doc_type.upper()} | mode={mode} | pages={pages_count}")
 
                 if doc_type == "bank_statement":
                     results = extract_from_pdf_bank(str(pdf))
@@ -1951,7 +1951,7 @@ def process_files(
                         meta = result["meta"]
                         n_txns = len(result["transactions"])
                         bank_count += n_txns
-                        log.append(f"  → Bank: {meta['bank']} | Type: {meta['account_type']} | Txns: {n_txns}")
+                        log.append(f"  - Bank: {meta['bank']} | Type: {meta['account_type']} | Txns: {n_txns}")
                 else:
                     label = "Invoice" if doc_type == "invoice" else "Receipt"
                     header = extract_fields(text, lines)
@@ -1977,7 +1977,7 @@ def process_files(
                         inv_count += 1
                     else:
                         rec_count += 1
-                    log.append(f"  → {label} | items={len(items)}")
+                    log.append(f"  - {label} | items={len(items)}")
 
             except Exception as exc:
                 error_count += 1

@@ -103,7 +103,7 @@ def train_from_df(df: pd.DataFrame, model_dir: Path = DEFAULT_MODEL_DIR) -> dict
 
 
 def train(data_path: Path = DEFAULT_DATA_PATH, model_dir: Path = DEFAULT_MODEL_DIR) -> None:
-    """CLI entry point — loads CSV from disk and trains models."""
+    """CLI entry point - loads CSV from disk and trains models."""
     df = pd.read_csv(data_path)
     print(f"Loaded {len(df)} rows from {data_path}")
     metrics = train_from_df(df, model_dir)

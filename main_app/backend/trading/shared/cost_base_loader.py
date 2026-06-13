@@ -1,12 +1,12 @@
 """
-cost_base_loader.py — HSLedger Trading Module
+cost_base_loader.py - HSLedger Trading Module
 Loads cost_base_history.csv and converts it to canonical normalised rows
 that can be prepended to the main transaction DataFrame before CGT processing.
 
 The historical rows are marked source_file="cost_base_history" and
 direction="buy" so they flow through the FIFO engine as prior-year lots.
 
-Expected CSV columns (flexible — mapped by keyword matching):
+Expected CSV columns (flexible - mapped by keyword matching):
     stock_code | purchase_date | quantity | unit_price | brokerage | gst | source
 
 Also handles the "missing buy" interactive prompt:
@@ -55,7 +55,7 @@ def load_cost_base_history(path: str) -> pd.DataFrame:
     Returns empty DataFrame if file not found (non-fatal).
     """
     if not path or not os.path.exists(path):
-        print(f"[cost_base_loader] No history file at '{path}' — skipping.")
+        print(f"[cost_base_loader] No history file at '{path}' - skipping.")
         return pd.DataFrame()
 
     ext = os.path.splitext(path)[1].lower()
@@ -114,7 +114,7 @@ def load_cost_base_history(path: str) -> pd.DataFrame:
             "gst":             gst,
             "contract_value":  price * qty,
             "net_proceeds":    0.0,
-            "description":     f"Historical buy – {name}",
+            "description":     f"Historical buy - {name}",
             "reference":       "",
             "source_file":     "cost_base_history",
             "fingerprint":     _fingerprint(trade_d, code, qty, price),
@@ -146,7 +146,7 @@ def prompt_missing_buy(
     and returns a canonical single-row DataFrame ready to inject into
     the FIFO queue.  Returns None if the user skips.
 
-    Note: BUY positions with no matching SELL are NOT passed here —
+    Note: BUY positions with no matching SELL are NOT passed here -
     those are carried forward automatically as open positions.
     """
     line = "-" * 62

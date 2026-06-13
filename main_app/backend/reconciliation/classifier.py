@@ -1,7 +1,7 @@
 """
 backend/reconciliation/classifier.py
-─────────────────────────────────────
-classify_transactions(df) → annotated DataFrame
+-------------------------------------
+classify_transactions(df) - annotated DataFrame
 
 Responsibilities
   1. Resolve ambiguous rows (both debit+credit non-zero)
@@ -18,11 +18,7 @@ from typing import Optional
 
 import pandas as pd
 
-try:
-    import streamlit as st
-    _ST = True
-except Exception:
-    _ST = False
+_ST = False  # streamlit removed
 
 from backend.classifier.engine import classify_df, warm as _warm
 from backend.reconciliation.company_resolver import CompanyResolver
@@ -107,7 +103,7 @@ def classify_transactions(
     df["debit"]  = pd.to_numeric(df.get("debit",  0), errors="coerce").fillna(0.0)
     df["credit"] = pd.to_numeric(df.get("credit", 0), errors="coerce").fillna(0.0)
 
-    # ── 1. Resolve ambiguous rows ────────────────────────────────────────
+    # -- 1. Resolve ambiguous rows ----------------------------------------
     def _resolve(row):
         d, c = row.get("debit", 0), row.get("credit", 0)
         if not (d > 0 and c > 0):
@@ -123,7 +119,7 @@ def classify_transactions(
 
     df = df.apply(_resolve, axis=1)
 
-    # ── Initialise output columns ────────────────────────────────────────
+    # -- Initialise output columns ----------------------------------------
     df["classification"] = None
     df["pairid"]         = None
     df["GL Account"]     = ""
@@ -135,13 +131,13 @@ def classify_transactions(
     matched_debits  = set()
     matched_credits = set()
 
-    # ── 2. Internal transfer matching ────────────────────────────────────
-    # NOTE: use df.index directly — avoids itertuples() _-prefix attribute
+    # -- 2. Internal transfer matching ------------------------------------
+    # NOTE: use df.index directly - avoids itertuples() _-prefix attribute
     # bug where pandas silently renames columns starting with underscore.
     pb = _NoOp()
     if show_progress and _ST:
         try:
-            pb = st.progress(0, text="Matching internal transfers…")
+            pb = st.progress(0, text="Matching internal transfers-")
         except Exception:
             pass
 
@@ -168,13 +164,13 @@ def classify_transactions(
 
     MAX_DAYS = 5
 
-    # ── Scoring helper ───────────────────────────────────────────────────────
+    # -- Scoring helper -------------------------------------------------------
     # A pair qualifies as an internal transfer if it meets AT LEAST ONE of:
     #   A) Both descriptions contain transfer keywords
     #   B) One description contains a transfer keyword (the initiating side)
     #   C) Descriptions reference each other's account/bank name
     #   D) Different accounts/banks, same amount, debit date <= credit date,
-    #      within MAX_DAYS — structural match (no keyword needed)
+    #      within MAX_DAYS - structural match (no keyword needed)
     #
     # Issue 6 fix: the old code required BOTH rows to have transfer keywords.
     # Many real transfers only have a keyword on one side (e.g. "TFR TO SAVINGS"
@@ -211,7 +207,7 @@ def classify_transactions(
                     # Allow if at least one description has transfer keyword
                     if not (_is_transfer(dds) or _is_transfer(cds)):
                         continue
-                    # Can't apply date ordering without dates — allow with keyword
+                    # Can't apply date ordering without dates - allow with keyword
                     sc = 0
                     dl, cl2 = dds.lower(), cds.lower()
                     if _is_transfer(dds): sc += 15
@@ -223,7 +219,7 @@ def classify_transactions(
                     continue
 
                 # Rule: credit date must NOT be earlier than debit date
-                # (money must leave before it arrives — allow same day)
+                # (money must leave before it arrives - allow same day)
                 if cdt < ddt:
                     continue
 
@@ -249,14 +245,14 @@ def classify_transactions(
                 sc += (MAX_DAYS - day_diff) * 4
 
                 # Structural match: same amount, different accounts,
-                # debit before credit, within window — even without keywords
+                # debit before credit, within window - even without keywords
                 # this is a meaningful signal (score from date proximity alone
                 # will be > 0, but we also give a base structural bonus)
                 if sc == (MAX_DAYS - day_diff) * 4 + (8 if dbk != cbk else 0):
-                    # Only structural signal — require different banks to avoid
+                    # Only structural signal - require different banks to avoid
                     # false positives on same-bank same-account-holder payments
                     if dbk == cbk:
-                        continue   # same bank, no keywords → too risky to auto-pair
+                        continue   # same bank, no keywords - too risky to auto-pair
 
                 if sc >= MIN_PAIR_SCORE:
                     scores.append((sc, i, j, di, ci))
@@ -269,15 +265,15 @@ def classify_transactions(
             if di in matched_debits or ci in matched_credits:
                 continue
             pid = f"PAIR{next(pair_counter):05d}"
-            df.loc[int(di), ["classification", "pairid"]] = ["🟢Internal", pid]
-            df.loc[int(ci), ["classification", "pairid"]] = ["🟢Internal", pid]
+            df.loc[int(di), ["classification", "pairid"]] = ["-Internal", pid]
+            df.loc[int(ci), ["classification", "pairid"]] = ["-Internal", pid]
             matched_debits.add(int(di))
             matched_credits.add(int(ci))
             used_d.add(i); used_c.add(j)
 
-    # ── Pass 2: fuzzy amount matching (same-direction within 0.5%) ──────────────
+    # -- Pass 2: fuzzy amount matching (same-direction within 0.5%) --------------
     # Handles cases where a bank fee is deducted in transit:
-    # e.g. debit $1,000 → credit $999.50 (fee deducted by receiving bank)
+    # e.g. debit $1,000 - credit $999.50 (fee deducted by receiving bank)
     # Both rows must have at least one transfer keyword to qualify.
     TOLERANCE = 0.005
 
@@ -322,14 +318,14 @@ def classify_transactions(
                 best_ci = c_idx
         if best_ci is not None:
             pid = f"PAIR{next(pair_counter):05d}"
-            df.loc[int(d_idx), ["classification", "pairid"]] = ["🟢Internal", pid]
-            df.loc[int(best_ci), ["classification", "pairid"]] = ["🟢Internal", pid]
+            df.loc[int(d_idx), ["classification", "pairid"]] = ["-Internal", pid]
+            df.loc[int(best_ci), ["classification", "pairid"]] = ["-Internal", pid]
             matched_debits.add(int(d_idx))
             matched_credits.add(int(best_ci))
 
-    pb.progress(1.0, text="Transfer matching complete ✅")
+    pb.progress(1.0, text="Transfer matching complete -")
 
-    # ── 3. Classify non-internal rows via engine ─────────────────────────
+    # -- 3. Classify non-internal rows via engine -------------------------
     mask = df["classification"].isna()
 
     if mask.any():
@@ -342,12 +338,12 @@ def classify_transactions(
         df.loc[mask, "GST Category"] = sub["gst_category"].values
         df.loc[mask, "GST"]          = sub["gst_amount"].values
 
-        df.loc[mask & (df["debit"]  > 0), "classification"] = "🟡Outgoing"
-        df.loc[mask & (df["credit"] > 0), "classification"] = "🔵Incoming"
+        df.loc[mask & (df["debit"]  > 0), "classification"] = "-Outgoing"
+        df.loc[mask & (df["credit"] > 0), "classification"] = "-Incoming"
 
-    df["classification"] = df["classification"].fillna("⚪Unclassified")
+    df["classification"] = df["classification"].fillna("-Unclassified")
 
-    # ── Who field: CompanyResolver (home company, DB, bank patterns) ─────────
+    # -- Who field: CompanyResolver (home company, DB, bank patterns) ---------
     if "Who" not in df.columns:
         df["Who"] = ""
 
@@ -361,21 +357,26 @@ def classify_transactions(
 
         who, is_internal = resolver.resolve(desc, debit, credit)
 
-        # Home company match → upgrade to Internal
-        if is_internal and cl not in ("🟢Internal",):
-            df.at[idx, "classification"] = "🟢Internal"
+        # Home company match — only mark as Internal when the row has not
+        # already been classified as Incoming or Outgoing. This prevents the
+        # company name appearing in a supplier/payee description from
+        # incorrectly overriding a legitimate expense or income transaction.
+        # Rows that are already "-Internal" (pair-matched) are left alone too.
+        already_classified = cl in ("-Incoming", "-Outgoing", "-Internal")
+        if is_internal and not already_classified:
+            df.at[idx, "classification"] = "-Internal"
             df.at[idx, "GL Account"]     = ""
             df.at[idx, "GST Category"]   = ""
             df.at[idx, "GST"]            = 0.0
 
         if who:
             df.at[idx, "Who"] = who
-        elif cl == "🟢Internal":
+        elif cl == "-Internal":
             extracted = _extract_who(desc)
             if extracted:
                 df.at[idx, "Who"] = extracted
 
-    # ── 4. Date parts ────────────────────────────────────────────────────
+    # -- 4. Date parts ----------------------------------------------------
     if has_date:
         df["Month"] = df["date"].apply(lambda x: getattr(x, "month", None))
         df["Year"]  = df["date"].apply(lambda x: getattr(x, "year",  None))

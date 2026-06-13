@@ -1,9 +1,9 @@
 """
-deduplicator.py — HSLedger Trading Module
+deduplicator.py - HSLedger Trading Module
 Fingerprint-based duplicate detection across merged broker files.
 
 A duplicate is a row where (trade_date, code, qty, price) hash matches
-another row already seen — most commonly when a user provides both a
+another row already seen - most commonly when a user provides both a
 broker export AND a manual cost_base_history file with overlapping rows.
 
 Strategy:
@@ -37,7 +37,7 @@ def deduplicate(
         duplicates_df : rows that were removed, with 'duplicate_of_source' column added
     """
     if "fingerprint" not in df.columns:
-        # No fingerprints → nothing to deduplicate
+        # No fingerprints - nothing to deduplicate
         return df.copy(), pd.DataFrame()
 
     if source_priority:
@@ -46,7 +46,7 @@ def deduplicate(
         df["_sort_key"] = df["source_file"].map(lambda s: priority_map.get(s, 9999))
         df = df.sort_values("_sort_key").drop(columns=["_sort_key"]).reset_index(drop=True)
 
-    seen:        dict[str, int]  = {}   # fingerprint → first row index
+    seen:        dict[str, int]  = {}   # fingerprint - first row index
     keep_flags:  list[bool]      = []
     dup_sources: list[str]       = []
 

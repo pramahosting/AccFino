@@ -1,15 +1,15 @@
 """
-excel_exporter.py — HSLedger Trading Module
+excel_exporter.py - HSLedger Trading Module
 Builds the final consolidated Excel tax report.
 
 Sheet layout:
-  1. Summary          — FY-level tax summary across all brokers
-  2. CGT Disposals    — All disposal rows (one per lot consumed)
-  3. Income           — Dividends, interest, lending income
-  4. Missing Buys     — Unmatched sells requiring user action (orange flag)
-  5. Open Positions   — Remaining lots still held (unrealised)
-  6. {Broker}         — Per-broker raw disposal detail (one sheet per broker)
-  7. Duplicates       — Rows removed during dedup (audit trail)
+  1. Summary          - FY-level tax summary across all brokers
+  2. CGT Disposals    - All disposal rows (one per lot consumed)
+  3. Income           - Dividends, interest, lending income
+  4. Missing Buys     - Unmatched sells requiring user action (orange flag)
+  5. Open Positions   - Remaining lots still held (unrealised)
+  6. {Broker}         - Per-broker raw disposal detail (one sheet per broker)
+  7. Duplicates       - Rows removed during dedup (audit trail)
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from equity.equity_engine import (
     disposals_to_df, income_to_df, missing_to_df, summary_to_df,
 )
 
-# ── Colour palette ────────────────────────────────────────────────────────────
+# -- Colour palette ------------------------------------------------------------
 C_NAVY     = "1F3864"
 C_BLUE_LT  = "DBEAFE"
 C_GREEN    = "D1FAE5"
@@ -66,7 +66,7 @@ def _all_border(color: str = C_BORDER) -> Border:
     return Border(left=s, right=s, top=s, bottom=s)
 
 
-# ── Sheet formatting helpers ──────────────────────────────────────────────────
+# -- Sheet formatting helpers --------------------------------------------------
 
 def _apply_header_row(ws, row_num: int = 1, fill=None) -> None:
     fill = fill or NAVY_FILL
@@ -109,13 +109,13 @@ def _write_df_to_sheet(ws, df: pd.DataFrame, header_fill=None, row_fill_fn=None)
     _freeze_and_filter(ws)
 
 
-# ── Summary sheet ─────────────────────────────────────────────────────────────
+# -- Summary sheet -------------------------------------------------------------
 
 def _write_summary_sheet(ws, fy_summaries: dict[str, FYSummary], report_date: str) -> None:
     ws.title = "Summary"
 
     # Title block
-    ws["A1"] = "HSLedger — Equity CGT Tax Report"
+    ws["A1"] = "HSLedger - Equity CGT Tax Report"
     ws["A1"].font = TITLE_FONT
     ws["A2"] = f"Generated: {report_date}"
     ws["A2"].font = Font(name="Arial", size=10, color="6B7280")
@@ -130,7 +130,7 @@ def _write_summary_sheet(ws, fy_summaries: dict[str, FYSummary], report_date: st
         "Gross Gains ($)", "Gross Losses ($)", "CGT Discount ($)",
         "Net Cap Gain (pre CF) ($)", "Carry-Forward In ($)",
         "Net Taxable Gain ($)", "Income Events", "Total Income ($)",
-        "Missing Buys ⚠", "Brokers",
+        "Missing Buys -", "Brokers",
     ]
     ws.append([])   # row 3 blank
     ws.append(headers)
@@ -178,7 +178,7 @@ def _write_summary_sheet(ws, fy_summaries: dict[str, FYSummary], report_date: st
     ws.row_dimensions[4].height = 28
 
 
-# ── Main export function ──────────────────────────────────────────────────────
+# -- Main export function ------------------------------------------------------
 
 def _write_resolution_progress_sheet(
     ws,
@@ -284,24 +284,24 @@ def export_to_excel(
     income_events   : Income rows
     fy_summaries    : FY summary dict
     missing_flags   : Unmatched sell flags
-    open_positions  : dict of code → deque[Lot] (remaining holdings)
+    open_positions  : dict of code - deque[Lot] (remaining holdings)
     duplicates_df   : DataFrame of removed duplicates (from deduplicator)
     output_path     : Optional file path to save .xlsx
 
     Returns
     -------
-    bytes — Excel file content
+    bytes - Excel file content
     """
     import datetime
     wb = Workbook()
     wb.remove(wb.active)   # remove default sheet
     report_date = datetime.date.today().strftime("%d/%m/%Y")
 
-    # ── 1. Summary ────────────────────────────────────────────────────────────
+    # -- 1. Summary ------------------------------------------------------------
     ws_sum = wb.create_sheet("Summary")
     _write_summary_sheet(ws_sum, fy_summaries, report_date)
 
-    # ── 2. CGT Disposals ─────────────────────────────────────────────────────
+    # -- 2. CGT Disposals -----------------------------------------------------
     ws_disp = wb.create_sheet("CGT Disposals")
     disp_df = disposals_to_df(disposals)
     if not disp_df.empty:
@@ -317,7 +317,7 @@ def export_to_excel(
     else:
         ws_disp.append(["No disposal events in this period."])
 
-    # ── 3. Income ─────────────────────────────────────────────────────────────
+    # -- 3. Income -------------------------------------------------------------
     ws_inc = wb.create_sheet("Income")
     inc_df = income_to_df(income_events)
     if not inc_df.empty:
@@ -325,8 +325,8 @@ def export_to_excel(
     else:
         ws_inc.append(["No income events in this period."])
 
-    # ── 4. Missing Buys ───────────────────────────────────────────────────────
-    ws_miss = wb.create_sheet("⚠ Missing Buys")
+    # -- 4. Missing Buys -------------------------------------------------------
+    ws_miss = wb.create_sheet("- Missing Buys")
     miss_df = missing_to_df(missing_flags)
     if not miss_df.empty:
         _write_df_to_sheet(ws_miss, miss_df, header_fill=PatternFill("solid", fgColor="92400E"),
@@ -340,14 +340,14 @@ def export_to_excel(
         ws_miss.cell(last_row, 1).font = Font(name="Arial", bold=True, color="92400E", size=10)
         ws_miss.merge_cells(f"A{last_row}:G{last_row}")
     else:
-        ws_miss.append(["✓ No missing buy transactions detected."])
+        ws_miss.append(["- No missing buy transactions detected."])
         ws_miss["A1"].font = Font(name="Arial", bold=True, color="065F46")
 
-    # ── 4b. Missing Buy Resolution Progress ──────────────────────────────────
+    # -- 4b. Missing Buy Resolution Progress ----------------------------------
     ws_res = wb.create_sheet("Resolution Progress")
     _write_resolution_progress_sheet(ws_res, resolution_log or [], missing_flags)
 
-    # ── 5. Open Positions ─────────────────────────────────────────────────────
+    # -- 5. Open Positions -----------------------------------------------------
     ws_open = wb.create_sheet("Open Positions")
     if open_positions:
         rows_op = []
@@ -356,10 +356,10 @@ def export_to_excel(
             if "::" in key:
                 account_label, code = key.split("::", 1)
             else:
-                account_label, code = "—", key
+                account_label, code = "-", key
             for lot in queue:
                 rows_op.append({
-                    "Account":          account_label or "—",
+                    "Account":          account_label or "-",
                     "Asset Code":       code,
                     "Qty Held":         round(lot.qty, 4),
                     "Cost/Unit ($)":    round(lot.cost_per_unit, 4),
@@ -378,7 +378,7 @@ def export_to_excel(
     else:
         ws_open.append(["No open positions data provided."])
 
-    # ── 6. Per-broker sheets ──────────────────────────────────────────────────
+    # -- 6. Per-broker sheets --------------------------------------------------
     if not disp_df.empty and "Broker" in disp_df.columns:
         for broker in sorted(disp_df["Broker"].dropna().unique()):
             safe_name = str(broker)[:28].replace("/", "-")
@@ -386,12 +386,12 @@ def export_to_excel(
             broker_df = disp_df[disp_df["Broker"] == broker].reset_index(drop=True)
             _write_df_to_sheet(ws_b, broker_df, header_fill=PatternFill("solid", fgColor="3730A3"))
 
-    # ── 7. Duplicates (audit trail) ───────────────────────────────────────────
+    # -- 7. Duplicates (audit trail) -------------------------------------------
     if duplicates_df is not None and not duplicates_df.empty:
         ws_dup = wb.create_sheet("Duplicates (Audit)")
         _write_df_to_sheet(ws_dup, duplicates_df, header_fill=PatternFill("solid", fgColor="6B7280"))
 
-    # ── Save ──────────────────────────────────────────────────────────────────
+    # -- Save ------------------------------------------------------------------
     buf = io.BytesIO()
     wb.save(buf)
     content = buf.getvalue()

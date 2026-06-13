@@ -9,7 +9,7 @@ def export_excel_bytes(df_total: pd.DataFrame, monthly_summary: pd.DataFrame) ->
     # --- Create workbook ---
     wb = Workbook()
 
-    # 1️⃣ Reconciliation sheet (exact data as shown on screen)
+    # 1-- Reconciliation sheet (exact data as shown on screen)
     ws1 = wb.active
     ws1.title = "Reconciliation"
 
@@ -34,14 +34,14 @@ def export_excel_bytes(df_total: pd.DataFrame, monthly_summary: pd.DataFrame) ->
             elif cls == "Incoming":
                 ws1.cell(row=row, column=class_col).fill = fill_incoming
 
-    # 2️⃣ Monthly Summary Sheet (already computed)
+    # 2-- Monthly Summary Sheet (already computed)
     if monthly_summary is not None and not monthly_summary.empty:
         ws2 = wb.create_sheet("Monthly Summary")
         ws2.append(list(monthly_summary.columns))
         for row in monthly_summary.itertuples(index=False):
             ws2.append(list(row))
 
-        # Highlight “Grand Total” row if present
+        # Highlight -Grand Total- row if present
         for r in range(2, ws2.max_row + 1):
             if str(ws2.cell(r, 1).value).lower() == "grand total":
                 for c in range(1, ws2.max_column + 1):

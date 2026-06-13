@@ -1,6 +1,6 @@
 """
 backend/classifier/engine.py
-═══════════════════════════════════════════════════════════════════════════════
+-------------------------------------------------------------------------------
 Single-call transaction classifier.
 
     from backend.classifier.engine import classify, warm, ClassifyResult
@@ -13,20 +13,20 @@ Single-call transaction classifier.
     result.source        # "tfidf" | "rdr" | "transfer" | "fallback"
 
 Pipeline (first match wins)
-───────────────────────────
-  1. RDR rules      — rdr_rules.json keyword/regex overrides
-  2. Transfer gate  — structural bank patterns (TFR, TRANSFER FROM …)
-                      → Equity account / BAS Excluded / $0 GST
-  3. TF-IDF match   — cosine similarity against COA *Name + *Description
-  4. Fallback       — first COA row matching debit/credit direction
+---------------------------
+  1. RDR rules      - rdr_rules.json keyword/regex overrides
+  2. Transfer gate  - structural bank patterns (TFR, TRANSFER FROM -)
+                      - Equity account / BAS Excluded / $0 GST
+  3. TF-IDF match   - cosine similarity against COA *Name + *Description
+  4. Fallback       - first COA row matching debit/credit direction
 
 Zero hardcoding
-───────────────
-• GL names and tax codes come exclusively from ChartOfAccounts.csv
-• GST taxability: any tax code containing "gst on" is taxable (1/11th)
-• Transfer gate resolves its GL from COA at runtime (looks for
+---------------
+- GL names and tax codes come exclusively from ChartOfAccounts.csv
+- GST taxability: any tax code containing "gst on" is taxable (1/11th)
+- Transfer gate resolves its GL from COA at runtime (looks for
   "owner", "equity", "clearing" etc. in *Name)
-• New COA rows are picked up automatically on next rebuild()
+- New COA rows are picked up automatically on next rebuild()
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import norm as sp_norm
 
-# ── Paths ──────────────────────────────────────────────────────────────────
+# -- Paths ------------------------------------------------------------------
 _HERE            = Path(__file__).resolve()
 _MAIN_APP        = _HERE.parents[2]          # main_app/
 DEFAULT_COA_PATH = _MAIN_APP / "data" / "ChartOfAccounts.csv"
@@ -54,18 +54,18 @@ _RDR_PATHS: List[Path] = [
     _MAIN_APP.parent / "rdr_rules.json",
 ]
 
-# ── Constants ───────────────────────────────────────────────────────────────
+# -- Constants ---------------------------------------------------------------
 MIN_SIMILARITY  = 0.08
 _GST_RATE       = 0.10
 # Account types that are VALID for credit (Incoming) transactions.
 # Revenue is the primary type; Equity is valid (owner injecting capital, dividends).
 # BAS Excluded accounts (Wages, Super) are valid for credits (salary refunds etc.)
-# — they are handled by neutral types below, not blocked.
+# - they are handled by neutral types below, not blocked.
 _INCOME_TYPES   = frozenset({"revenue", "income", "other income", "sales"})
 # Account types that are VALID for debit (Outgoing) transactions.
 _EXPENSE_TYPES  = frozenset({"expense", "direct costs", "overhead", "other expense"})
 # Types that carry no directional restriction (valid for either side).
-# Fixed Asset, Inventory, Equity, GST — not forced to income or expense.
+# Fixed Asset, Inventory, Equity, GST - not forced to income or expense.
 _NEUTRAL_TYPES  = frozenset({"fixed asset", "inventory", "equity", "gst"})
 _STOP: frozenset = frozenset({
     "a","an","the","and","or","of","in","to","for","with","at","by","from",
@@ -74,7 +74,7 @@ _STOP: frozenset = frozenset({
     "incurred","expenses","expenditure","eg","ie",
 })
 
-# Transfer description patterns (structural bank narrative — not merchant names)
+# Transfer description patterns (structural bank narrative - not merchant names)
 _TRANSFER_PATTERNS: Tuple[str, ...] = (
     "transfer from", "transfer to",
     "tfr from", "tfr to",
@@ -91,21 +91,21 @@ _TRANSFER_GL_FRAGMENTS: Tuple[str, ...] = (
 )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # RESULT
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class ClassifyResult:
     """
     Immutable result for one transaction.  All fields resolved in one pass.
 
-    gl_account   — COA *Name  (e.g. "Telephone & Internet")
-    gst_category — COA *Tax Code  (e.g. "GST on Expenses")
-    gst_amount   — 1/11th of the taxable amount, or 0.00
-    matched      — False = directional fallback, may need review
-    score        — confidence 0–1 (1.0 for RDR/transfer, 0.0 for fallback)
-    source       — "rdr" | "transfer" | "tfidf" | "fallback"
+    gl_account   - COA *Name  (e.g. "Telephone & Internet")
+    gst_category - COA *Tax Code  (e.g. "GST on Expenses")
+    gst_amount   - 1/11th of the taxable amount, or 0.00
+    matched      - False = directional fallback, may need review
+    score        - confidence 0-1 (1.0 for RDR/transfer, 0.0 for fallback)
+    source       - "rdr" | "transfer" | "tfidf" | "fallback"
     """
     gl_account:   str
     gl_type:      str
@@ -127,12 +127,12 @@ class ClassifyResult:
         }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # GST HELPERS
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 def _is_taxable(tax_code: str) -> bool:
-    """Any tax code containing 'gst on' is taxable — no hardcoded list."""
+    """Any tax code containing 'gst on' is taxable - no hardcoded list."""
     return "gst on" in (tax_code or "").lower()
 
 
@@ -144,9 +144,9 @@ def _calc_gst(debit: float, credit: float, tax_code: str) -> float:
     return round(amount * _GST_RATE / (1 + _GST_RATE), 2) if amount > 0 else 0.0
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # TEXT UTILITIES
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 def _tokenise(text: str) -> List[str]:
     text   = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
@@ -163,7 +163,7 @@ def _freq(tokens: List[str]) -> Dict[str, int]:
 
 
 def _acronyms(tokens: List[str]) -> List[str]:
-    """Auto-generate acronyms so 'MV' matches 'Motor Vehicle …'"""
+    """Auto-generate acronyms so 'MV' matches 'Motor Vehicle -'"""
     if len(tokens) < 2:
         return []
     letters = [t[0] for t in tokens]
@@ -172,9 +172,9 @@ def _acronyms(tokens: List[str]) -> List[str]:
     return list({full} | set(pairs))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # COA ROW
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 class _Row:
     __slots__ = ("name", "tax_code", "atype", "tokens")
@@ -187,9 +187,9 @@ class _Row:
         self.tokens   = nt * 3 + _tokenise(atype) + _tokenise(description) + _acronyms(nt)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # TF-IDF INDEX
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 class _Index:
 
@@ -237,7 +237,7 @@ class _Index:
         """TF-IDF cosine similarity match.
         restrict_types: if set, only COA rows whose atype is in this frozenset are considered.
         min_sim: override the module-level MIN_SIMILARITY threshold (use 0.0 to get best
-                 match even if score is very low — useful for direction-restricted fallback).
+                 match even if score is very low - useful for direction-restricted fallback).
         """
         if not self._rows or not self._mat.shape[0]:
             return None, 0.0
@@ -287,9 +287,9 @@ class _Index:
         return len(self._rows)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # COA LOADER
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 def _load_coa(path: Path) -> List[_Row]:
     rows: List[_Row] = []
@@ -309,9 +309,9 @@ def _load_coa(path: Path) -> List[_Row]:
     return rows
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # RDR ENGINE
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 class _Rdr:
     """Loads rdr_rules.json; auto-reloads on file change."""
@@ -378,6 +378,14 @@ class _Rdr:
             except Exception:
                 continue
 
+            # Direction conditions
+            if "credit_only" in cond and cond["credit_only"]:
+                if not (credit > 0 and debit == 0):
+                    continue
+            if "debit_only" in cond and cond["debit_only"]:
+                if not (debit > 0 and credit == 0):
+                    continue
+
             if "contains_any" in cond:
                 needles = cond["contains_any"]
                 if not isinstance(needles, list) or not any(str(k).lower() in text for k in needles):
@@ -393,19 +401,46 @@ class _Rdr:
                 except re.error:
                     continue
 
-            gl  = str(rule.get("then", "")).strip()
-            gst = str(rule.get("then_gst_category",
-                      rule.get("then_gst",
-                      rule.get("gst_category", "")))).strip()
+            gl      = str(rule.get("then", "")).strip()
+            gst     = str(rule.get("then_gst_category",
+                          rule.get("then_gst",
+                          rule.get("gst_category", "")))).strip()
+            gl_type = str(rule.get("then_gl_type", "")).strip()
             if gl or gst:
-                return {"gl": gl, "gst": gst}
+                return {"gl": gl, "gst": gst, "gl_type": gl_type}
 
         return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+# KNOWLEDGE BASE LOADER
+_KB_PATHS = [
+    _MAIN_APP / "data" / "knowledge_base.json",
+    _MAIN_APP.parent / "knowledge_base.json",
+]
+_kb_cache: dict = {}
+_kb_mtime: float = 0.0
+_kb_lock = threading.Lock()
+
+def _load_knowledge_base() -> dict:
+    """Load knowledge_base.json; auto-reload when file changes."""
+    global _kb_cache, _kb_mtime
+    kb_path = next((p for p in _KB_PATHS if p.exists()), None)
+    if not kb_path:
+        return {}
+    try:
+        mtime = kb_path.stat().st_mtime
+        with _kb_lock:
+            if mtime != _kb_mtime:
+                _kb_cache = json.loads(kb_path.read_text(encoding="utf-8"))
+                _kb_mtime = mtime
+        return _kb_cache
+    except Exception:
+        return _kb_cache or {}
+
+# ---------------------------------------------------------------------------
 # PER-ACCOUNT INDEX CACHE
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 class _Cache:
 
@@ -455,13 +490,13 @@ _rdr            = _Rdr(_RDR_PATHS)
 _DEFAULT_ACCT   = "__default__"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # PUBLIC API
-# ═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 def warm(account_id: str = _DEFAULT_ACCT,
          coa_path: Optional[Path] = None) -> None:
-    """Pre-warm TF-IDF index. Call at app startup — no-op if already loaded."""
+    """Pre-warm TF-IDF index. Call at app startup - no-op if already loaded."""
     if coa_path:
         _cache.register(account_id, Path(coa_path))
     _cache.get_index(account_id)
@@ -487,13 +522,13 @@ def classify(
     coa_path:    Optional[Path] = None,
 ) -> ClassifyResult:
     """
-    Classify one transaction → GL account + GST category + GST amount.
+    Classify one transaction - GL account + GST category + GST amount.
 
     All three come from the same COA row in a single pass.
-    Never call gst_calculator separately — the result already contains gst_amount.
+    Never call gst_calculator separately - the result already contains gst_amount.
 
     Parameters
-    ──────────
+    ----------
     description  Bank narrative / memo text
     debit        Amount out  (positive, 0 if credit)
     credit       Amount in   (positive, 0 if debit)
@@ -506,7 +541,7 @@ def classify(
     index = _cache.get_index(account_id)
     desc  = (description or "").strip()
 
-    # ── Stage 1: RDR override ────────────────────────────────────────────
+    # -- Stage 1: RDR override --------------------------------------------
     rdr_hit = _rdr.apply(desc, debit, credit)
     if rdr_hit:
         gl  = rdr_hit["gl"]
@@ -517,15 +552,15 @@ def classify(
             if row:
                 gl  = gl  or row.name
                 gst = gst or row.tax_code
-        # Lookup gl_type from index for RDR-matched account
-        _rdr_type = ""
-        if gl:
+        # Use gl_type from rule if specified, else lookup from COA
+        _rdr_type = rdr_hit.get("gl_type", "")
+        if not _rdr_type and gl:
             for _r in index._rows:
                 if _r.name.lower() == gl.lower():
                     _rdr_type = _r.atype
                     break
 
-        # Direction guard for RDR results — same rule as Stage 3:
+        # Direction guard for RDR results - same rule as Stage 3:
         # a credit-only transaction must not resolve to an Expense-type GL.
         # If the RDR rule returned a wrong-direction GL, override with the
         # best direction-correct TF-IDF match from the COA.
@@ -534,8 +569,10 @@ def classify(
         _rdr_type_lower = _rdr_type.lower()
         _direction_wrong = (
             # Credit row must NOT get an Expense/Direct Costs GL
-            (_is_credit_only and _rdr_type_lower in _EXPENSE_TYPES) or
-            # Debit row must NOT get a Revenue GL
+            # EXCEPT "Return" type is allowed on credit (refund of expense)
+            (_is_credit_only and _rdr_type_lower in _EXPENSE_TYPES
+             and _rdr_type_lower != "return") or
+            # Debit row must NOT get a Revenue/Return GL
             (_is_debit_only  and _rdr_type_lower in _INCOME_TYPES)
             # Neutral types (Equity, Fixed Asset, GST, Inventory) are allowed on either side
         )
@@ -559,7 +596,7 @@ def classify(
             source       = "rdr",
         )
 
-    # ── Stage 2: Transfer intercept ──────────────────────────────────────
+    # -- Stage 2: Transfer intercept --------------------------------------
     if desc:
         padded = f" {desc.lower()} "
         if any(pat in padded for pat in _TRANSFER_PATTERNS):
@@ -575,7 +612,79 @@ def classify(
                     source       = "transfer",
                 )
 
-    # ── Stage 3: TF-IDF semantic match — direction-first ────────────────
+    # -- Stage 2.5: Knowledge-base lookup ----------------------------------
+    # knowledge_base.json: vendor_map (WHO->GL) + keyword_map (desc->GL)
+    # User-editable, auto-reloaded. No hardcoding needed.
+    if desc:
+        _kb      = _load_knowledge_base()
+        _kbtext  = desc.lower()
+        _is_out  = debit  > 0 and credit == 0
+        _is_in   = credit > 0 and debit  == 0
+
+        # Extract WHO suffix added by react_api: "desc|who:microsoft"
+        _who_str = ""
+        if "|who:" in _kbtext:
+            _parts  = _kbtext.split("|who:", 1)
+            _kbtext = _parts[0].strip()
+            _who_str = _parts[1].strip()
+
+        # Internal transfer detection
+        for _ik in _kb.get("internal_keywords", []):
+            if _ik in _kbtext:
+                return ClassifyResult(
+                    gl_account="", gl_type="", gst_category="BAS Excluded",
+                    gst_amount=0.0, matched=True, score=0.9, source="kb_internal")
+
+        # Return/refund prefix detection
+        _is_return = any(_kbtext.startswith(p) for p in _kb.get("return_prefixes", []))
+
+        # 1. Vendor map: try WHO first, then description text
+        # For return/refund transactions, ignore direction (return reverses original)
+        _vm = _kb.get("vendor_map", {})
+        _match = None
+        for _txt in ([_who_str] if _who_str else []) + [_kbtext]:
+            for _vk, _ve in _vm.items():
+                if _vk not in _txt: continue
+                if not _is_return:
+                    _d = _ve.get("direction","")
+                    if _d == "debit"  and not _is_out: continue
+                    if _d == "credit" and not _is_in:  continue
+                _match = _ve; break
+            if _match: break
+
+        # 2. Keyword map: fallback if no vendor match
+        if not _match:
+            for _kk, _ke in _kb.get("keyword_map", {}).items():
+                if _kk not in _kbtext: continue
+                if not _is_return:
+                    _d = _ke.get("direction","")
+                    if _d == "debit"  and not _is_out: continue
+                    if _d == "credit" and not _is_in:  continue
+                _match = _ke; break
+
+        if _match:
+            _mgl  = _match.get("gl","")
+            _mtyp = _match.get("gl_type","")
+            _mgst = _match.get("gst","")
+            if _is_return and _mgl:
+                _mtyp = "Return"; _mgst = "BAS Excluded"
+            if _mgl and not _mtyp:
+                _r2 = index.row_by_name(_mgl)
+                if _r2: _mtyp = _r2.atype; _mgst = _mgst or _r2.tax_code
+            return ClassifyResult(
+                gl_account=_mgl, gl_type=_mtyp, gst_category=_mgst,
+                gst_amount=_calc_gst(debit, credit, _mgst),
+                matched=bool(_mgl), score=0.9, source="kb")
+
+        # Return/refund with no vendor match
+        if _is_return and _is_in:
+            return ClassifyResult(
+                gl_account="Other Revenue", gl_type="Return",
+                gst_category="BAS Excluded", gst_amount=0.0,
+                matched=True, score=0.85, source="kb_return")
+
+    # -- Stage 3: TF-IDF semantic match - direction-first ----------------
+    # -- Stage 3: TF-IDF semantic match - direction-first ----------------
     if desc:
         # Determine which COA account types are valid for this transaction direction.
         # A credit (money IN)  must map to a Revenue/Income GL account.
@@ -602,7 +711,7 @@ def classify(
         if not row and _direction_types is not None:
             # Nothing matched within the correct type at MIN_SIMILARITY.
             # Try with min_sim=0 (take the best score even if weak) but STAY
-            # restricted to the correct direction type — never cross into
+            # restricted to the correct direction type - never cross into
             # Expense for a credit row or Revenue for a debit row.
             row, score = index.query(desc, restrict_types=_direction_types, min_sim=0.0)
             # If still nothing (e.g. all Revenue accounts scored exactly 0),
@@ -623,7 +732,7 @@ def classify(
                 source       = "tfidf",
             )
 
-    # ── Stage 4: Directional fallback ────────────────────────────────────
+    # -- Stage 4: Directional fallback ------------------------------------
     # For credit rows: try Revenue first, then include Equity/neutral types.
     # For debit rows: try Expense/Direct Costs first.
     # Never return an Expense-type GL for a credit row.
@@ -698,11 +807,11 @@ def classify_df(
     return df
 
 
-# ── GST_CATEGORY_OPTIONS — used by UI dropdowns ───────────────────────────
+# -- GST_CATEGORY_OPTIONS - used by UI dropdowns ---------------------------
 def gst_category_options(coa_path: Optional[Path] = None) -> List[str]:
     """
     Return all unique *Tax Code values from the COA, sorted.
-    Derived at runtime — no hardcoded list.
+    Derived at runtime - no hardcoded list.
     """
     path = coa_path or DEFAULT_COA_PATH
     options: set = set()

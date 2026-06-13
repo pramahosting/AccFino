@@ -14,7 +14,7 @@ COLUMN_ALIASES = {
 }
 
 # ============================================================
-# 🧹 Helper: Clean numeric values from messy financial text
+# - Helper: Clean numeric values from messy financial text
 # ============================================================
 def clean_numeric_value(x):
     """
@@ -67,13 +67,13 @@ def rename_duplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ============================================================
-# 📄 Main Parser
+# - Main Parser
 # ============================================================
 def parse_trading_file(file_or_path):
     """Parse any trading CSV/JSON into standardized columns for downstream processing."""
     df = None
 
-    # 1️⃣ Load file safely
+    # 1-- Load file safely
     try:
         if hasattr(file_or_path, "read"):
             df = pd.read_csv(file_or_path)
@@ -94,10 +94,10 @@ def parse_trading_file(file_or_path):
     if df is None or df.empty:
         return pd.DataFrame()
 
-    # 2️⃣ Replace spaces with underscores
+    # 2-- Replace spaces with underscores
     df.columns = [str(c).strip().replace(" ", "_") for c in df.columns]
 
-    # 3️⃣ Initialize output DataFrame with all standard columns
+    # 3-- Initialize output DataFrame with all standard columns
     output = pd.DataFrame()
 
     for standard_col, possible_cols in COLUMN_ALIASES.items():
@@ -118,12 +118,12 @@ def parse_trading_file(file_or_path):
             default_value = 0.0 if standard_col in ["Quantity", "Price", "Proceeds", "Cost", "Fee"] else ""
             output[standard_col] = default_value
 
-    # 4️⃣ Copy over any additional columns not in standard schema
+    # 4-- Copy over any additional columns not in standard schema
     for col in df.columns:
         if col not in output.columns:
             output[col] = df[col]
 
-    # 5️⃣ Globally clean numeric-looking columns (extra safety)
+    # 5-- Globally clean numeric-looking columns (extra safety)
     numeric_like_cols = [
         c for c in output.columns
         if any(k in c.lower() for k in ["amount", "value", "price", "proceed", "cost", "fee", "total", "balance"])
@@ -131,11 +131,11 @@ def parse_trading_file(file_or_path):
     for c in numeric_like_cols:
         output[c] = output[c].apply(clean_numeric_value)
 
-    # 6️⃣ Type normalization
+    # 6-- Type normalization
     output["Date"] = pd.to_datetime(output["Date"], errors="coerce")
     output["Side"] = output["Side"].astype(str).str.upper().replace({"B": "BUY", "S": "SELL"})
 
-    # 7️⃣ Reset index
+    # 7-- Reset index
     output = output.reset_index(drop=True)
 
     return output

@@ -9,7 +9,7 @@ import pandas as pd
 import ollama
 import requests
 try:
-    import streamlit as st
+    pass  # streamlit removed
 except Exception:
     st = None
 
@@ -303,7 +303,7 @@ def render():
         st.success("CSV Loaded Successfully!")
         st.dataframe(df.head(5))
 
-        if st.button("🚀 Run Classification"):
+        if st.button("- Run Classification"):
             progress = st.progress(0)
             status = st.empty()
 

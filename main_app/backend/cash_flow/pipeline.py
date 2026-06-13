@@ -1,6 +1,6 @@
 """
 backend/cash_flow/pipeline.py
-Cash Flow Prediction Pipeline — pure computation functions (no CLI, no profiling).
+Cash Flow Prediction Pipeline - pure computation functions (no CLI, no profiling).
 Called by the Streamlit cash_flow_ui.
 """
 
@@ -10,14 +10,29 @@ from datetime import datetime
 
 warnings.filterwarnings("ignore")
 
-import numpy as np
-import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from scipy.stats import skew as compute_skew
-from sklearn.preprocessing import RobustScaler, StandardScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+# Heavy ML imports deferred to avoid hanging on startup
+def _lazy_imports():
+    import numpy as np
+    import pandas as pd
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from scipy.stats import skew as compute_skew
+    from sklearn.preprocessing import RobustScaler, StandardScaler
+    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+    return np, pd, plt, compute_skew, RobustScaler, StandardScaler, mean_squared_error, mean_absolute_error, r2_score
+
+try:
+    import numpy as np
+    import pandas as pd
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from scipy.stats import skew as compute_skew
+    from sklearn.preprocessing import RobustScaler, StandardScaler
+    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+except ImportError:
+    pass
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.dummy import DummyRegressor
 from sklearn.linear_model import (
@@ -33,7 +48,7 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
 from sklearn.neural_network import MLPRegressor
 
-# ── Output directories ────────────────────────────────────────────────────────
+# -- Output directories --------------------------------------------------------
 CASH_FLOW_DIR = Path(__file__).resolve().parent
 OUT_DIR       = CASH_FLOW_DIR / "outputs"
 PLOTS_DIR     = OUT_DIR / "plots"
@@ -45,7 +60,7 @@ NEXT_MONTH_CSV       = OUT_DIR / "next_month_prediction.csv"
 LEADERBOARD_PLOT     = PLOTS_DIR / "model_leaderboard.png"
 NEXT_MONTH_PLOT      = PLOTS_DIR / "next_month_forecast.png"
 
-# ── Column detection candidates ───────────────────────────────────────────────
+# -- Column detection candidates -----------------------------------------------
 _DATE_CANDS    = ["Date", "date", "DATE", "Transaction Date", "Trans Date",
                   "trans_date", "Value Date", "Posting Date", "posting_date"]
 _DEBIT_CANDS   = ["Debit", "debit", "DEBIT", "DR", "Withdrawal", "withdrawal",
@@ -96,7 +111,7 @@ _MODELS = [
 ]
 
 
-# ── Column detection ──────────────────────────────────────────────────────────
+# -- Column detection ----------------------------------------------------------
 
 def find_col(df: pd.DataFrame, candidates: list[str], keywords: list[str] | None = None) -> str | None:
     lower_map = {c.lower(): c for c in df.columns}
@@ -122,7 +137,7 @@ def auto_detect_columns(df: pd.DataFrame) -> dict[str, str | None]:
     }
 
 
-# ── Preprocessing ─────────────────────────────────────────────────────────────
+# -- Preprocessing -------------------------------------------------------------
 
 def _classify_recurring(desc_series: pd.Series) -> pd.Series:
     upper = desc_series.fillna("").str.lower()
@@ -137,9 +152,9 @@ def preprocess(df: pd.DataFrame, col_map: dict) -> tuple[pd.DataFrame, dict, dic
     Clean and enrich raw transaction data.
 
     Returns:
-        df_proc       — processed DataFrame
-        transform_meta — skewness / transform info per column
-        outlier_bounds — IQR upper bounds per column
+        df_proc       - processed DataFrame
+        transform_meta - skewness / transform info per column
+        outlier_bounds - IQR upper bounds per column
     """
     df = df.copy()
 
@@ -156,7 +171,7 @@ def preprocess(df: pd.DataFrame, col_map: dict) -> tuple[pd.DataFrame, dict, dic
         df[col] = (
             df[col]
             .astype(str)
-            .str.replace(r"[$,£€\s]", "", regex=True)
+            .str.replace(r"[$,--\s]", "", regex=True)
             .pipe(pd.to_numeric, errors="coerce")
             .fillna(0.0)
             .abs()
@@ -165,7 +180,7 @@ def preprocess(df: pd.DataFrame, col_map: dict) -> tuple[pd.DataFrame, dict, dic
         df["balance"] = (
             df["balance"]
             .astype(str)
-            .str.replace(r"[$,£€\s]", "", regex=True)
+            .str.replace(r"[$,--\s]", "", regex=True)
             .pipe(pd.to_numeric, errors="coerce")
         )
 
@@ -198,7 +213,7 @@ def preprocess(df: pd.DataFrame, col_map: dict) -> tuple[pd.DataFrame, dict, dic
             transform_meta[col]["transform"]  = "none"
             transform_meta[col]["skew_after"] = round(sk_before, 3)
 
-    # Outlier flagging (IQR × 3)
+    # Outlier flagging (IQR - 3)
     outlier_bounds: dict[str, float] = {}
     for col in ("debit", "credit"):
         nz = df[df[col] > 0][col]
@@ -219,7 +234,7 @@ def validate_date_span(df: pd.DataFrame) -> tuple[int, str, str]:
     return months_span, str(d_min.date()), str(d_max.date())
 
 
-# ── Monthly feature engineering ───────────────────────────────────────────────
+# -- Monthly feature engineering -----------------------------------------------
 
 def monthly_features(df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate to monthly level and build lag/rolling features."""
@@ -273,17 +288,17 @@ def monthly_features(df: pd.DataFrame) -> pd.DataFrame:
     return monthly
 
 
-# ── Model training & leaderboard ──────────────────────────────────────────────
+# -- Model training & leaderboard ----------------------------------------------
 
 def train_leaderboard(monthly: pd.DataFrame) -> tuple[pd.DataFrame, dict, list[str], pd.DataFrame]:
     """
     Train all 17 models via TimeSeriesSplit CV.
 
     Returns:
-        lb             — leaderboard DataFrame (sorted by cv_rmse)
-        trained_models — {name: (type, estimator, scaler_or_None)}
-        feature_cols   — list of feature column names
-        data           — clean monthly data used for training
+        lb             - leaderboard DataFrame (sorted by cv_rmse)
+        trained_models - {name: (type, estimator, scaler_or_None)}
+        feature_cols   - list of feature column names
+        data           - clean monthly data used for training
     """
     exclude = {"year_month", "month_num", "target_next_month"}
     all_feature_cols = [c for c in monthly.columns if c not in exclude]
@@ -365,7 +380,7 @@ def _save_leaderboard_chart(lb: pd.DataFrame) -> None:
     fig, axes = plt.subplots(1, 3, figsize=(20, max(6, n * 0.5 + 2)))
     fig.patch.set_facecolor("#0F1117")
     fig.suptitle(
-        "Model Leaderboard — Performance Comparison",
+        "Model Leaderboard - Performance Comparison",
         fontsize=14, fontweight="bold", color="white", y=1.01,
     )
 
@@ -408,8 +423,8 @@ def _save_leaderboard_chart(lb: pd.DataFrame) -> None:
         color=r2_colors, alpha=0.85, edgecolor="#333",
     )
     axes[2].axvline(0, color="#888", linewidth=1, linestyle="--")
-    axes[2].set_xlabel("R² (higher is better)", color="white")
-    axes[2].set_title("R² Score", fontweight="bold")
+    axes[2].set_xlabel("R- (higher is better)", color="white")
+    axes[2].set_title("R- Score", fontweight="bold")
     for bar, val in zip(bars2, top["cv_r2"][::-1]):
         axes[2].text(
             bar.get_width() + (0.01 if val >= 0 else -0.01),
@@ -424,7 +439,7 @@ def _save_leaderboard_chart(lb: pd.DataFrame) -> None:
     plt.close()
 
 
-# ── Prediction ────────────────────────────────────────────────────────────────
+# -- Prediction ----------------------------------------------------------------
 
 def predict_next_month(
     chosen: str,
@@ -477,7 +492,7 @@ def _save_forecast_chart(monthly, next_period, prediction: float, model_name: st
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7))
     fig.patch.set_facecolor("#0F1117")
     fig.suptitle(
-        f"Next Month Forecast — {model_name}",
+        f"Next Month Forecast - {model_name}",
         fontsize=14, fontweight="bold", color="white",
     )
 

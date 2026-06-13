@@ -1,8 +1,8 @@
 """
-multi_file_merger.py — HSLedger Trading Module
+multi_file_merger.py - HSLedger Trading Module
 Accepts a folder path or explicit list of files. For each file:
   1. Auto-classifies broker + asset class via detect_file_type.py
-  2. Routes equity → normaliser, crypto → (placeholder)
+  2. Routes equity - normaliser, crypto - (placeholder)
   3. Merges all normalised rows into one DataFrame
   4. Runs deduplication
   5. Returns merged canonical DataFrame + load report
@@ -100,7 +100,7 @@ def load_and_merge(
     report = LoadReport()
     frames: list[pd.DataFrame] = []
 
-    # ── Historical cost base (always load first — lowest priority for dedup) ──
+    # -- Historical cost base (always load first - lowest priority for dedup) --
     if cost_base_history_path:
         hist_df = load_cost_base_history(cost_base_history_path)
         if not hist_df.empty:
@@ -113,7 +113,7 @@ def load_and_merge(
                 "confidence": 1.0,
             })
 
-    # ── Process each broker file ──────────────────────────────────────────────
+    # -- Process each broker file ----------------------------------------------
     for path in paths:
         fname = os.path.basename(path)
 
@@ -166,11 +166,11 @@ def load_and_merge(
         report.print_summary()
         return pd.DataFrame(), report
 
-    # ── Merge all frames ──────────────────────────────────────────────────────
+    # -- Merge all frames ------------------------------------------------------
     merged = pd.concat(frames, ignore_index=True)
     report.total_rows = len(merged)
 
-    # ── Deduplicate ───────────────────────────────────────────────────────────
+    # -- Deduplicate -----------------------------------------------------------
     clean, dups = deduplicate(merged, source_priority=source_priority)
     report.duplicate_rows = len(dups)
 

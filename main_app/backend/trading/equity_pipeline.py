@@ -1,5 +1,5 @@
 """
-main.py — HSLedger Trading ModuleS
+main.py - HSLedger Trading ModuleS
 Master orchestrator. Wires all sub-modules together in the correct order.
 
 Local Windows paths (PyCharm):
@@ -11,14 +11,14 @@ Override them on the CLI with --input / --output, or pass them
 directly to run_trading_pipeline() in code.
 
 Pipeline:
-  1. multi_file_merger   → load + classify + normalise + deduplicate → merged_df
-  2. split by FY         → per-FY DataFrames
-  3. cost_base_loader    → prepend historical lots from cost_base_history.csv
-  4. equity_engine       → FIFO CGT calculation → disposals, income, summaries
-  5. missing buy handler → flag or interactively resolve
-  6. excel_exporter      → final .xlsx written to trading/output/
+  1. multi_file_merger   - load + classify + normalise + deduplicate - merged_df
+  2. split by FY         - per-FY DataFrames
+  3. cost_base_loader    - prepend historical lots from cost_base_history.csv
+  4. equity_engine       - FIFO CGT calculation - disposals, income, summaries
+  5. missing buy handler - flag or interactively resolve
+  6. excel_exporter      - final .xlsx written to trading/output/
 
-Usage (CLI — no arguments needed, uses config.py defaults):
+Usage (CLI - no arguments needed, uses config.py defaults):
     python main.py
 
     # Override input/output
@@ -33,7 +33,7 @@ Usage (CLI — no arguments needed, uses config.py defaults):
     # Show resolved paths and exit
     python main.py --config
 
-Usage (API — called from Streamlit or other code):
+Usage (API - called from Streamlit or other code):
     from main import run_trading_pipeline
     result = run_trading_pipeline()                    # uses config.py defaults
     result = run_trading_pipeline(
@@ -55,7 +55,7 @@ from typing import Any
 
 import pandas as pd
 
-# ── Ensure trading module root is on sys.path ─────────────────────────────────
+# -- Ensure trading module root is on sys.path ---------------------------------
 # Ensure backend/trading is on sys.path so shared/equity/output imports resolve
 _MODULE_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _MODULE_ROOT not in sys.path:
@@ -74,7 +74,7 @@ from equity.equity_engine import (
     DisposalRow, IncomeRow, FYSummary, MissingBuyFlag, OptionFlag, OptionTransaction, ShortFlag, Lot, _fy,
 )
 from output.excel_exporter import export_to_excel
-# ── Inline config (replaces config.py — paths resolved from this file's location) ──
+# -- Inline config (replaces config.py - paths resolved from this file's location) --
 import pathlib as _pl
 _TRADING_DIR           = _pl.Path(__file__).resolve().parent
 _INPUT_DIR_P           = _TRADING_DIR / "inputs"
@@ -88,10 +88,10 @@ DEFAULT_REPORT_PATH    = str(_OUTPUT_DIR_P / "HSLedger_Equity_CGT_Report.xlsx")
 DEFAULT_TARGET_FY      = "2024-25"
 CARRY_FORWARD_LOSSES   = {}
 LOCAL_COST_BASE_DB_STR = str(_TRADING_DIR / "data" / "local_cost_base_db.json")
-def print_config(): pass  # no-op — config is inline
+def print_config(): pass  # no-op - config is inline
 
 
-# ── Result container ──────────────────────────────────────────────────────────
+# -- Result container ----------------------------------------------------------
 
 @dataclass
 class TradingPipelineResult:
@@ -139,7 +139,7 @@ class TradingPipelineResult:
         print(f"{'='*65}")
         for s in sorted(self.fy_summaries.values(), key=lambda x: x.financial_year):
             print(f"\n  FY {s.financial_year}")
-            print(f"    Brokers:             {', '.join(s.brokers) or '—'}")
+            print(f"    Brokers:             {', '.join(s.brokers) or '-'}")
             print(f"    Disposals:           {s.disposal_count}")
             print(f"    Total Proceeds:      ${s.total_proceeds:>12,.2f}")
             print(f"    Total Cost Base:     ${s.total_cost_base:>12,.2f}")
@@ -160,7 +160,7 @@ class TradingPipelineResult:
         print(f"{'='*65}\n")
 
 
-# ── History → initial FIFO queues ─────────────────────────────────────────────
+# -- History - initial FIFO queues ---------------------------------------------
 
 def _build_initial_queues(history_df: pd.DataFrame) -> dict[str, deque[Lot]]:
     """Convert historical cost-base rows into pre-populated FIFO queues."""
@@ -189,7 +189,7 @@ def _build_initial_queues(history_df: pd.DataFrame) -> dict[str, deque[Lot]]:
     return dict(queues)
 
 
-# ── Main pipeline ─────────────────────────────────────────────────────────────
+# -- Main pipeline -------------------------------------------------------------
 
 def run_trading_pipeline(
     source:                  str | list[str] | None = None,
@@ -203,7 +203,7 @@ def run_trading_pipeline(
     skip_crypto:             bool = True,
 ) -> TradingPipelineResult:
     """
-    Full pipeline: load → normalise → dedup → CGT → export.
+    Full pipeline: load - normalise - dedup - CGT - export.
 
     All parameters fall back to config.py values when not supplied.
 
@@ -225,7 +225,7 @@ def run_trading_pipeline(
     -------
     TradingPipelineResult
     """
-    # ── Apply config defaults for any unset parameters ────────────────────────
+    # -- Apply config defaults for any unset parameters ------------------------
     if source is None:
         source = INPUT_DIR_STR
     if cost_base_history_path is None:
@@ -253,12 +253,12 @@ def run_trading_pipeline(
 
     result = TradingPipelineResult()
 
-    # ── Step 1: Load historical lots (CSV + local JSON DB) ────────────────────
+    # -- Step 1: Load historical lots (CSV + local JSON DB) --------------------
     history_df = pd.DataFrame()
     if cost_base_history_path and os.path.exists(cost_base_history_path):
         history_df = load_cost_base_history(cost_base_history_path)
     elif cost_base_history_path:
-        print(f"[pipeline] History file not found at '{cost_base_history_path}' — skipping.")
+        print(f"[pipeline] History file not found at '{cost_base_history_path}' - skipping.")
 
     local_history_df = load_local_lots(local_db_path)
 
@@ -272,7 +272,7 @@ def run_trading_pipeline(
     else:
         initial_queues = {}
 
-    # ── Step 2: Load and merge all broker files ────────────────────────────────
+    # -- Step 2: Load and merge all broker files --------------------------------
     merged_df, report = load_and_merge(
         source                 = source,
         cost_base_history_path = None,   # history loaded separately above
@@ -286,7 +286,7 @@ def run_trading_pipeline(
         print(f"[pipeline] Make sure broker files are in: {source}")
         return result
 
-    # ── Step 3: Separate equity data ──────────────────────────────────────────
+    # -- Step 3: Separate equity data ------------------------------------------
     by_asset  = split_by_asset_class(merged_df)
     equity_df = by_asset.get("equity", pd.DataFrame())
 
@@ -294,7 +294,7 @@ def run_trading_pipeline(
         print("[pipeline] No equity transactions found.")
         return result
 
-    # ── Step 4: Filter to target FY (keep prior-year buys for FIFO) ───────────
+    # -- Step 4: Filter to target FY (keep prior-year buys for FIFO) -----------
     if target_fy:
         fy_splits      = split_by_fy(equity_df)
         all_fys_sorted = sorted(fy_splits.keys())
@@ -305,7 +305,7 @@ def run_trading_pipeline(
             return result
         equity_df = pd.concat([fy_splits[fy] for fy in keep_fys], ignore_index=True)
 
-    # ── Step 5: Run CGT engine ────────────────────────────────────────────────
+    # -- Step 5: Run CGT engine ------------------------------------------------
     print(f"[pipeline] Running CGT engine on {len(equity_df)} broker rows...")
 
     disposals, income_events, fy_summaries, open_queues, missing_flags, option_flags, option_txns, short_flags = compute_cgt(
@@ -324,7 +324,7 @@ def run_trading_pipeline(
     result.short_flags         = short_flags
     result.open_positions      = open_queues
 
-    # ── Step 6: Report missing buys and option flags ──────────────────────────
+    # -- Step 6: Report missing buys and option flags --------------------------
     if missing_flags:
         print(f"\n[pipeline] !  {len(missing_flags)} unmatched sell(s) -- no matching buy found:")
         for m in missing_flags:
@@ -343,7 +343,7 @@ def run_trading_pipeline(
             print(f"  {sf.short_date} | {sf.code} | qty={sf.qty:.0f} | proceeds=${sf.proceeds_per_unit:.4f}/unit")
         print(f"\n  -> Add a SC (short cover) row to your broker file or resolve manually")
 
-    # ── Step 7: Export Excel to trading/output/ ───────────────────────────────
+    # -- Step 7: Export Excel to trading/output/ -------------------------------
     print(f"\n[pipeline] Writing report -> {output_path}")
     resolution_log = get_resolution_log(local_db_path) if local_db_path else []
     excel_bytes = export_to_excel(
@@ -363,11 +363,11 @@ def run_trading_pipeline(
     return result
 
 
-# ── CLI entry point ───────────────────────────────────────────────────────────
+# -- CLI entry point -----------------------------------------------------------
 
 def _cli() -> None:
     parser = argparse.ArgumentParser(
-        description="HSLedger Trading Module — Equity CGT Calculator",
+        description="HSLedger Trading Module - Equity CGT Calculator",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 Default paths (from config.py):
@@ -461,7 +461,7 @@ Examples:
         import json
         cf_losses = json.loads(args.carry_forward)
 
-    # "all" → process every FY
+    # "all" - process every FY
     target_fy = None if args.fy and args.fy.lower() == "all" else args.fy
 
     # Support space-separated multiple input paths
@@ -496,7 +496,7 @@ def _resolve_missing_cli(
     """
     from shared.normaliser import _parse_date, _safe_float
 
-    line = "─" * 65
+    line = "-" * 65
     print(f"\n{line}")
     print(f"  MISSING BUY RESOLUTION  ({len(result.missing_flags)} unmatched sell(s))")
     print(f"{line}")
@@ -529,12 +529,12 @@ def _resolve_missing_cli(
                 return
 
             if not date_str:
-                print("  Skipped — this sell will remain flagged as unmatched.")
+                print("  Skipped - this sell will remain flagged as unmatched.")
                 break
 
             purchase_date = _parse_date(date_str)
             if purchase_date is None:
-                print(f"  Cannot parse '{date_str}' — try dd/mm/yyyy format.")
+                print(f"  Cannot parse '{date_str}' - try dd/mm/yyyy format.")
                 continue
             if purchase_date > flag.disposal_date:
                 print(f"  Purchase date {purchase_date} must be before sell date {flag.disposal_date}.")
@@ -558,7 +558,7 @@ def _resolve_missing_cli(
             gst   = _safe_float(gst_str)
 
             if qty <= 0 or price <= 0:
-                print("  Invalid quantity or price — try again.")
+                print("  Invalid quantity or price - try again.")
                 continue
 
             allow_extra = qty > qty_remaining + 1e-6
@@ -600,7 +600,7 @@ def _resolve_missing_cli(
         })
 
     if not session_lots:
-        print("\n  No lots added — re-running is not needed.")
+        print("\n  No lots added - re-running is not needed.")
         return
 
     print(f"\n{line}")
@@ -610,7 +610,7 @@ def _resolve_missing_cli(
     rerun_kwargs = {**pipeline_kwargs}
     result2 = run_trading_pipeline(**rerun_kwargs)
 
-    # ── Print before/after progress table ────────────────────────────────────
+    # -- Print before/after progress table ------------------------------------
     before_map: dict[tuple, float] = {
         (m.code, m.disposal_date): m.qty_unmatched
         for m in result.missing_flags
@@ -620,9 +620,9 @@ def _resolve_missing_cli(
         for m in result2.missing_flags
     }
 
-    print(f"\n{'─'*95}")
+    print(f"\n{'-'*95}")
     print(f"  {'Code':<8} {'Sell Date':<14} {'Before':>10} {'Added':>10} {'After':>10}  {'Status'}")
-    print(f"{'─'*95}")
+    print(f"{'-'*95}")
     for (code, sell_date), before in sorted(before_map.items()):
         after   = after_map.get((code, sell_date), 0.0)
         added   = before - after
@@ -634,7 +634,7 @@ def _resolve_missing_cli(
             status = "Unresolved"
         print(f"  {code:<8} {sell_date.strftime('%d/%m/%Y'):<14} "
               f"{before:>10.4f} {added:>10.4f} {after:>10.4f}  {status}")
-    print(f"{'─'*95}\n")
+    print(f"{'-'*95}\n")
 
 
 if __name__ == "__main__":

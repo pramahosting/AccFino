@@ -1,5 +1,5 @@
 """
-normaliser.py — HSLedger Trading Module
+normaliser.py - HSLedger Trading Module
 Converts raw broker DataFrames into a canonical internal schema.
 
 Canonical row fields:
@@ -34,7 +34,7 @@ import pandas as pd
 
 from shared.detect_file_type import BROKER_FINGERPRINTS, detect
 
-# ── Broker column maps (canonical logical name → actual column name) ──────────
+# -- Broker column maps (canonical logical name - actual column name) ----------
 BROKER_COL_MAPS: dict[str, dict[str, str]] = {
     "commsec": {
         "date":           "Trade Date",
@@ -130,7 +130,7 @@ BROKER_COL_MAPS: dict[str, dict[str, str]] = {
     },
 }
 
-# ── Transaction type normalisation map ────────────────────────────────────────
+# -- Transaction type normalisation map ----------------------------------------
 TXN_NORM: dict[str, str] = {
     # CommSec long-term
     "B": "BUY", "S": "SELL",
@@ -159,7 +159,7 @@ BUY_TYPES    = {"BUY", "OB", "SC", "DRP"}
 SELL_TYPES   = {"SELL", "OS", "OPT", "SS"}
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 def _parse_date(val: Any) -> date | None:
     if isinstance(val, datetime):
@@ -187,7 +187,7 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
 
 
 def _t2(d: date) -> date:
-    """Add 2 business days (simple approximation — no public holiday calendar)."""
+    """Add 2 business days (simple approximation - no public holiday calendar)."""
     count, cur = 0, d
     while count < 2:
         cur = cur + timedelta(days=1)
@@ -264,7 +264,7 @@ def _direction(txn: str) -> str:
     return "cash"
 
 
-# ── Core normaliser ───────────────────────────────────────────────────────────
+# -- Core normaliser -----------------------------------------------------------
 
 def normalise(
     df: pd.DataFrame,
@@ -281,7 +281,7 @@ def normalise(
     df                : Raw DataFrame as loaded from the broker file
     broker            : Broker identifier (key in BROKER_COL_MAPS)
     asset_class       : "equity" or "crypto"
-    source_file       : Original filename — stored on every row for traceability
+    source_file       : Original filename - stored on every row for traceability
     col_map_override  : Optional full override of the column mapping
 
     Returns
@@ -298,7 +298,7 @@ def normalise(
         v = row[actual]
         return default if pd.isna(v) else v
 
-    # ── Stake: rename "Date" → "Trade Date" and compute Settlement Date ────────
+    # -- Stake: rename "Date" - "Trade Date" and compute Settlement Date --------
     if broker == "stake":
         if "Date" in df.columns and "Trade Date" not in df.columns:
             df = df.rename(columns={"Date": "Trade Date"})
@@ -383,7 +383,7 @@ def load_and_normalise(path: str, col_map_override: dict[str, str] | None = None
     asset_class = det["asset_class"]
     header_row  = det.get("header_row", 0)
     # col_format is the column-layout broker (may differ from broker when the
-    # reference-prefix override fires — e.g. a NABtrade file using CommSec cols)
+    # reference-prefix override fires - e.g. a NABtrade file using CommSec cols)
     col_format  = det.get("col_format", broker)
     ext         = os.path.splitext(path)[1].lower()
 

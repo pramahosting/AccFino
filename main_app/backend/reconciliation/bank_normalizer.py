@@ -8,7 +8,7 @@ from backend.utils.logger import logger
 # ------------------------
 BANK_PRESETS = {
     # Big 4 Banks
-    # CBA exports have NO header row — columns are positional: Date|Amount|Description|Balance
+    # CBA exports have NO header row - columns are positional: Date|Amount|Description|Balance
     # We handle this in normalize_transactions via the 'no_header' + 'col_positions' keys.
     "CBA": {
         "no_header":     True,
@@ -144,8 +144,8 @@ def normalize_transactions(df: pd.DataFrame, bank_name: str, account_number: str
 
     preset = BANK_PRESETS.get(bank_name.strip().title()) or BANK_PRESETS.get(bank_name.strip().upper())
 
-    # ── Handle no-header CSVs (e.g. CBA) ─────────────────────────────────────
-    # CBA exports have no header — first row is data. Detect by checking if
+    # -- Handle no-header CSVs (e.g. CBA) -------------------------------------
+    # CBA exports have no header - first row is data. Detect by checking if
     # the header row looks like a date (dd/mm/yyyy) rather than a column name.
     _is_no_header = preset and preset.get("no_header", False)
     if not _is_no_header and len(df_local.columns) >= 2:
@@ -157,17 +157,17 @@ def normalize_transactions(df: pd.DataFrame, bank_name: str, account_number: str
             logger.info(f"  Auto-detected headerless CSV (col[0]='{_h0}')")
 
     if _is_no_header and preset and "col_positions" in preset:
-        # Re-read with positional columns — prepend the header row back as data row
+        # Re-read with positional columns - prepend the header row back as data row
         # by resetting column names to integers and inserting the original header
         _pos = preset["col_positions"]
-        # The current df_local has first data row as "header" — recover it
+        # The current df_local has first data row as "header" - recover it
         _header_as_row = pd.DataFrame([df_local.columns.tolist()], columns=range(len(df_local.columns)))
         df_local.columns = range(len(df_local.columns))
         df_local = pd.concat([_header_as_row, df_local], ignore_index=True)
         # Map positional columns to named ones
         _col_map = {v: k.capitalize() for k, v in _pos.items()}
         df_local = df_local.rename(columns=_col_map)
-        logger.info(f"  Headerless CSV reindexed → columns: {df_local.columns.tolist()}")
+        logger.info(f"  Headerless CSV reindexed - columns: {df_local.columns.tolist()}")
     else:
         df_local.columns = [str(c).strip() for c in df_local.columns]
 
@@ -273,5 +273,5 @@ def normalize_transactions(df: pd.DataFrame, bank_name: str, account_number: str
     else:
         df_out["debit"], df_out["credit"] = 0,0
 
-    logger.info(f"✅ Normalized {len(df_out)} rows for {bank_name} | Account {account_number}")
+    logger.info(f"- Normalized {len(df_out)} rows for {bank_name} | Account {account_number}")
     return df_out

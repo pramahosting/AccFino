@@ -1,21 +1,21 @@
 """
-equity_engine.py — HSLedger Trading Module
+equity_engine.py - HSLedger Trading Module
 FIFO CGT engine for Australian equity transactions.
 
 Consumes a canonical normalised DataFrame (from normaliser.py).
 Applies full ATO rules:
   - Trade date is the CGT event date (ATO TR 2023/1)
   - Settlement date stored for reference/reporting only
-  - FIFO cost base per asset — oldest lots consumed first
+  - FIFO cost base per asset - oldest lots consumed first
   - 50% CGT discount: held > 365 days AND gain > 0 (individuals/trusts)
   - Brokerage + GST capitalised into cost base on acquisition
   - Brokerage + GST deducted from proceeds on disposal
   - Capital losses offset gains within same FY
   - Carry-forward losses propagate across FYs automatically
-  - Income events (DIV/INT/LND/INC) collected separately — not CGT events
+  - Income events (DIV/INT/LND/INC) collected separately - not CGT events
   - Options (OB/OS/OPT) tracked in separate queue
-  - Short sells (SS/SC) tracked in separate short queue; profit = short price − cover price
-  - Missing buy lots → flagged with code/qty/date for user resolution
+  - Short sells (SS/SC) tracked in separate short queue; profit = short price - cover price
+  - Missing buy lots - flagged with code/qty/date for user resolution
   - Multi-account isolation: FIFO queues are keyed by (account_id, code) so buys and sells
     from different accounts/files never cross-contaminate each other
 """
@@ -31,7 +31,7 @@ from typing import Any
 import pandas as pd
 
 
-# ── Data classes ──────────────────────────────────────────────────────────────
+# -- Data classes --------------------------------------------------------------
 
 @dataclass
 class Lot:
@@ -143,7 +143,7 @@ class OptionFlag:
 
 @dataclass
 class OptionTransaction:
-    """Every OB/OS/OPT row found in the broker data — full audit trail."""
+    """Every OB/OS/OPT row found in the broker data - full audit trail."""
     txn_type:       str     # "OB" | "OS" | "OPT"
     trade_date:     date
     code:           str
@@ -175,7 +175,7 @@ class FYSummary:
     brokers:                list  = field(default_factory=list)
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 def _fy(d: date) -> str:
     if d.month >= 7:
@@ -245,7 +245,7 @@ def _fifo_consume(
     return rows, remaining
 
 
-# ── Main CGT engine ───────────────────────────────────────────────────────────
+# -- Main CGT engine -----------------------------------------------------------
 
 def compute_cgt(
     df: pd.DataFrame,
@@ -264,7 +264,7 @@ def compute_cgt(
     Parameters
     ----------
     df                    : Canonical DataFrame from normaliser.py
-    carry_forward_losses  : dict FY → loss amount carried in from prior FY
+    carry_forward_losses  : dict FY - loss amount carried in from prior FY
     initial_queues        : Pre-populated FIFO queues (from cost_base_loader).
                             These are distributed to every account found in df.
     interactive_missing   : If True, prompt user on stdin for missing buys
@@ -274,10 +274,10 @@ def compute_cgt(
     disposals      : list[DisposalRow]
     income_events  : list[IncomeRow]
     fy_summaries   : dict[str, FYSummary]
-    final_queues   : dict[str, deque[Lot]]  — remaining equity open positions
-    missing_flags  : list[MissingBuyFlag]   — sells with no matching buy
-    option_flags   : list[OptionFlag]       — option lots with no close event
-    short_flags    : list[ShortFlag]        — short positions with no cover event
+    final_queues   : dict[str, deque[Lot]]  - remaining equity open positions
+    missing_flags  : list[MissingBuyFlag]   - sells with no matching buy
+    option_flags   : list[OptionFlag]       - option lots with no close event
+    short_flags    : list[ShortFlag]        - short positions with no cover event
     """
     cf_losses = carry_forward_losses or {}
     queues:         dict[str, deque[Lot]]       = defaultdict(deque)
@@ -299,7 +299,7 @@ def compute_cgt(
                 _key = _account_queue_key(_acc, _hist_code)
                 queues[_key].extend(deepcopy(_lot) for _lot in _hist_q)
 
-    # Sort by trade_date ascending — critical for correct FIFO
+    # Sort by trade_date ascending - critical for correct FIFO
     df = df.copy().sort_values("trade_date").reset_index(drop=True)
 
     for row_pos, (_, row) in enumerate(df.iterrows()):
@@ -318,10 +318,10 @@ def compute_cgt(
         src      = str(row.get("source_file", "")).strip()
         broker   = str(row.get("broker", "")).strip()
 
-        # Composite queue key — isolates FIFO per account
+        # Composite queue key - isolates FIFO per account
         ak = _account_queue_key(src, code)
 
-        # ── BUY ──────────────────────────────────────────────────────────────
+        # -- BUY --------------------------------------------------------------
         if txn == "BUY":
             if qty <= 0 or price <= 0:
                 continue
@@ -336,12 +336,12 @@ def compute_cgt(
                 reference       = ref,
             ))
 
-        # ── SELL ─────────────────────────────────────────────────────────────
+        # -- SELL -------------------------------------------------------------
         elif txn == "SELL":
             if qty <= 0:
                 continue
 
-            # Net proceeds per unit — prefer explicit net_proceeds column
+            # Net proceeds per unit - prefer explicit net_proceeds column
             if net_proc and abs(net_proc) > 0:
                 npp = abs(net_proc) / qty
             elif cv and abs(cv) > 0:
@@ -409,11 +409,11 @@ def compute_cgt(
                         disposals.extend(extra)
                         missing_flags.pop()   # resolved
 
-        # ── OPTION BUY ───────────────────────────────────────────────────────
+        # -- OPTION BUY -------------------------------------------------------
         elif txn == "OB":
             if qty <= 0:
                 continue
-            # Prefer net_proceeds for cost basis — it already includes the contract
+            # Prefer net_proceeds for cost basis - it already includes the contract
             # multiplier (ASX ETOs: price is per underlying share, not per contract).
             if net_proc and abs(net_proc) > 0:
                 ppu = abs(net_proc) / qty
@@ -433,7 +433,7 @@ def compute_cgt(
                 broker=broker, source_file=src, row_index=row_pos + 2,
             ))
 
-        # ── OPTION SELL / EXERCISE ────────────────────────────────────────────
+        # -- OPTION SELL / EXERCISE --------------------------------------------
         elif txn in ("OS", "OPT"):
             if qty <= 0 or not option_queues[ak]:
                 continue
@@ -469,7 +469,7 @@ def compute_cgt(
                 if opt.qty < 1e-9:
                     option_queues[ak].popleft()
 
-        # ── SHORT SELL (open short position) ─────────────────────────────────
+        # -- SHORT SELL (open short position) ---------------------------------
         elif txn == "SS":
             if qty <= 0:
                 continue
@@ -486,12 +486,12 @@ def compute_cgt(
             sl._row_index = row_pos + 2
             short_queues[ak].append(sl)
 
-        # ── SHORT COVER (close short position) ───────────────────────────────
+        # -- SHORT COVER (close short position) -------------------------------
         elif txn == "SC":
             if qty <= 0:
                 continue
             if not short_queues[ak]:
-                # No open short — treat as a regular buy
+                # No open short - treat as a regular buy
                 if price > 0:
                     cpu = price + (brok + gst) / qty
                     queues[ak].append(Lot(
@@ -533,7 +533,7 @@ def compute_cgt(
                 if sl.qty < 1e-9:
                     short_queues[ak].popleft()
 
-        # ── INCOME ───────────────────────────────────────────────────────────
+        # -- INCOME -----------------------------------------------------------
         elif txn in ("DIV", "INT", "LND", "INC"):
             amt = abs(net_proc) if net_proc else abs(price * qty) if price else cv
             income_events.append(IncomeRow(
@@ -548,7 +548,7 @@ def compute_cgt(
                 account_id  = src,
             ))
 
-        # ── DRP (Dividend Reinvestment Plan) — treated as a BUY ──────────────
+        # -- DRP (Dividend Reinvestment Plan) - treated as a BUY --------------
         elif txn == "DRP":
             if qty <= 0:
                 continue
@@ -570,14 +570,14 @@ def compute_cgt(
                 reference       = ref,
             ))
 
-        # ── CASH — ignore ─────────────────────────────────────────────────────
+        # -- CASH - ignore -----------------------------------------------------
         elif txn in ("DEP", "WD"):
             pass
 
         else:
-            print(f"[equity_engine] Unknown txn type '{txn}' on {trade_d} for {code} — skipped")
+            print(f"[equity_engine] Unknown txn type '{txn}' on {trade_d} for {code} - skipped")
 
-    # ── Build FY summaries ────────────────────────────────────────────────────
+    # -- Build FY summaries ----------------------------------------------------
     fy_disp:   dict[str, list[DisposalRow]] = defaultdict(list)
     fy_inc:    dict[str, list[IncomeRow]]   = defaultdict(list)
     fy_miss:   dict[str, list]              = defaultdict(list)
@@ -666,14 +666,14 @@ def compute_cgt(
     return disposals, income_events, fy_summaries, final_queues, missing_flags, option_flags, option_txns, short_flags
 
 
-# ── DataFrame converters ──────────────────────────────────────────────────────
+# -- DataFrame converters ------------------------------------------------------
 
 def disposals_to_df(disposals: list[DisposalRow]) -> pd.DataFrame:
     if not disposals:
         return pd.DataFrame()
     return pd.DataFrame([{
         "FY":                   _fy(d.disposal_date),
-        "Account":              d.account_id or "—",
+        "Account":              d.account_id or "-",
         "Disposal Date":        d.disposal_date,
         "Settlement Date":      d.settlement_date,
         "Asset Code":           d.code,
@@ -701,7 +701,7 @@ def income_to_df(income_events: list[IncomeRow]) -> pd.DataFrame:
         return pd.DataFrame()
     return pd.DataFrame([{
         "FY":           _fy(i.event_date),
-        "Account":      i.account_id or "—",
+        "Account":      i.account_id or "-",
         "Event Date":   i.event_date,
         "Asset Code":   i.code,
         "Asset Name":   i.name,
@@ -718,11 +718,11 @@ def missing_to_df(missing_flags: list[MissingBuyFlag]) -> pd.DataFrame:
         return pd.DataFrame()
     return pd.DataFrame([{
         "FY":                   _fy(m.disposal_date),
-        "Account":              m.account_id or "—",
+        "Account":              m.account_id or "-",
         "Disposal Date":        m.disposal_date,
         "Asset Code":           m.code,
         "Qty Unmatched":        m.qty_unmatched,
-        "Sale Price/Unit ($)":  round(m.proceeds_per_unit, 4) if m.proceeds_per_unit else "—",
+        "Sale Price/Unit ($)":  round(m.proceeds_per_unit, 4) if m.proceeds_per_unit else "-",
         "Broker":               m.broker,
         "Reference":            m.reference,
         "Action Required":      "Provide historical buy details via cost_base_history.csv or manual entry",
@@ -754,7 +754,7 @@ def option_flags_to_df(option_flags: list[OptionFlag]) -> pd.DataFrame:
     if not option_flags:
         return pd.DataFrame()
     return pd.DataFrame([{
-        "Account":               f.account_id or "—",
+        "Account":               f.account_id or "-",
         "Underlying":            f.underlying,
         "Option Code":           f.code,
         "Open Date":             f.option_date,
@@ -762,7 +762,7 @@ def option_flags_to_df(option_flags: list[OptionFlag]) -> pd.DataFrame:
         "Premium Paid/Unit ($)": round(f.premium_paid, 4),
         "Total Premium at Risk ($)": round(f.premium_paid * f.qty, 2),
         "Broker":                f.broker,
-        "Status":                "Unresolved — specify outcome",
+        "Status":                "Unresolved - specify outcome",
     } for f in option_flags])
 
 
@@ -770,12 +770,12 @@ def short_flags_to_df(short_flags: list[ShortFlag]) -> pd.DataFrame:
     if not short_flags:
         return pd.DataFrame()
     return pd.DataFrame([{
-        "Account":               f.account_id or "—",
+        "Account":               f.account_id or "-",
         "Asset Code":            f.code,
         "Short Date":            f.short_date,
         "Qty Short":             f.qty,
         "Proceeds/Unit ($)":     round(f.proceeds_per_unit, 4),
         "Total Proceeds ($)":    round(f.proceeds_per_unit * f.qty, 2),
         "Broker":                f.broker,
-        "Status":                "Open short — no cover (SC) event found",
+        "Status":                "Open short - no cover (SC) event found",
     } for f in short_flags])

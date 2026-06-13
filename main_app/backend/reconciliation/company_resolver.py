@@ -1,32 +1,32 @@
 """
 company_resolver.py
-═══════════════════════════════════════════════════════════════════════════════
+-------------------------------------------------------------------------------
 Resolves the 'Who' column for each bank transaction.
 
 Architecture
-────────────
+------------
   CompanyResolver.resolve(description, debit, credit)
-    │
-    ├─ 1. HOME COMPANY CHECK   — user's own company → 🟢 Internal
-    ├─ 2. ENTITY EXTRACTION    — parse description into a clean entity name
-    │      ├─ Prefix patterns  (Transfer To, Direct Credit, OSKO, BPAY …)
-    │      ├─ Card patterns    (MERCHANT CITY AU Card xx####)
-    │      ├─ Star patterns    (UBER*EATS, APPLE*BILL)
-    │      └─ Plain fallback   (Harsh Singh Savings → Harsh Singh)
-    ├─ 3. ALIAS DB LOOKUP      — match extracted entity against company DB
-    │      (Uxt → "UXT Pty Ltd", ato → "Australian Taxation Office")
-    ├─ 4. FULL DESC DB LOOKUP  — card/plain descriptions searched in full
-    └─ 5. RETURN EXTRACTED     — fallback: return parsed entity name as-is
+    -
+    -- 1. HOME COMPANY CHECK   - user's own company - - Internal
+    -- 2. ENTITY EXTRACTION    - parse description into a clean entity name
+    -      -- Prefix patterns  (Transfer To, Direct Credit, OSKO, BPAY -)
+    -      -- Card patterns    (MERCHANT CITY AU Card xx####)
+    -      -- Star patterns    (UBER*EATS, APPLE*BILL)
+    -      -- Plain fallback   (Harsh Singh Savings - Harsh Singh)
+    -- 3. ALIAS DB LOOKUP      - match extracted entity against company DB
+    -      (Uxt - "UXT Pty Ltd", ato - "Australian Taxation Office")
+    -- 4. FULL DESC DB LOOKUP  - card/plain descriptions searched in full
+    -- 5. RETURN EXTRACTED     - fallback: return parsed entity name as-is
 
 Design principles
-─────────────────
-  • Never crashes — every step wrapped in try/except
-  • Longer aliases win over shorter (specificity)
-  • Short aliases (≤4 chars) use word-boundary matching (prevents "ing"→ING inside "SINGH")
-  • Transfer To / Direct Credit descriptions only search the extracted entity
+-----------------
+  - Never crashes - every step wrapped in try/except
+  - Longer aliases win over shorter (specificity)
+  - Short aliases (-4 chars) use word-boundary matching (prevents "ing"-ING inside "SINGH")
+  - Transfer To / Direct Credit descriptions only search the extracted entity
     (prevents CommBank alias matching in "Transfer To Harsh Singh - Macq CommBank App")
-  • Masked account numbers (xx####) are recognised and skipped
-  • No external dependencies — pure Python stdlib + optional DB
+  - Masked account numbers (xx####) are recognised and skipped
+  - No external dependencies - pure Python stdlib + optional DB
 """
 
 from __future__ import annotations
@@ -35,16 +35,16 @@ import re
 from typing import Optional, Tuple
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 1 — Compiled patterns
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
+# SECTION 1 - Compiled patterns
+# ------------------------------------------------------------------------------
 
-# ── 1a. Transaction prefixes — words before the entity name ────────────────
+# -- 1a. Transaction prefixes - words before the entity name ----------------
 # Each alternative ends BEFORE the entity name begins.
 # Order matters: longer/more-specific first so they win over "to\s+".
 _PREFIX = re.compile(
     r"""^(?:
-        # ── Transfer variants ──────────────────────────────────────────────
+        # -- Transfer variants ----------------------------------------------
         (?:fast\s+)?transfer\s+(?:to|from)\s+          |
         tfr\s+(?:to|from)\s+                            |
         trf\s+(?:to|from)\s+                            |
@@ -54,44 +54,44 @@ _PREFIX = re.compile(
         pexa\s+(?:transfer|settlement)\s+               |
         pay\s+anyone\s+(?:to\s+)?                       |
 
-        # ── Payment / received ─────────────────────────────────────────────
+        # -- Payment / received ---------------------------------------------
         payment\s+(?:to|from)\s+                        |
         paid\s+(?:to|by)\s+                             |
         received\s+from\s+                              |
 
-        # ── Direct credit / debit ──────────────────────────────────────────
+        # -- Direct credit / debit ------------------------------------------
         direct\s+credit\s+(?:\d{3,10}\s+)?             |
         direct\s+debit\s+(?:\d{3,10}\s+)?              |
         direct\s+entry\s+(?:\d{3,10}\s+)?              |
 
-        # ── OSKO / NPP ─────────────────────────────────────────────────────
+        # -- OSKO / NPP -----------------------------------------------------
         osko\s+(?:to|from|payment|credit|debit)\s+      |
         osko\s+                                         |
         npp\s+(?:to|from)\s+                            |
 
-        # ── BPAY ───────────────────────────────────────────────────────────
+        # -- BPAY -----------------------------------------------------------
         bpay\s+(?:ref(?:erence)?\s+)?(?:\d+\s+)?        |
         bpay\s+(?:to\s+)?                               |
         b-?pay\s+(?:ref\s+)?\d+\s+                     |
 
-        # ── PAYG / Tax ─────────────────────────────────────────────────────
+        # -- PAYG / Tax -----------------------------------------------------
         payg\s+(?:withholding|instalment|tax)\s+        |
         payg\s+\w+\s+                                   |
         bas\s+payment\s+(?:to\s+)?                      |
 
-        # ── Salary / payroll / super ───────────────────────────────────────
+        # -- Salary / payroll / super ---------------------------------------
         salary\s+(?:payment\s+)?(?:to\s+)?              |
         wages?\s+(?:payment\s+)?(?:to\s+)?              |
         payroll\s+(?:to\s+)?                            |
         superannuation\s+(?:contribution\s+)?(?:to\s+)? |
         super\s+contribution\s+(?:to\s+)?               |
 
-        # ── Return / refund ────────────────────────────────────────────────
+        # -- Return / refund ------------------------------------------------
         return\s+                                        |
         refund\s+(?:from\s+)?                           |
 
-        # ── Bare To / From (Macquarie, some CBA) ──────────────────────────
-        # Must be followed by a word char — avoids matching "Towards" etc.
+        # -- Bare To / From (Macquarie, some CBA) --------------------------
+        # Must be followed by a word char - avoids matching "Towards" etc.
         (?:^to\s+)(?=\w)                                |
         (?:^from\s+)(?=\w)
     )""",
@@ -99,7 +99,7 @@ _PREFIX = re.compile(
 )
 
 
-# ── 1b. Suffix noise — everything FROM this point is noise ─────────────────
+# -- 1b. Suffix noise - everything FROM this point is noise -----------------
 _SUFFIX = re.compile(
     r"""(?:
         # Invoice / reference numbers
@@ -122,7 +122,7 @@ _SUFFIX = re.compile(
         \s+via\s+payid\b.*                              |
 
         # Bank / account suffixes
-        \s*[-–]\s*(?:macq|macquarie|westpac|anz|nab|cba|commbank|stgeorge|
+        \s*[--]\s*(-:macq|macquarie|westpac|anz|nab|cba|commbank|stgeorge|
                       ing|amp|boq|bendigo|suncorp|hsbc|citibank|ubank)\b.* |
         \s+bsb\b.*                                      |
         \s+a\/c\b.*                                     |
@@ -143,22 +143,22 @@ _SUFFIX = re.compile(
 )
 
 
-# ── 1c. Card transaction: MERCHANT [SUBURB] AU|US|GB Card xx#### ───────────
+# -- 1c. Card transaction: MERCHANT [SUBURB] AU|US|GB Card xx#### -----------
 _CARD = re.compile(
     r"^(.+?)\s+(?:\w+\s+)?(?:AU|US|GB|NZ|SG|CA|EU|UK)\s+Card\s+xx",
     re.IGNORECASE,
 )
 
-# ── 1d. Merchant*Reference: UBER*EATS, APPLE*COM/BILL ──────────────────────
+# -- 1d. Merchant*Reference: UBER*EATS, APPLE*COM/BILL ----------------------
 _STAR = re.compile(r"^([^*\s][^*]{1,50}?)\s*\*\s*\S")
 
-# ── 1e. Leading digit noise (BSB/account at start) ─────────────────────────
+# -- 1e. Leading digit noise (BSB/account at start) -------------------------
 _LEADING_DIGITS = re.compile(r"^\d[\d\s]{3,8}\s+")
 
-# ── 1f. Trailing noise from any extracted name ─────────────────────────────
+# -- 1f. Trailing noise from any extracted name -----------------------------
 _TRAIL = re.compile(
     r"""(?:
-        \s*[-–#@/]\s*$                                  |   # trailing punctuation
+        \s*[\-#@/]\s*$                                  |   # trailing punctuation
         \s+(?:au|pty\.?\s*ltd\.?|pty|ltd|limited|
                inc\.?|llc|llp|corp\.?|co\.)\s*$        |   # legal suffixes
         \s+(?:sydney|melbourne|brisbane|perth|
@@ -168,7 +168,8 @@ _TRAIL = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-# ── 1g. Plain-description tail noise ───────────────────────────────────────
+
+# -- 1g. Plain-description tail noise ---------------------------------------
 _PLAIN_TAIL = re.compile(
     r"""\s+(?:
         savings|saving|
@@ -184,7 +185,7 @@ _PLAIN_TAIL = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-# ── 1h. Descriptions that have no extractable entity ──────────────────────
+# -- 1h. Descriptions that have no extractable entity ----------------------
 _EMPTY_DESC = re.compile(
     r"""^(?:
         transfer\s+from\s+commbank(?:\s+app)?  |
@@ -205,13 +206,13 @@ _EMPTY_DESC = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-# ── 1i. Masked account number patterns — not a company name ────────────────
+# -- 1i. Masked account number patterns - not a company name ----------------
 _MASKED_ACCOUNT = re.compile(r"^xx\d+", re.IGNORECASE)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 2 — Entity extraction
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
+# SECTION 2 - Entity extraction
+# ------------------------------------------------------------------------------
 
 def _clean(raw: str) -> str:
     """Apply all noise-stripping passes to a raw extracted string."""
@@ -236,7 +237,7 @@ def _valid(raw: str) -> bool:
     # Reject single-char tokens
     if len(raw) == 1:
         return False
-    # Reject single ALL-CAPS tokens ≤2 chars (too ambiguous)
+    # Reject single ALL-CAPS tokens -2 chars (too ambiguous)
     if raw == raw.upper() and len(raw) <= 2 and " " not in raw:
         return False
     return True
@@ -247,10 +248,10 @@ def extract_entity(desc: str) -> str:
     Parse a bank statement description and return the entity name.
 
     Tries strategies in order:
-      1. Prefix  — Transfer To X, Direct Credit BSB X, OSKO To X, etc.
-      2. Card    — MERCHANT SUBURB AU Card xx####
-      3. Star    — MERCHANT*REFERENCE
-      4. Plain   — Harsh Singh Savings  →  Harsh Singh
+      1. Prefix  - Transfer To X, Direct Credit BSB X, OSKO To X, etc.
+      2. Card    - MERCHANT SUBURB AU Card xx####
+      3. Star    - MERCHANT*REFERENCE
+      4. Plain   - Harsh Singh Savings  -  Harsh Singh
 
     Returns "" if nothing extractable found.
     """
@@ -258,7 +259,7 @@ def extract_entity(desc: str) -> str:
     if not text:
         return ""
 
-    # ── Strategy 1: Prefix ─────────────────────────────────────────────────
+    # -- Strategy 1: Prefix -------------------------------------------------
     try:
         m = _PREFIX.match(text)
         if m:
@@ -268,7 +269,7 @@ def extract_entity(desc: str) -> str:
     except Exception:
         pass
 
-    # ── Strategy 2: Card transaction ───────────────────────────────────────
+    # -- Strategy 2: Card transaction ---------------------------------------
     try:
         m2 = _CARD.match(text)
         if m2:
@@ -287,7 +288,7 @@ def extract_entity(desc: str) -> str:
     except Exception:
         pass
 
-    # ── Strategy 3: Merchant*Reference ─────────────────────────────────────
+    # -- Strategy 3: Merchant*Reference -------------------------------------
     try:
         m3 = _STAR.match(text)
         if m3:
@@ -297,7 +298,7 @@ def extract_entity(desc: str) -> str:
     except Exception:
         pass
 
-    # ── Strategy 4: Plain name fallback ────────────────────────────────────
+    # -- Strategy 4: Plain name fallback ------------------------------------
     try:
         if not _EMPTY_DESC.match(text) and not _PREFIX.match(text):
             raw = _PLAIN_TAIL.sub("", text).strip()
@@ -312,16 +313,16 @@ def extract_entity(desc: str) -> str:
     return ""
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 3 — Alias DB lookup
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
+# SECTION 3 - Alias DB lookup
+# ------------------------------------------------------------------------------
 
 def _alias_lookup(text: str, cache: dict) -> str:
     """
     Search alias cache against text.
-    • Longer aliases checked first (specificity wins)
-    • Aliases ≤4 chars use word-boundary matching (stops "ing" → ING inside "SINGH")
-    • Never raises — returns "" on any error
+    - Longer aliases checked first (specificity wins)
+    - Aliases -4 chars use word-boundary matching (stops "ing" - ING inside "SINGH")
+    - Never raises - returns "" on any error
     """
     if not text or not cache:
         return ""
@@ -338,21 +339,23 @@ def _alias_lookup(text: str, cache: dict) -> str:
     return ""
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 4 — Home company alias generation
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
+# SECTION 4 - Home company alias generation
+# ------------------------------------------------------------------------------
 
 def _home_aliases(name: str, extra: list) -> set:
     """
     Auto-generate search aliases from the user's registered company name.
 
     "Headstart Finances Australia Pty Ltd"
-      → {"headstart finances australia pty ltd",
-         "headstart finances australia",
-         "headstart finances",
-         "headstart",          ← first significant word
-         "headstart finances au",
-         "hfa"}                ← acronym from capitals
+      -> {"headstart finances australia pty ltd",
+          "headstart finances australia",
+          "headstart finances",
+          "hfa"}   (acronym)
+
+    Single-word aliases are only kept when >= 7 characters (long enough to
+    be unambiguous). Short single words like "good", "aus", "tech" match
+    too many unrelated bank descriptions and must not be used.
     """
     if not name:
         return set()
@@ -369,17 +372,33 @@ def _home_aliases(name: str, extra: list) -> set:
             clean = n[:-len(suffix)].strip()
             aliases.add(clean)
 
-    # Progressive word prefixes (1, 2, 3 significant words)
-    words = [w for w in n.split()
-             if len(w) >= 3
-             and w not in {"pty", "ltd", "the", "and", "for", "with", "aus", "pty."}]
-    for i in range(1, min(4, len(words) + 1)):
-        aliases.add(" ".join(words[:i]))
+    # Generic words — never use as standalone identifiers
+    _GENERIC = {"pty","ltd","the","and","for","with","aus","pty.",
+               "australia","australian","finances","financial","services",
+               "group","holdings","solutions","consulting","management",
+               "technology","technologies","enterprises","investments",
+               "capital","global","international","national","digital",
+               "systems","network","networks","media","health","care",
+               "property","properties","construction"}
 
-    # Acronym from capital letters in original name
+    words = [w for w in n.split() if len(w) >= 2 and w not in _GENERIC]
+
+    if words:
+        if len(words) == 1:
+            # Single meaningful word: use only if >= 5 chars
+            # e.g. 'Prama' from 'Prama AI', 'Headstart' from 'Headstart Australia Pty Ltd'
+            if len(words[0]) >= 5:
+                aliases.add(words[0])
+        else:
+            # Multiple meaningful words: use first 2 (safest)
+            aliases.add(" ".join(words[:2]))
+            if len(words) >= 3:
+                aliases.add(" ".join(words[:3]))
+
+    # Acronym from capital letters in original name (min 3 chars to be safe)
     try:
         acronym = "".join(c for c in name if c.isupper()).lower()
-        if len(acronym) >= 2:
+        if len(acronym) >= 3:
             aliases.add(acronym)
     except Exception:
         pass
@@ -394,31 +413,31 @@ def _home_aliases(name: str, extra: list) -> set:
     return {a for a in aliases if a and len(a) >= 3}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 5 — CompanyResolver
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
+# SECTION 5 - CompanyResolver
+# ------------------------------------------------------------------------------
 
 class CompanyResolver:
     """
     Resolves the 'Who' field for a bank transaction description.
 
     Usage
-    ─────
+    -----
         resolver = CompanyResolver(db=session, home_company="Headstart Finances Australia Pty Ltd")
         who, is_internal = resolver.resolve("Transfer To Headstart Finances...")
-        # → ("Headstart Finances Australia Pty Ltd", True)
+        # - ("Headstart Finances Australia Pty Ltd", True)
 
     Resolution steps
-    ────────────────
-      1. Home company check    → 🟢 Internal if matches
-      2. Entity extraction     → parse clean name from description
-      3. Alias DB lookup       → map extracted entity to canonical company name
-      4. Full-desc DB lookup   → for card/plain descriptions, search full text
-      5. Return extracted name → use parsed entity as-is if DB has no match
-      6. Return ""             → genuinely unresolvable
+    ----------------
+      1. Home company check    - - Internal if matches
+      2. Entity extraction     - parse clean name from description
+      3. Alias DB lookup       - map extracted entity to canonical company name
+      4. Full-desc DB lookup   - for card/plain descriptions, search full text
+      5. Return extracted name - use parsed entity as-is if DB has no match
+      6. Return ""             - genuinely unresolvable
 
     Fault tolerance
-    ───────────────
+    ---------------
       Every step is wrapped individually. DB failure gracefully falls through
       to the next step. Never raises an exception.
     """
@@ -444,7 +463,7 @@ class CompanyResolver:
         except Exception:
             pass
 
-    # ── Load alias DB into memory ──────────────────────────────────────────
+    # -- Load alias DB into memory ------------------------------------------
     def _load_alias_cache(self):
         """Load all approved company aliases from DB. Called once, cached."""
         if self._cache_loaded:
@@ -456,7 +475,7 @@ class CompanyResolver:
             try:
                 from db_app.models.company import Company, CompanyAlias
             except ImportError:
-                return  # company model not available — skip DB lookup
+                return  # company model not available - skip DB lookup
             rows = (
                 self.db
                 .query(CompanyAlias.alias, Company.name)
@@ -469,9 +488,9 @@ class CompanyResolver:
                 if alias and name:
                     self._alias_cache[alias.strip().lower()] = name
         except Exception:
-            pass   # DB unavailable — continue without alias cache
+            pass   # DB unavailable - continue without alias cache
 
-    # ── Main resolver ──────────────────────────────────────────────────────
+    # -- Main resolver ------------------------------------------------------
     def resolve(
         self,
         description: str,
@@ -482,21 +501,21 @@ class CompanyResolver:
         Returns (who_name, is_internal).
 
         Parameters
-        ──────────
+        ----------
         description : raw bank statement description text
         debit       : debit amount (unused currently, reserved for future scoring)
         credit      : credit amount (unused currently, reserved for future scoring)
 
         Returns
-        ───────
+        -------
         (who, is_internal)
-            who         — company/person name, or "" if unresolvable
-            is_internal — True if this transaction involves the user's own company
+            who         - company/person name, or "" if unresolvable
+            is_internal - True if this transaction involves the user's own company
         """
         try:
             return self._resolve_inner(description)
         except Exception:
-            return "", False   # absolute fallback — never crash the pipeline
+            return "", False   # absolute fallback - never crash the pipeline
 
     def _resolve_inner(self, description: str) -> Tuple[str, bool]:
         desc = (description or "").strip()
@@ -505,18 +524,23 @@ class CompanyResolver:
 
         desc_lower = desc.lower()
 
-        # ── Step 1: Home company ───────────────────────────────────────────
-        # Check BEFORE extraction so "Headstart" in any part of the description
-        # (including suffix like "Payment description: Innomesh") is caught.
+        # -- Step 1: Home company -------------------------------------------
+        # Use word-boundary matching for short aliases (< 8 chars) to prevent
+        # "aus" matching inside "because", or "ing" inside "savings".
+        # Long aliases use simple substring match (fast enough, specific enough).
         try:
             if self.home_company and self._home_aliases:
                 for alias in sorted(self._home_aliases, key=len, reverse=True):
-                    if alias in desc_lower:
-                        return self.home_company, True
+                    if len(alias) < 8:
+                        if re.search(r"\b" + re.escape(alias) + r"\b", desc_lower):
+                            return self.home_company, True
+                    else:
+                        if alias in desc_lower:
+                            return self.home_company, True
         except Exception:
             pass
 
-        # ── Step 2: Extract clean entity name ─────────────────────────────
+        # -- Step 2: Extract clean entity name -----------------------------
         extracted = ""
         try:
             extracted = extract_entity(desc)
@@ -529,7 +553,7 @@ class CompanyResolver:
         except Exception:
             pass
 
-        # ── Step 3: Alias DB — search extracted entity ────────────────────
+        # -- Step 3: Alias DB - search extracted entity --------------------
         self._load_alias_cache()
         if extracted:
             try:
@@ -539,8 +563,8 @@ class CompanyResolver:
             except Exception:
                 pass
 
-        # ── Step 4: Alias DB — search full description ────────────────────
-        # For card/plain/star descriptions only (not Transfer To / Direct Credit —
+        # -- Step 4: Alias DB - search full description --------------------
+        # For card/plain/star descriptions only (not Transfer To / Direct Credit -
         # those have a clean extracted entity that already avoided false matches)
         if not is_prefix_desc:
             try:
@@ -561,13 +585,13 @@ class CompanyResolver:
                 except Exception:
                     pass
 
-        # ── Step 5: Return extracted entity ───────────────────────────────
+        # -- Step 5: Return extracted entity -------------------------------
         if extracted:
             return extracted, False
 
         return "", False
 
-    # ── Auto-capture new companies ─────────────────────────────────────────
+    # -- Auto-capture new companies -----------------------------------------
     def capture_new_company(self, who: str, description: str):
         """
         Save a newly-seen entity to the company DB as pending.
@@ -599,9 +623,9 @@ class CompanyResolver:
             pass
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 6 — Convenience wrapper
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
+# SECTION 6 - Convenience wrapper
+# ------------------------------------------------------------------------------
 
 def resolve_who(
     description: str,

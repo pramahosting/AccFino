@@ -1,5 +1,5 @@
 """
-detect_file_type.py — HSLedger Trading Module
+detect_file_type.py - HSLedger Trading Module
 Auto-classifier: detects broker identity and asset class (equity/crypto)
 from column fingerprints, known symbols, and event type values.
 
@@ -12,10 +12,10 @@ import os
 from typing import Any
 import pandas as pd
 
-# ── Confidence threshold ──────────────────────────────────────────────────────
-CONFIDENCE_THRESHOLD = 0.50   # below this → unsupported broker fallback
+# -- Confidence threshold ------------------------------------------------------
+CONFIDENCE_THRESHOLD = 0.50   # below this - unsupported broker fallback
 
-# ── Reference-number broker prefixes ─────────────────────────────────────────
+# -- Reference-number broker prefixes -----------------------------------------
 # When multiple broker files share the same column layout (e.g., custom exports
 # that all use CommSec headers), the contract note / reference number prefix
 # disambiguates the actual broker.  Checked as a secondary signal after column
@@ -27,11 +27,11 @@ REFERENCE_BROKER_PREFIXES: dict[str, str] = {
     "SW": "selfwealth",    # SelfWealth: SW...
 }
 
-# ── Broker column fingerprints ────────────────────────────────────────────────
-# Maps broker_id → set of column substrings that strongly identify it.
+# -- Broker column fingerprints ------------------------------------------------
+# Maps broker_id - set of column substrings that strongly identify it.
 # Matching is case-insensitive partial match.
 BROKER_FINGERPRINTS: dict[str, dict[str, Any]] = {
-    # ── Equity ────────────────────────────────────────────────────────────────
+    # -- Equity ----------------------------------------------------------------
     "commsec": {
         "asset_class": "equity",
         "required":    ["Contract Note", "Stock Code", "Stock Name"],
@@ -62,7 +62,7 @@ BROKER_FINGERPRINTS: dict[str, dict[str, Any]] = {
         "supporting":  ["Transaction Ref", "Net Consideration", "Portfolio"],
         "weight":      1.0,
     },
-    # ── Crypto ────────────────────────────────────────────────────────────────
+    # -- Crypto ----------------------------------------------------------------
     "coinspot": {
         "asset_class": "crypto",
         "required":    ["Market", "Type", "Amount AUD"],
@@ -87,16 +87,16 @@ BROKER_FINGERPRINTS: dict[str, dict[str, Any]] = {
         "supporting":  ["cost", "fee", "margin"],
         "weight":      1.0,
     },
-    # ── Standard template ─────────────────────────────────────────────────────
+    # -- Standard template -----------------------------------------------------
     "standard": {
         "asset_class": "equity",
         "required":    ["asset_code", "transaction", "quantity", "unit_price"],
         "supporting":  ["brokerage", "gst", "net_proceeds"],
-        "weight":      0.7,   # lower weight — it's a fallback
+        "weight":      0.7,   # lower weight - it's a fallback
     },
 }
 
-# ── Known crypto symbols (top 60) ─────────────────────────────────────────────
+# -- Known crypto symbols (top 60) ---------------------------------------------
 CRYPTO_SYMBOLS = {
     "BTC","ETH","USDT","BNB","XRP","ADA","SOL","DOGE","DOT","MATIC",
     "LTC","SHIB","TRX","AVAX","LINK","UNI","ATOM","XLM","ETC","ALGO",
@@ -106,7 +106,7 @@ CRYPTO_SYMBOLS = {
     "OMG","BTT","1INCH","CAKE","LUNA","UST","RUNE","FIL","AR","STX",
 }
 
-# ── Known ASX equity symbols (sample — expand as needed) ──────────────────────
+# -- Known ASX equity symbols (sample - expand as needed) ----------------------
 ASX_SYMBOLS = {
     "CBA","ANZ","NAB","WBC","MQG","WES","BHP","RIO","FMG","CSL",
     "TLS","WDS","ALL","TCL","XRO","COL","WOW","GMG","QBE","IAG",
@@ -114,7 +114,7 @@ ASX_SYMBOLS = {
     "JHX","MPL","NXT","ORI","REA","RHC","SGP","SHL","SKC","TWE",
 }
 
-# ── Crypto event-type values (CoinSpot "Type" column etc.) ───────────────────
+# -- Crypto event-type values (CoinSpot "Type" column etc.) -------------------
 CRYPTO_EVENT_TYPES = {
     "TRADE_BUY","TRADE_SELL","STAKING_REWARD","AIRDROP","MINING",
     "INTEREST","YIELD","FORK","DEPOSIT","WITHDRAWAL","buy","sell",
@@ -195,7 +195,7 @@ def detect(path: str) -> dict[str, Any]:
         "asset_class":  "equity" | "crypto" | "unknown",
         "broker":       str,   # actual broker (may be overridden by ref prefix)
         "col_format":   str,   # column-layout broker (use this to pick column map)
-        "confidence":   float (0.0–1.0),
+        "confidence":   float (0.0-1.0),
         "header_row":   int,         # 0-based row index used as column header
         "signals":      list[str],   # what matched
         "warnings":     list[str],   # issues found
@@ -221,7 +221,7 @@ def detect(path: str) -> dict[str, Any]:
         result["warnings"].append(f"File not found: {path}")
         return result
 
-    # ── Load file, auto-detecting the correct header row ───────────────────────
+    # -- Load file, auto-detecting the correct header row -----------------------
     ext = os.path.splitext(path)[1].lower()
     try:
         if ext in (".xlsx", ".xlsm", ".xls"):
@@ -244,7 +244,7 @@ def detect(path: str) -> dict[str, Any]:
         p = pattern.lower()
         return any(p in c for c in cols_lower)
 
-    # ── Score each broker fingerprint ─────────────────────────────────────────
+    # -- Score each broker fingerprint -----------------------------------------
     scores: dict[str, float] = {}
     matched_signals: dict[str, list[str]] = {}
 
@@ -265,7 +265,7 @@ def detect(path: str) -> dict[str, Any]:
             [s for s in fp["supporting"] if col_match(s)]
         )
 
-    # ── Symbol-based evidence ─────────────────────────────────────────────────
+    # -- Symbol-based evidence -------------------------------------------------
     # Check first 5 rows for known symbols in string-like columns
     crypto_symbol_hits = 0
     equity_symbol_hits = 0
@@ -278,7 +278,7 @@ def detect(path: str) -> dict[str, Any]:
             if v_strip in ASX_SYMBOLS:
                 equity_symbol_hits += 1
 
-    # ── Event-type value evidence ─────────────────────────────────────────────
+    # -- Event-type value evidence ---------------------------------------------
     crypto_event_hits = 0
     for col in df.columns:
         vals = df[col].dropna().astype(str).tolist()
@@ -286,7 +286,7 @@ def detect(path: str) -> dict[str, Any]:
             if v.strip() in CRYPTO_EVENT_TYPES:
                 crypto_event_hits += 1
 
-    # ── Pick best broker ──────────────────────────────────────────────────────
+    # -- Pick best broker ------------------------------------------------------
     best_broker = max(scores, key=lambda b: scores[b])
     best_score  = scores[best_broker]
 
@@ -305,7 +305,7 @@ def detect(path: str) -> dict[str, Any]:
     result["confidence"]  = round(best_score, 3)
     result["asset_class"] = BROKER_FINGERPRINTS[best_broker]["asset_class"]
 
-    # ── Reference-number prefix override ─────────────────────────────────────
+    # -- Reference-number prefix override -------------------------------------
     # When multiple broker files share the same column layout (e.g. all use
     # CommSec headers), the contract note / reference prefix disambiguates the
     # actual broker.  col_format keeps the column-layout broker so the normaliser
@@ -316,10 +316,10 @@ def detect(path: str) -> dict[str, Any]:
             result["col_format"] = best_broker   # column layout stays as-is
             result["broker"]     = ref_broker
             result["signals"].append(
-                f"Reference prefix → broker override: {best_broker} → {ref_broker}"
+                f"Reference prefix - broker override: {best_broker} - {ref_broker}"
             )
 
-    # ── Low-confidence fallback ───────────────────────────────────────────────
+    # -- Low-confidence fallback -----------------------------------------------
     if best_score < CONFIDENCE_THRESHOLD:
         result["asset_class"] = "unknown"
         result["broker"]      = "unknown"
@@ -332,7 +332,7 @@ def detect(path: str) -> dict[str, Any]:
         missing = [r for r in closest_fp["required"] if not col_match(r)]
 
         result["fallback_suggestion"] = (
-            f"Closest match: '{closest}' ({closest_fp['asset_class']}) — "
+            f"Closest match: '{closest}' ({closest_fp['asset_class']}) - "
             f"missing columns: {missing}. "
             f"Use the HSLedger Standard Template or rename your columns."
         )
@@ -343,7 +343,7 @@ def detect(path: str) -> dict[str, Any]:
             "standard_template_url": "See HSLedger_Standard_Template.xlsx",
         }
         result["warnings"].append(
-            f"Low confidence ({best_score:.0%}) — broker could not be identified reliably."
+            f"Low confidence ({best_score:.0%}) - broker could not be identified reliably."
         )
 
     return result
@@ -354,7 +354,7 @@ def detect_batch(paths: list[str]) -> list[dict[str, Any]]:
     return [{"path": p, **detect(p)} for p in paths]
 
 
-# ── CLI smoke-test ────────────────────────────────────────────────────────────
+# -- CLI smoke-test ------------------------------------------------------------
 if __name__ == "__main__":
     import sys, json
     target = sys.argv[1] if len(sys.argv) > 1 else "."
@@ -367,7 +367,7 @@ if __name__ == "__main__":
         paths = [target]
 
     for r in detect_batch(paths):
-        print(f"\n{'─'*55}")
+        print(f"\n{'-'*55}")
         print(f"File:        {r['path']}")
         print(f"Broker:      {r['broker']}  ({r['asset_class']})")
         print(f"Confidence:  {r['confidence']:.0%}")

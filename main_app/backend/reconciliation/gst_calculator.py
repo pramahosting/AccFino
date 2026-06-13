@@ -1,6 +1,6 @@
 """
 backend/reconciliation/gst_calculator.py
-─────────────────────────────────────────
+-----------------------------------------
 Thin compatibility shim.
 
 All real logic lives in backend.classifier.engine.
@@ -25,7 +25,7 @@ from backend.classifier.engine import (
     DEFAULT_COA_PATH,
 )
 
-# ── GST_CATEGORY_OPTIONS — for UI dropdowns ───────────────────────────────
+# -- GST_CATEGORY_OPTIONS - for UI dropdowns -------------------------------
 # Derived from COA at import time; call gst_category_options() to refresh.
 GST_CATEGORY_OPTIONS: list = gst_category_options(DEFAULT_COA_PATH)
 
@@ -44,7 +44,7 @@ def calculate_gst(df: pd.DataFrame, account_id: str = "__default__",
     """
     Annotate a DataFrame with GST Category and GST columns.
 
-    If GL Account is already present, the engine is NOT called — GST
+    If GL Account is already present, the engine is NOT called - GST
     is computed purely from the existing GL Account's tax code.
 
     If GL Account is absent, classify_df() fills GL Account, GST Category
@@ -64,7 +64,7 @@ def calculate_gst(df: pd.DataFrame, account_id: str = "__default__",
         })
         return df
 
-    # GL already populated — just compute GST amounts from tax codes
+    # GL already populated - just compute GST amounts from tax codes
     gl_col  = "gl account" if "gl account" in df.columns else "gl_account"
     gst_col = "gst category" if "gst category" in df.columns else \
               ("gst_category" if "gst_category" in df.columns else None)
