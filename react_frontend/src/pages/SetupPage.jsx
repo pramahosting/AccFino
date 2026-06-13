@@ -242,13 +242,13 @@ function CoaTab() {
   })
 
   return (
-    <div style={{display:'grid',gridTemplateColumns:'260px 1fr',gap:16,
-      height:'calc(100vh - 220px)',minHeight:500,alignItems:'start'}}>
+    <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,
+      height:'calc(100vh - 140px)',minHeight:500,alignItems:'start',overflow:'hidden'}}>
 
       {/* - Left: form - */}
       <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',
         padding:'16px 18px',border:'1px solid var(--border)',
-        position:'sticky',top:0,overflowY:'auto',maxHeight:'calc(100vh - 240px)'}}>
+        position:'sticky',top:0,overflowY:'auto',maxHeight:'calc(100vh - 160px)'}}>
         <div style={{display:'flex',alignItems:'center',marginBottom:12}}>
           <h3 style={{margin:0,fontSize:'.95rem',flex:1}}>
             {editIdx!==null
@@ -302,7 +302,9 @@ function CoaTab() {
       </div>
 
       {/* - Right: table - */}
-      <div style={{display:'flex',flexDirection:'column',maxHeight:'calc(100vh - 240px)'}}>
+      <div style={{display:'flex',flexDirection:'column',
+        maxHeight:'calc(100vh - 160px)',overflow:'hidden',
+        border:'1px solid transparent'}}>
       {/* Toolbar */}
       <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
         <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}} onChange={handleUpload}/>
@@ -445,13 +447,13 @@ function RdrTab() {
   }
 
   return (
-    <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16,alignItems:'start',
-      height:'calc(100vh - 220px)',minHeight:500}}>
+    <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,alignItems:'start',
+      height:'calc(100vh - 140px)',minHeight:500}}>
 
       {/* Left: Editor - sticky, no scroll */}
       <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',
         padding:'16px 18px',border:'1px solid var(--border)',
-        position:'sticky',top:0,overflowY:'auto',maxHeight:'calc(100vh - 240px)'}}>
+        position:'sticky',top:0,overflowY:'auto',maxHeight:'calc(100vh - 160px)'}}>
         <div style={{display:'flex',alignItems:'center',marginBottom:14}}>
           <h3 style={{margin:0,fontSize:'.95rem',flex:1}}>
             {editId ? `Edit: ${form.name||'Rule'}` : 'New Rule'}
@@ -509,7 +511,7 @@ function RdrTab() {
       {/* Right: Rules list - scrollable */}
       <div style={{borderRadius:'var(--r-md)',border:'1px solid var(--border)',
         overflow:'hidden',display:'flex',flexDirection:'column',
-        maxHeight:'calc(100vh - 240px)'}}>
+        maxHeight:'calc(100vh - 160px)'}}>
         <div style={{padding:'10px 16px',borderBottom:'1px solid var(--border)',
           display:'flex',alignItems:'center',gap:10,background:'var(--surface-2)',flexWrap:'wrap'}}>
           <Zap size={14} color="var(--brand)"/>
@@ -651,13 +653,13 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
     </div>)
 
   return (
-    <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16,alignItems:'start',
-      height:'calc(100vh - 280px)',minHeight:400}}>
+    <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,alignItems:'start',
+      height:'calc(100vh - 140px)',minHeight:500}}>
 
       {/* Left: Add/Edit form */}
       <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',
         padding:16,border:'1px solid var(--border)',
-        overflowY:'auto',maxHeight:'calc(100vh - 300px)',
+        overflowY:'auto',maxHeight:'calc(100vh - 160px)',
         display:'flex',flexDirection:'column',gap:8}}>
         <div style={{display:'flex',alignItems:'center',marginBottom:4}}>
           <h3 style={{margin:0,fontSize:'.9rem',flex:1}}>
@@ -734,7 +736,7 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
       {/* Right: Company list */}
       <div style={{border:'1px solid var(--border)',borderRadius:'var(--r-md)',
         overflow:'hidden',display:'flex',flexDirection:'column',
-        maxHeight:'calc(100vh - 300px)'}}>
+        maxHeight:'calc(100vh - 160px)'}}>
         <div style={{padding:'10px 16px',background:'var(--surface-2)',
           borderBottom:'1px solid var(--border)',
           display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
@@ -956,13 +958,13 @@ function KbTab() {
           totalPages={totalPages} page={page} setPage={setPage}/>
       )}
       {subTab==='vendors' && (
-        <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16,alignItems:'start',
-          height:'calc(100vh - 280px)',minHeight:400}}>
+        <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,alignItems:'start',
+          height:'calc(100vh - 140px)',minHeight:500}}>
           <AddForm keyVal={vendorKey} setKey={setVendorKey} form={vendorForm} setForm={setVendorForm}
             onSave={saveVendor} label="Vendor" ph="e.g. uber, microsoft"
             onNew={()=>{setVendorKey('');setVendorForm({gl:'',gst:'',direction:'debit'})}}/>
           <div style={{border:'1px solid var(--border)',borderRadius:'var(--r-md)',overflow:'hidden',
-            display:'flex',flexDirection:'column',maxHeight:'calc(100vh - 300px)'}}>
+            display:'flex',flexDirection:'column',maxHeight:'calc(100vh - 160px)'}}>
             <div style={{padding:'10px 14px',background:'var(--surface-2)',fontWeight:700,fontSize:'.85rem',
               borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
               Vendor Map <span style={{fontWeight:400,fontSize:'.72rem',color:'var(--text-3)'}}>({filtV.length})</span>
@@ -997,13 +999,13 @@ function KbTab() {
       )}
 
       {subTab==='keywords' && (
-        <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16,alignItems:'start',
-          height:'calc(100vh - 280px)',minHeight:400}}>
+        <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,alignItems:'start',
+          height:'calc(100vh - 140px)',minHeight:500}}>
           <AddForm keyVal={kwKey} setKey={setKwKey} form={kwForm} setForm={setKwForm}
             onSave={saveKw} label="Keyword" ph="e.g. broker fee, cleaning"
             onNew={()=>{setKwKey('');setKwForm({gl:'',gst:'',direction:'debit'})}}/>
           <div style={{border:'1px solid var(--border)',borderRadius:'var(--r-md)',overflow:'hidden',
-            display:'flex',flexDirection:'column',maxHeight:'calc(100vh - 300px)'}}>
+            display:'flex',flexDirection:'column',maxHeight:'calc(100vh - 160px)'}}>
             <div style={{padding:'10px 14px',background:'var(--surface-2)',fontWeight:700,fontSize:'.85rem',
               borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
               Keyword Map <span style={{fontWeight:400,fontSize:'.72rem',color:'var(--text-3)'}}>({filtK.length})</span>
