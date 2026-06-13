@@ -83,139 +83,28 @@
     "then_gl_type": "Return"
   },
   {
-    "id": "in_tax_refund",
-    "priority": 935,
-    "if": {
-      "contains_any": [
-        "tax refund",
-        "ato refund",
-        "gst refund",
-        "bas refund"
-      ],
-      "credit_only": true
-    },
-    "then": "Other Revenue",
-    "then_gst_category": "BAS Excluded",
-    "then_gl_type": "Return"
-  },
-  {
-    "id": "in_insurance",
+    "id": "in_all_returns",
+    "name": "All returns, refunds and reversals (incoming)",
     "priority": 930,
     "if": {
       "contains_any": [
-        "insurance claim",
-        "insurance refund",
-        "insurance payment",
-        "claim paid",
-        "benefit payment",
-        "benefit paid",
-        "medibank refund",
-        "bupa refund",
-        "hcf refund",
-        "nib refund",
-        "hbf refund"
-      ],
-      "credit_only": true
-    },
-    "then": "Other Revenue",
-    "then_gst_category": "BAS Excluded",
-    "then_gl_type": "Return"
-  },
-  {
-    "id": "in_return_uber_one",
-    "name": "Uber One refund",
-    "priority": 926,
-    "if": {
-      "contains_any": [
-        "return uber *one",
-        "return uber*one",
-        "refund uber one"
-      ],
-      "credit_only": true
-    },
-    "then": "Subscriptions",
-    "then_gst_category": "BAS Excluded",
-    "then_gl_type": "Return"
-  },
-  {
-    "id": "in_return_uber_eats",
-    "name": "Uber Eats refund",
-    "priority": 926,
-    "if": {
-      "contains_any": [
-        "return uber eats",
-        "refund uber eats",
-        "ubereats refund"
-      ],
-      "credit_only": true
-    },
-    "then": "Entertainment",
-    "then_gst_category": "BAS Excluded",
-    "then_gl_type": "Return"
-  },
-  {
-    "id": "in_return_uber_trip",
-    "name": "Uber trip refund",
-    "priority": 926,
-    "if": {
-      "contains_any": [
-        "return uber *trip",
-        "return uber *ride",
-        "refund uber trip"
-      ],
-      "credit_only": true
-    },
-    "then": "MV - Fuel",
-    "then_gst_category": "BAS Excluded",
-    "then_gl_type": "Return"
-  },
-  {
-    "id": "in_return_microsoft",
-    "name": "Microsoft refund",
-    "priority": 926,
-    "if": {
-      "contains_any": [
-        "return microsoft",
-        "refund microsoft",
-        "microsoft refund",
-        "return msbill"
-      ],
-      "credit_only": true
-    },
-    "then": "Subscriptions",
-    "then_gst_category": "BAS Excluded",
-    "then_gl_type": "Return"
-  },
-  {
-    "id": "in_return_jbhifi",
-    "name": "JB Hi-Fi refund",
-    "priority": 926,
-    "if": {
-      "contains_any": [
-        "return jb hi-fi",
-        "return jb hifi",
-        "refund jb hi-fi",
-        "jb hi-fi refund"
-      ],
-      "credit_only": true
-    },
-    "then": "Office Expenses",
-    "then_gst_category": "BAS Excluded",
-    "then_gl_type": "Return"
-  },
-  {
-    "id": "in_refund",
-    "priority": 925,
-    "if": {
-      "contains_any": [
+        "return ",
         "refund",
         "reversal",
-        "reimburs",
-        "rebate",
-        "credit note",
         "credit adj",
         "chargeback",
-        "cashback"
+        "cashback",
+        "credit note",
+        "reimburs",
+        "rebate",
+        "tax refund",
+        "ato refund",
+        "gst refund",
+        "insurance claim",
+        "insurance refund",
+        "claim paid",
+        "benefit paid",
+        "benefit payment"
       ],
       "credit_only": true
     },
@@ -241,23 +130,6 @@
     },
     "then": "Services",
     "then_gst_category": "GST on Income"
-  },
-  {
-    "id": "in_card_return",
-    "priority": 916,
-    "name": "Card return/refund",
-    "if": {
-      "contains_any": [
-        "return ",
-        "refund",
-        "reversal",
-        "credit adj"
-      ],
-      "credit_only": true
-    },
-    "then": "Other Revenue",
-    "then_gst_category": "BAS Excluded",
-    "then_gl_type": "Return"
   },
   {
     "id": "in_direct_credit",
