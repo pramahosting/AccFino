@@ -1,7 +1,25 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { BookOpen, Plus, Pencil, Trash2, Check, X, Upload, Save, Download, ArrowUp, ArrowDown, ArrowUpDown, Zap } from 'lucide-react'
-import { rdrList, rdrCreate, rdrUpdate, rdrDelete, coaAccounts, kbGet, kbVendorUpsert, kbVendorDelete, kbKeywordUpsert, kbKeywordDelete, companyList, companyUpdate } from '../lib/api.js'
+import { parseCSVText, toCSV, downloadCSV } from '../lib/csvUtils.js'
+import { rdrList, rdrCreate, rdrUpdate, rdrDelete, coaAccounts, kbGet, kbVendorUpsert, kbVendorDelete, kbKeywordUpsert, kbKeywordDelete, companyList, companyUpdate, companyCreate, companyDelete, companyAddAlias } from '../lib/api.js'
 import toast from 'react-hot-toast'
+
+// - CsvBar: reusable upload/download button pair -----------------------
+function CsvBar({ onUpload, onDownload, label='CSV' }) {
+  const ref = React.useRef(null)
+  return (
+    <div style={{display:'flex',gap:6,paddingTop:10,borderTop:'1px solid var(--border)',marginTop:10}}>
+      <input ref={ref} type="file" accept=".csv" style={{display:'none'}}
+        onChange={e=>{if(e.target.files[0])onUpload(e.target.files[0]);e.target.value=''}}/>
+      <button className="btn btn-outline btn-sm" style={{flex:1}} onClick={()=>ref.current.click()}>
+        <Upload size={12}/> Upload {label}
+      </button>
+      <button className="btn btn-outline btn-sm" style={{flex:1}} onClick={onDownload}>
+        <Download size={12}/> Download {label}
+      </button>
+    </div>
+  )
+}
 
 // - Column filter popover (same pattern as OutputPanel) -------
 function ColFilter({ values, active, onChange, onClose, anchorPos }) {
@@ -180,7 +198,7 @@ function CoaTab() {
       const q=v=>`"${(v||'').replace(/"/g,'""')}"`
       const csv=['*Code,*Name,*Type,*Tax Code,Description,Dashboard',
         ...rows.map(r=>[q(r.Code),q(r.Name),q(r.Type),q(r.TaxCode),q(r.Description),q(r.Dashboard)].join(','))
-      ].join('\n')
+      ].join('\\n')
       const fd=new FormData()
       fd.append('file',new Blob([csv],{type:'text/csv'}),'ChartOfAccounts.csv')
       const resp=await fetch('/api/gl/accounts/upload',{method:'POST',body:fd})
@@ -252,7 +270,7 @@ function CoaTab() {
         <div style={{display:'flex',alignItems:'center',marginBottom:12}}>
           <h3 style={{margin:0,fontSize:'.95rem',flex:1}}>
             {editIdx!==null
-              ? `Edit: ${editRow?.Name||'Account'}`
+              ? 'Edit: '+(editRow?.Name||'Account')
               : 'New Account'}
           </h3>
           {editIdx!==null && (
@@ -287,27 +305,49 @@ function CoaTab() {
             )}
           </div>
         </div>
-        <div style={{borderTop:'1px solid var(--border)',marginTop:14,paddingTop:12,
-          display:'flex',flexDirection:'column',gap:6}}>
-          <button className="btn btn-outline btn-sm" onClick={()=>fileRef.current.click()}>
-            <Upload size={13}/> Upload CSV
-          </button>
-          <button className="btn btn-outline btn-sm" onClick={handleDownload}>
-            <Download size={13}/> Download CSV
-          </button>
-          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
-            <Save size={13}/> {saving?'Saving-':'Save & Apply'}
-          </button>
+        <div style={{marginTop:10,display:'flex',flexDirection:'column',gap:6}}>
+          <CsvBar label="COA"
+            onUpload={async file=>{
+              const text=await file.text()
+              const allRows=parseCSVText(text)
+              if(allRows.length<2){toast.error('CSV appears empty');return}
+              const header=allRows[0].map(h=>h.replace(/[*]/g,'').trim())
+              const parsed=allRows.slice(1).map((vals,i)=>{
+                const obj={}; header.forEach((h,j)=>{obj[h]=vals[j]||''})
+                const name=obj.Name||obj['*Name']||''; if(!name) return null
+                return {id:i,Code:obj.Code||obj['*Code']||'',Name:name,
+                  Type:obj.Type||obj['*Type']||'',TaxCode:obj['Tax Code']||obj['*Tax Code']||obj.TaxCode||'',
+                  Description:obj.Description||'',Dashboard:obj.Dashboard||''}
+              }).filter(Boolean)
+              const seen=new Set(); const deduped=parsed.filter(r=>{
+                const k=r.Name.toLowerCase().trim()
+                if(seen.has(k)) return false; seen.add(k); return true
+              })
+              setRows(deduped)
+              setSaving(true)
+              try{
+                const q=v=>'"'+(v||'').split('"').join('""')+'"'
+                const csv=['*Code,*Name,*Type,*Tax Code,Description,Dashboard',
+                  ...deduped.map(r=>[q(r.Code),q(r.Name),q(r.Type),q(r.TaxCode),q(r.Description),q(r.Dashboard)].join(','))
+                ].join(String.fromCharCode(10))
+                const fd=new FormData()
+                fd.append('file',new Blob([csv],{type:'text/csv'}),'ChartOfAccounts.csv')
+                const resp=await fetch('/api/gl/accounts/upload',{method:'POST',body:fd})
+                if(!resp.ok) throw new Error(await resp.text())
+                toast.success('COA: '+deduped.length+' accounts saved ('+( parsed.length-deduped.length)+' dupes removed)')
+              }catch(e){toast.error('Save failed: '+e.message)}
+              finally{setSaving(false)}
+            }}
+            onDownload={handleDownload}
+          />
         </div>
       </div>
 
       {/* - Right: table - */}
       <div style={{display:'flex',flexDirection:'column',
-        maxHeight:'calc(100vh - 160px)',overflow:'hidden',
-        border:'1px solid transparent'}}>
+        height:'calc(100vh - 160px)',overflow:'hidden'}}>
       {/* Toolbar */}
       <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
-        <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}} onChange={handleUpload}/>
         <div className="search-wrap" style={{flex:1}}>
           <svg className="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input className="input input-sm" style={{width:200,paddingLeft:34}} placeholder="Search accounts-"
@@ -447,16 +487,16 @@ function RdrTab() {
   }
 
   return (
-    <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,alignItems:'start',
-      height:'calc(100vh - 140px)',minHeight:500}}>
+    <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16,alignItems:'start',
+      height:'calc(100vh - 220px)',minHeight:500}}>
 
       {/* Left: Editor - sticky, no scroll */}
       <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',
         padding:'16px 18px',border:'1px solid var(--border)',
-        position:'sticky',top:0,overflowY:'auto',maxHeight:'calc(100vh - 160px)'}}>
+        position:'sticky',top:0,overflowY:'auto',maxHeight:'calc(100vh - 240px)'}}>
         <div style={{display:'flex',alignItems:'center',marginBottom:14}}>
           <h3 style={{margin:0,fontSize:'.95rem',flex:1}}>
-            {editId ? `Edit: ${form.name||'Rule'}` : 'New Rule'}
+            {editId ? 'Edit: '+(form.name||'Rule') : 'New Rule'}
           </h3>
           {editId && (
             <button className="btn btn-ghost btn-sm"
@@ -505,13 +545,45 @@ function RdrTab() {
             </button>
 
           </div>
+          <CsvBar label="Rules"
+            onUpload={async file=>{
+              const rows=parseCSVText(await file.text())
+              if(rows.length<2){toast.error('Empty CSV');return}
+              const hdr=rows[0].map(h=>h.trim().toLowerCase())
+              const parsed=rows.slice(1).map(vals=>{
+                const o={}; hdr.forEach((h,i)=>o[h]=vals[i]||'')
+                if(!o.name&&!o.id) return null
+                const kws=(o.keywords||o.contains_any||'').split('|').map(k=>k.trim()).filter(Boolean)
+                return {id:o.id||('rule_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)),
+                  name:o.name||'', priority:parseInt(o.priority)||100,
+                  if:{contains_any:kws,
+                    ...(o.direction==='debit_only'?{debit_only:true}:{}),
+                    ...(o.direction==='credit_only'?{credit_only:true}:{})},
+                  then:o.gl||o.then||'', then_gst_category:o.gst||o.then_gst_category||''}
+              }).filter(Boolean)
+              const merged=[...rules]; let added=0,updated=0
+              parsed.forEach(r=>{
+                const idx=merged.findIndex(x=>x.id===r.id||x.name.toLowerCase()===r.name.toLowerCase())
+                if(idx>=0){merged[idx]=r;updated++}else{merged.push(r);added++}
+              })
+              merged.sort((a,b)=>(b.priority||0)-(a.priority||0))
+              for(const r of merged){ try{await rdrCreate(r)}catch{try{await rdrUpdate(r.id,r)}catch{}} }
+              setRules(merged); toast.success('Rules: '+added+' added, '+updated+' updated')
+            }}
+            onDownload={()=>downloadCSV('business_rules.csv',toCSV(
+              rules.map(r=>({id:r.id,name:r.name,priority:r.priority||100,
+                keywords:(r.if?.contains_any||[]).join('|'),gl:r.then||'',
+                gst:r.then_gst_category||'',
+                direction:r.if?.debit_only?'debit_only':r.if?.credit_only?'credit_only':''})),
+              ['id','name','priority','keywords','gl','gst','direction']))}
+          />
         </div>
       </div>
 
       {/* Right: Rules list - scrollable */}
       <div style={{borderRadius:'var(--r-md)',border:'1px solid var(--border)',
         overflow:'hidden',display:'flex',flexDirection:'column',
-        maxHeight:'calc(100vh - 160px)'}}>
+        maxHeight:'calc(100vh - 240px)'}}>
         <div style={{padding:'10px 16px',borderBottom:'1px solid var(--border)',
           display:'flex',alignItems:'center',gap:10,background:'var(--surface-2)',flexWrap:'wrap'}}>
           <Zap size={14} color="var(--brand)"/>
@@ -574,7 +646,8 @@ function RdrTab() {
 // - Knowledge Base tab ------------------
 const DIRECTION_LABELS = { '': '-', 'debit': '- Out', 'credit': '- In' }
 
-// Companies sub-tab component (must be a real component to use hooks)
+
+// CompaniesPane: proper component so hooks work correctly
 function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, totalPages, page, setPage }) {
   const BLANK_CO = {name:'',short_name:'',category:'',subcategory:'',country:'AU',abn:'',is_government:false}
   const [coForm,   setCoForm]   = useState(BLANK_CO)
@@ -612,7 +685,7 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
   }
 
   const delCo = async c => {
-    if(!confirm(`Delete "${c.name}"?`)) return
+    if(!confirm('Delete "'+c.name+'"?')) return
     await companyDelete(c.id).catch(()=>{})
     setCompanies(prev=>prev.filter(x=>x.id!==c.id))
     if(coEdit?.id===c.id) resetCo()
@@ -634,7 +707,7 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
 
   const delAlias = async (txt) => {
     if(!coEdit) return
-    await fetch(`/api/company/${coEdit.id}/alias/${encodeURIComponent(txt)}`,
+    await fetch('/api/company/'+coEdit.id+'/alias/'+encodeURIComponent(txt),
       {method:'DELETE'}).catch(()=>{})
     const updated = {...coEdit,aliases:(coEdit.aliases||[]).filter(a=>(a.alias||a)!==txt)}
     setCoEdit(updated)
@@ -653,17 +726,16 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
     </div>)
 
   return (
-    <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,alignItems:'start',
-      height:'calc(100vh - 140px)',minHeight:500}}>
+    <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,
+      height:'calc(100vh - 140px)',minHeight:500,alignItems:'start',overflow:'hidden'}}>
 
-      {/* Left: Add/Edit form */}
-      <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',
-        padding:16,border:'1px solid var(--border)',
-        overflowY:'auto',maxHeight:'calc(100vh - 160px)',
+      {/* Left: form */}
+      <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',padding:16,
+        border:'1px solid var(--border)',overflowY:'auto',maxHeight:'calc(100vh - 160px)',
         display:'flex',flexDirection:'column',gap:8}}>
         <div style={{display:'flex',alignItems:'center',marginBottom:4}}>
           <h3 style={{margin:0,fontSize:'.9rem',flex:1}}>
-            {coEdit ? `Edit: ${coEdit.name}` : 'New Company'}
+            {coEdit ? 'Edit: '+coEdit.name : 'New Company'}
           </h3>
           {coEdit && (
             <button className="btn btn-ghost btn-sm"
@@ -700,11 +772,37 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
             <Trash2 size={12}/> Delete Company
           </button>
         )}
+        <CsvBar label="Companies"
+          onUpload={async file=>{
+            const rows=parseCSVText(await file.text())
+            if(rows.length<2){toast.error('Empty CSV');return}
+            const hdr=rows[0].map(h=>h.trim().toLowerCase())
+            let added=0,updated=0
+            for(const vals of rows.slice(1)){
+              const o={}; hdr.forEach((h,i)=>o[h]=vals[i]||'')
+              const name=(o.name||'').trim(); if(!name) continue
+              const body={name,short_name:o.short_name||'',category:o.category||'',
+                subcategory:o.subcategory||'',country:(o.country||'AU').toUpperCase(),
+                abn:o.abn||'',is_government:o.is_government==='true'}
+              try{
+                const ex=companies.find(c=>c.name.toLowerCase()===name.toLowerCase())
+                if(ex){const {data}=await companyUpdate(ex.id,body);setCompanies(prev=>prev.map(c=>c.id===ex.id?{...data,aliases:c.aliases}:c));updated++}
+                else{const {data}=await companyCreate(body);setCompanies(prev=>[...prev,{...data,aliases:[]}]);added++}
+              }catch{}
+            }
+            toast.success('Companies: '+added+' added, '+updated+' updated')
+          }}
+          onDownload={()=>downloadCSV('companies.csv',toCSV(
+            companies.map(c=>({name:c.name,short_name:c.short_name||'',category:c.category||'',
+              country:c.country||'AU',abn:c.abn||'',
+              aliases:(c.aliases||[]).map(a=>typeof a==='string'?a:a.alias).join('|')})),
+            ['name','short_name','category','country','abn','aliases']))}
+        />
         {coEdit && (
           <div style={{borderTop:'1px solid var(--border)',paddingTop:10,marginTop:4}}>
             <div style={{fontWeight:700,fontSize:'.82rem',marginBottom:6}}>Aliases</div>
             <div style={{display:'flex',gap:4,marginBottom:6}}>
-              <input className="input input-sm" style={{flex:1}} placeholder="add alias…"
+              <input className="input input-sm" style={{flex:1}} placeholder="add alias..."
                 value={newAlias} onChange={e=>setNewAlias(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&addAlias()}/>
               <button className="btn btn-outline btn-sm" onClick={addAlias}>
@@ -733,17 +831,18 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
         )}
       </div>
 
-      {/* Right: Company list */}
+      {/* Right: company list */}
       <div style={{border:'1px solid var(--border)',borderRadius:'var(--r-md)',
-        overflow:'hidden',display:'flex',flexDirection:'column',
-        maxHeight:'calc(100vh - 160px)'}}>
+        overflow:'hidden',display:'flex',flexDirection:'column',maxHeight:'calc(100vh - 160px)'}}>
         <div style={{padding:'10px 16px',background:'var(--surface-2)',
           borderBottom:'1px solid var(--border)',
           display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
           <span style={{fontWeight:700,fontSize:'.85rem'}}>Company Database</span>
           <span style={{background:'var(--surface-3)',borderRadius:100,padding:'1px 8px',
             fontSize:'.72rem',fontWeight:700}}>{filteredCo.length}</span>
-          <span style={{fontSize:'.72rem',color:'var(--text-3)'}}>· click row to edit</span>
+          <span style={{fontSize:'.72rem',color:'var(--text-3)'}}>
+            · click row to edit
+          </span>
         </div>
         {loading
           ? <div style={{padding:32,textAlign:'center',color:'var(--text-3)'}}>Loading...</div>
@@ -762,8 +861,8 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
                       background:coEdit?.id===c.id?'var(--brand-bg,#eff6ff)':undefined}}
                       onClick={()=>startCoEdit(c)}>
                       <td style={{fontWeight:600,fontSize:'.82rem'}}>{c.name}</td>
-                      <td style={{fontSize:'.78rem',color:'var(--text-2)'}}>{c.short_name||'—'}</td>
-                      <td style={{fontSize:'.75rem',color:'var(--text-3)'}}>{c.category||'—'}</td>
+                      <td style={{fontSize:'.78rem',color:'var(--text-2)'}}>{c.short_name||'-'}</td>
+                      <td style={{fontSize:'.75rem',color:'var(--text-3)'}}>{c.category||'-'}</td>
                       <td style={{fontSize:'.72rem'}}>
                         {(c.aliases||[]).slice(0,3).map((a,ai)=>(
                           <span key={ai} style={{display:'inline-block',
@@ -816,8 +915,14 @@ function KbTab() {
     coaAccounts().then(r=>setGlList(r.data||[])).catch(()=>{})
     setLoading(true)
     companyList({limit:500,skip:0}).then(r=>{
-      setCompanies(Array.isArray(r.data)?r.data:[])
-    }).catch(()=>setCompanies([])).finally(()=>setLoading(false))
+      const data=Array.isArray(r.data)?r.data:[]
+      if(data.length===0) console.warn('[KbTab] companyList returned 0 results')
+      // normalise aliases: server returns [{id,alias}], ensure consistent format
+      const normalised = data.map(c=>({...c,
+        aliases:(c.aliases||[]).map(a=>typeof a==='string'?{id:0,alias:a}:a)
+      }))
+      setCompanies(normalised)
+    }).catch(e=>{console.error('[KbTab] companyList error',e);setCompanies([])}).finally(()=>setLoading(false))
   },[])
 
   useEffect(()=>setPage(1),[search,subTab])
@@ -905,16 +1010,19 @@ function KbTab() {
       <button className="btn btn-ghost btn-sm" onClick={()=>set(total)} disabled={cur===total}>-</button>
     </div>)
 
-  const AddForm=({keyVal,setKey,form,setForm,onSave,onNew,label,ph})=>(
+  const AddForm=({keyVal,setKey,form,setForm,onSave,onNew,onDelete,label,ph,onUpload,onDownload})=>{
+    const fileRef2 = useRef(null)
+    return (
     <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',padding:16,
-      border:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:8}}>
+      border:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:8,
+      overflowY:'auto',maxHeight:'calc(100vh - 160px)'}}>
       <div style={{display:'flex',alignItems:'center',marginBottom:2}}>
         <h3 style={{margin:0,fontSize:'.9rem',flex:1}}>
           {keyVal ? `Edit: ${keyVal}` : `New ${label}`}
         </h3>
         {keyVal && onNew && (
-          <button className="btn btn-ghost btn-sm" onClick={onNew}
-            style={{fontSize:'.75rem',padding:'2px 8px'}}>
+          <button className="btn btn-ghost btn-sm"
+            style={{fontSize:'.75rem',padding:'2px 8px'}} onClick={onNew}>
             <Plus size={12}/> New
           </button>
         )}
@@ -935,7 +1043,28 @@ function KbTab() {
       <button className="btn btn-primary btn-sm" onClick={onSave} disabled={saving}>
         {saving ? 'Saving...' : keyVal ? 'Update' : '+ Save'}
       </button>
+      {keyVal && onDelete && (
+        <button className="btn btn-ghost btn-sm"
+          style={{color:'var(--danger)',fontSize:'.78rem'}} onClick={onDelete}>
+          <Trash2 size={12}/> Delete {label}
+        </button>
+      )}
+      {onUpload && (
+        <div style={{borderTop:'1px solid var(--border)',marginTop:4,paddingTop:10,
+          display:'flex',flexDirection:'row',gap:6}}>
+          <input ref={fileRef2} type="file" accept=".csv" style={{display:'none'}}
+            onChange={e=>{if(e.target.files[0])onUpload(e.target.files[0]);e.target.value=''}}/>
+          <button className="btn btn-outline btn-sm" style={{flex:1}}
+            onClick={()=>fileRef2.current.click()}>
+            <Upload size={12}/> Upload {label}
+          </button>
+          <button className="btn btn-outline btn-sm" style={{flex:1}} onClick={onDownload}>
+            <Download size={12}/> Download {label}
+          </button>
+        </div>
+      )}
     </div>)
+  }
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:12}}>
@@ -957,14 +1086,37 @@ function KbTab() {
           loading={loading} filteredCo={filteredCo} pageCo={pageCo}
           totalPages={totalPages} page={page} setPage={setPage}/>
       )}
+
       {subTab==='vendors' && (
-        <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,alignItems:'start',
-          height:'calc(100vh - 140px)',minHeight:500}}>
+        <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,
+          height:'calc(100vh - 140px)',minHeight:500,alignItems:'start',overflow:'hidden'}}>
           <AddForm keyVal={vendorKey} setKey={setVendorKey} form={vendorForm} setForm={setVendorForm}
             onSave={saveVendor} label="Vendor" ph="e.g. uber, microsoft"
-            onNew={()=>{setVendorKey('');setVendorForm({gl:'',gst:'',direction:'debit'})}}/>
-          <div style={{border:'1px solid var(--border)',borderRadius:'var(--r-md)',overflow:'hidden',
-            display:'flex',flexDirection:'column',maxHeight:'calc(100vh - 160px)'}}>
+            onNew={()=>{setVendorKey('');setVendorForm({gl:'',gst:'',direction:'debit'})}}
+            onDelete={vendorKey?()=>delVendor(vendorKey):undefined}
+            onUpload={async file=>{
+              const rows=parseCSVText(await file.text())
+              if(rows.length<2){toast.error('Empty CSV');return}
+              const hdr=rows[0].map(h=>h.trim().toLowerCase())
+              let added=0,updated=0
+              const vm={...(kb?.vendor_map||{})}
+              rows.slice(1).forEach(vals=>{
+                const o={}; hdr.forEach((h,i)=>o[h]=vals[i]||'')
+                const k=(o.vendor||o.name||'').trim().toLowerCase()
+                if(!k||!o.gl) return
+                const entry={gl:o.gl,gst:o.gst||'',direction:o.direction||'debit'}
+                if(vm[k]) updated++; else added++
+                vm[k]=entry; kbVendorUpsert(k,entry).catch(()=>{})
+              })
+              setKb(p=>({...p,vendor_map:vm}))
+              toast.success('Vendors: '+added+' added, '+updated+' updated')
+            }}
+            onDownload={()=>downloadCSV('vendor_map.csv',toCSV(
+              Object.entries(kb?.vendor_map||{}).map(([k,e])=>({vendor:k,gl:e.gl||'',gst:e.gst||'',direction:e.direction||''})),
+              ['vendor','gl','gst','direction']))}
+          />
+          <div style={{border:'1px solid var(--border)',borderRadius:'var(--r-md)',
+            overflow:'hidden',display:'flex',flexDirection:'column',maxHeight:'calc(100vh - 160px)'}}>
             <div style={{padding:'10px 14px',background:'var(--surface-2)',fontWeight:700,fontSize:'.85rem',
               borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
               Vendor Map <span style={{fontWeight:400,fontSize:'.72rem',color:'var(--text-3)'}}>({filtV.length})</span>
@@ -999,13 +1151,35 @@ function KbTab() {
       )}
 
       {subTab==='keywords' && (
-        <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,alignItems:'start',
-          height:'calc(100vh - 140px)',minHeight:500}}>
+        <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,
+          height:'calc(100vh - 140px)',minHeight:500,alignItems:'start',overflow:'hidden'}}>
           <AddForm keyVal={kwKey} setKey={setKwKey} form={kwForm} setForm={setKwForm}
             onSave={saveKw} label="Keyword" ph="e.g. broker fee, cleaning"
-            onNew={()=>{setKwKey('');setKwForm({gl:'',gst:'',direction:'debit'})}}/>
-          <div style={{border:'1px solid var(--border)',borderRadius:'var(--r-md)',overflow:'hidden',
-            display:'flex',flexDirection:'column',maxHeight:'calc(100vh - 160px)'}}>
+            onNew={()=>{setKwKey('');setKwForm({gl:'',gst:'',direction:'debit'})}}
+            onDelete={kwKey?()=>delKw(kwKey):undefined}
+            onUpload={async file=>{
+              const rows=parseCSVText(await file.text())
+              if(rows.length<2){toast.error('Empty CSV');return}
+              const hdr=rows[0].map(h=>h.trim().toLowerCase())
+              let added=0,updated=0
+              const km={...(kb?.keyword_map||{})}
+              rows.slice(1).forEach(vals=>{
+                const o={}; hdr.forEach((h,i)=>o[h]=vals[i]||'')
+                const k=(o.keyword||o.name||'').trim().toLowerCase()
+                if(!k||!o.gl) return
+                const entry={gl:o.gl,gst:o.gst||'',direction:o.direction||'debit'}
+                if(km[k]) updated++; else added++
+                km[k]=entry; kbKeywordUpsert(k,entry).catch(()=>{})
+              })
+              setKb(p=>({...p,keyword_map:km}))
+              toast.success('Keywords: '+added+' added, '+updated+' updated')
+            }}
+            onDownload={()=>downloadCSV('keyword_map.csv',toCSV(
+              Object.entries(kb?.keyword_map||{}).map(([k,e])=>({keyword:k,gl:e.gl||'',gst:e.gst||'',direction:e.direction||''})),
+              ['keyword','gl','gst','direction']))}
+          />
+          <div style={{border:'1px solid var(--border)',borderRadius:'var(--r-md)',
+            overflow:'hidden',display:'flex',flexDirection:'column',maxHeight:'calc(100vh - 160px)'}}>
             <div style={{padding:'10px 14px',background:'var(--surface-2)',fontWeight:700,fontSize:'.85rem',
               borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
               Keyword Map <span style={{fontWeight:400,fontSize:'.72rem',color:'var(--text-3)'}}>({filtK.length})</span>
