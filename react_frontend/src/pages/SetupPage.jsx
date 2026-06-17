@@ -993,7 +993,7 @@ function KbTab() {
   const filteredCo = companies.filter(c=>!search||
     (c.name||'').toLowerCase().includes(search.toLowerCase())||
     (c.short_name||'').toLowerCase().includes(search.toLowerCase())||
-    (c.aliases||[]).some(a=>a.toLowerCase().includes(search.toLowerCase())))
+    (c.aliases||[]).some(a=>(typeof a==='string'?a:a.alias||'').toLowerCase().includes(search.toLowerCase())))
   const totalPages = Math.max(1,Math.ceil(filteredCo.length/PAGE_SIZE))
   const pageCo = filteredCo.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
 
