@@ -152,13 +152,17 @@ function CoaTab() {
   const [colWidths, setColWidths] = useState(DEFAULT_WIDTHS)
 
   useEffect(()=>{
+    let alive=true
     fetch('/api/gl/accounts/all').then(r=>r.json()).then(d=>{
+      if(!alive) return
       const arr = Array.isArray(d)?d:(d.rows||[])
       setRows(arr.length ? arr.map((r,i)=>({id:i,
         Code:r.Code||'', Name:r.Name||r.name||'',
         Type:r.Type||r.type||'', TaxCode:r.TaxCode||r.tax_code||r['Tax Code']||'',
         Description:r.Description||'', Dashboard:r.Dashboard||''})) : [])
-    }).catch(()=>{}).finally(()=>setLoading(false))
+    }).catch(e=>{ if(alive) console.warn('COA load:',e?.message||e) })
+     .finally(()=>{ if(alive) setLoading(false) })
+    return ()=>{ alive=false }
   },[])
 
   const parseCSV = text => {
@@ -437,8 +441,10 @@ function RdrTab() {
   const [rdrSearch, setRdrSearch]= useState('')
 
   useEffect(()=>{
-    rdrList().then(r=>setRules(r.data||[])).catch(()=>{})
-    coaAccounts().then(r=>setGlList(r.data||[])).catch(()=>{})
+    let alive=true
+    rdrList().then(r=>{ if(alive) setRules(r.data||[]) }).catch(()=>{})
+    coaAccounts().then(r=>{ if(alive) setGlList(r.data||[]) }).catch(()=>{})
+    return ()=>{ alive=false }
   },[])
 
   const set = k => e => setForm(f=>({...f,[k]:e.target.value}))
@@ -911,18 +917,21 @@ function KbTab() {
   const PAGE_SIZE = 50
 
   useEffect(()=>{
-    kbGet().then(r=>setKb(r.data||{})).catch(()=>setKb({}))
-    coaAccounts().then(r=>setGlList(r.data||[])).catch(()=>{})
+    let alive=true
+    kbGet().then(r=>{ if(alive) setKb(r.data||{}) }).catch(()=>{ if(alive) setKb({}) })
+    coaAccounts().then(r=>{ if(alive) setGlList(r.data||[]) }).catch(()=>{})
     setLoading(true)
     companyList({limit:500,skip:0}).then(r=>{
+      if(!alive) return
       const data=Array.isArray(r.data)?r.data:[]
       if(data.length===0) console.warn('[KbTab] companyList returned 0 results')
-      // normalise aliases: server returns [{id,alias}], ensure consistent format
       const normalised = data.map(c=>({...c,
         aliases:(c.aliases||[]).map(a=>typeof a==='string'?{id:0,alias:a}:a)
       }))
       setCompanies(normalised)
-    }).catch(e=>{console.error('[KbTab] companyList error',e);setCompanies([])}).finally(()=>setLoading(false))
+    }).catch(e=>{ if(alive){ console.error('[KbTab] companyList:',e?.message||e); setCompanies([]) }
+    }).finally(()=>{ if(alive) setLoading(false) })
+    return ()=>{ alive=false }
   },[])
 
   useEffect(()=>setPage(1),[search,subTab])
