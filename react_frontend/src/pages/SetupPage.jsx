@@ -660,6 +660,7 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
   const [coEdit,   setCoEdit]   = useState(null)
   const [coSaving, setCoSaving] = useState(false)
   const [newAlias, setNewAlias] = useState('')
+  const [coSearch, setCoSearch] = useState('')
 
   const startCoEdit = c => {
     setCoEdit(c)
@@ -846,9 +847,9 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
           <span style={{fontWeight:700,fontSize:'.85rem'}}>Company Database</span>
           <span style={{background:'var(--surface-3)',borderRadius:100,padding:'1px 8px',
             fontSize:'.72rem',fontWeight:700}}>{filteredCo.length}</span>
-          <span style={{fontSize:'.72rem',color:'var(--text-3)'}}>
-            · click row to edit
-          </span>
+          <input className="input input-sm" placeholder="Search companies..."
+            value={coSearch} onChange={e=>{setCoSearch(e.target.value);setPage(1)}}
+            style={{marginLeft:'auto',width:200}}/>
         </div>
         {loading
           ? <div style={{padding:32,textAlign:'center',color:'var(--text-3)'}}>Loading...</div>
@@ -999,9 +1000,9 @@ function KbTab() {
   const vendors  = Object.entries(kb.vendor_map||{})
   const keywords = Object.entries(kb.keyword_map||{})
 
-  const _sq = search.toLowerCase()
+  const _sq = coSearch.toLowerCase()
   const filteredCo = companies.filter(c=>{
-    if(!search) return true
+    if(!coSearch) return true
     try {
       if((c.name||'').toLowerCase().includes(_sq)) return true
       if((c.short_name||'').toLowerCase().includes(_sq)) return true
@@ -1014,8 +1015,10 @@ function KbTab() {
   const totalPages = Math.max(1,Math.ceil(filteredCo.length/PAGE_SIZE))
   const pageCo = filteredCo.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
 
-  const filtV = vendors.filter(([k])=>!search||String(k||'').toLowerCase().includes(search.toLowerCase()))
-  const filtK = keywords.filter(([k])=>!search||String(k||'').toLowerCase().includes(search.toLowerCase()))
+  const [vSearch, setVSearch] = useState('')
+  const [kSearch, setKSearch] = useState('')
+  const filtV = vendors.filter(([k])=>!vSearch||String(k||'').toLowerCase().includes(vSearch.toLowerCase()))
+  const filtK = keywords.filter(([k])=>!kSearch||String(k||'').toLowerCase().includes(kSearch.toLowerCase()))
 
   const Pager=({total,cur,set})=>total<=1?null:(
     <div style={{display:'flex',gap:4,alignItems:'center',justifyContent:'center',
@@ -1137,6 +1140,9 @@ function KbTab() {
             <div style={{padding:'10px 14px',background:'var(--surface-2)',fontWeight:700,fontSize:'.85rem',
               borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
               Vendor Map <span style={{fontWeight:400,fontSize:'.72rem',color:'var(--text-3)'}}>({filtV.length})</span>
+              <input className="input input-sm" placeholder="Search vendors..."
+                value={vSearch} onChange={e=>setVSearch(e.target.value)}
+                style={{marginLeft:'auto',width:200,fontWeight:'normal'}}/>
             </div>
             <div style={{overflowY:'auto',flex:1}}>
               <table className="data-table" style={{width:'100%'}}>
@@ -1200,6 +1206,9 @@ function KbTab() {
             <div style={{padding:'10px 14px',background:'var(--surface-2)',fontWeight:700,fontSize:'.85rem',
               borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
               Keyword Map <span style={{fontWeight:400,fontSize:'.72rem',color:'var(--text-3)'}}>({filtK.length})</span>
+              <input className="input input-sm" placeholder="Search keywords..."
+                value={kSearch} onChange={e=>setKSearch(e.target.value)}
+                style={{marginLeft:'auto',width:200,fontWeight:'normal'}}/>
             </div>
             <div style={{overflowY:'auto',flex:1}}>
               <table className="data-table" style={{width:'100%'}}>
