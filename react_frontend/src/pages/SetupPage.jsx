@@ -524,7 +524,7 @@ function RdrTab() {
             <label>GL Account</label>
             <select className="input input-sm" value={form.gl} onChange={set('gl')}>
               <option value="">-- Select --</option>
-              {glList.map(g=><option key={g.name} value={g.name}>{g.name}</option>)}
+              {glList.map((g,i)=>{const n=typeof g==='string'?g:(g?.name||'');return(<option key={n||i} value={n}>{n}</option>)})}
             </select>
           </div>
           <div className="input-group">
@@ -612,7 +612,7 @@ function RdrTab() {
                 </tr>
               </thead>
               <tbody>
-                {[...rules].filter(r=>!rdrSearch||(r.name||'').toLowerCase().includes(rdrSearch.toLowerCase())||(r.if?.contains_any||[]).some(k=>k.includes(rdrSearch.toLowerCase()))).sort((a,b)=>(b.priority||0)-(a.priority||0)).map(r=>(
+                {[...rules].filter(r=>!rdrSearch||(r.name||'').toLowerCase().includes(rdrSearch.toLowerCase())||(r.if?.contains_any||[]).some(k=>String(k||'').toLowerCase().includes(rdrSearch.toLowerCase()))).sort((a,b)=>(b.priority||0)-(a.priority||0)).map(r=>(
                   <tr key={r.id} style={{cursor:'pointer'}} onClick={()=>startEdit(r)}>
                     <td style={{fontFamily:'var(--font-mono)',fontWeight:700,fontSize:'.8rem'}}>{r.priority||0}</td>
                     <td style={{fontWeight:600,fontSize:'.85rem'}}>{r.name||r.id}</td>
@@ -932,7 +932,7 @@ function KbTab() {
   const GlSel=({v,s})=>(
     <select className="input input-sm" value={v} onChange={e=>s(e.target.value)}>
       <option value="">-- GL Account --</option>
-      {glList.map(g=><option key={g.name} value={g.name}>{g.name}</option>)}
+      {glList.map((g,i)=>{const n=typeof g==='string'?g:(g?.name||'');return(<option key={n||i} value={n}>{n}</option>)})}
     </select>)
 
   const GstSel=({v,s})=>(
@@ -990,15 +990,23 @@ function KbTab() {
   const vendors  = Object.entries(kb.vendor_map||{})
   const keywords = Object.entries(kb.keyword_map||{})
 
-  const filteredCo = companies.filter(c=>!search||
-    (c.name||'').toLowerCase().includes(search.toLowerCase())||
-    (c.short_name||'').toLowerCase().includes(search.toLowerCase())||
-    (c.aliases||[]).some(a=>(typeof a==='string'?a:a.alias||'').toLowerCase().includes(search.toLowerCase())))
+  const _sq = search.toLowerCase()
+  const filteredCo = companies.filter(c=>{
+    if(!search) return true
+    try {
+      if((c.name||'').toLowerCase().includes(_sq)) return true
+      if((c.short_name||'').toLowerCase().includes(_sq)) return true
+      return (c.aliases||[]).some(a=>{
+        const txt = typeof a==='string' ? a : (a?.alias||'')
+        return String(txt).toLowerCase().includes(_sq)
+      })
+    } catch { return false }
+  })
   const totalPages = Math.max(1,Math.ceil(filteredCo.length/PAGE_SIZE))
   const pageCo = filteredCo.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
 
-  const filtV = vendors.filter(([k])=>!search||k.includes(search.toLowerCase()))
-  const filtK = keywords.filter(([k])=>!search||k.includes(search.toLowerCase()))
+  const filtV = vendors.filter(([k])=>!search||String(k||'').toLowerCase().includes(search.toLowerCase()))
+  const filtK = keywords.filter(([k])=>!search||String(k||'').toLowerCase().includes(search.toLowerCase()))
 
   const Pager=({total,cur,set})=>total<=1?null:(
     <div style={{display:'flex',gap:4,alignItems:'center',justifyContent:'center',
@@ -1127,7 +1135,7 @@ function KbTab() {
                   <th>Vendor</th><th>GL</th><th>GST</th><th style={{width:60}}>Dir</th><th style={{width:36}}></th>
                 </tr></thead>
                 <tbody>
-                  {filtV.sort(([a],[b])=>a.localeCompare(b)).map(([k,e])=>(
+                  {filtV.sort(([a],[b])=>String(a).localeCompare(String(b))).map(([k,e])=>(
                     <tr key={k} style={{cursor:'pointer'}}
                       onClick={()=>{setVendorKey(k);setVendorForm({gl:e.gl||'',gst:e.gst||'',direction:e.direction||'debit'})}}>
                       <td style={{fontWeight:600,fontSize:'.82rem'}}>{k}</td>
@@ -1190,7 +1198,7 @@ function KbTab() {
                   <th>Keyword</th><th>GL</th><th>GST</th><th style={{width:60}}>Dir</th><th style={{width:36}}></th>
                 </tr></thead>
                 <tbody>
-                  {filtK.sort(([a],[b])=>a.localeCompare(b)).map(([k,e])=>(
+                  {filtK.sort(([a],[b])=>String(a).localeCompare(String(b))).map(([k,e])=>(
                     <tr key={k} style={{cursor:'pointer'}}
                       onClick={()=>{setKwKey(k);setKwForm({gl:e.gl||'',gst:e.gst||'',direction:e.direction||'debit'})}}>
                       <td style={{fontWeight:600,fontSize:'.82rem'}}>{k}</td>
