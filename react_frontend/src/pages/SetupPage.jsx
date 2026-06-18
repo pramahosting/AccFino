@@ -530,7 +530,7 @@ function RdrTab() {
             <label>GL Account</label>
             <select className="input input-sm" value={form.gl} onChange={set('gl')}>
               <option value="">-- Select --</option>
-              {glList.map((g,i)=>{const n=typeof g==='string'?g:(g?.name||'');return(<option key={n||i} value={n}>{n}</option>)})}
+              {glList.map((g,i)=>{const n=typeof g==='string'?g:String(g?.Name||g?.name||'');return n?(<option key={n} value={n}>{n}</option>):null})}
             </select>
           </div>
           <div className="input-group">
@@ -942,7 +942,7 @@ function KbTab() {
   const GlSel=({v,s})=>(
     <select className="input input-sm" value={v} onChange={e=>s(e.target.value)}>
       <option value="">-- GL Account --</option>
-      {glList.map((g,i)=>{const n=typeof g==='string'?g:(g?.name||'');return(<option key={n||i} value={n}>{n}</option>)})}
+      {glList.map((g,i)=>{const n=typeof g==='string'?g:String(g?.Name||g?.name||'');return n?(<option key={n} value={n}>{n}</option>):null})}
     </select>)
 
   const GstSel=({v,s})=>(
@@ -1154,8 +1154,8 @@ function KbTab() {
                     <tr key={k} style={{cursor:'pointer'}}
                       onClick={()=>{setVendorKey(k);setVendorForm({gl:e.gl||'',gst:e.gst||'',direction:e.direction||'debit'})}}>
                       <td style={{fontWeight:600,fontSize:'.82rem'}}>{k}</td>
-                      <td><span className="badge badge-neutral" style={{fontSize:'.72rem'}}>{e.gl}</span></td>
-                      <td style={{fontSize:'.72rem',color:'var(--text-3)'}}>{e.gst||'-'}</td>
+                      <td><span className="badge badge-neutral" style={{fontSize:'.72rem'}}>{String(e?.gl||"")}</span></td>
+                      <td style={{fontSize:'.72rem',color:'var(--text-3)'}}>{String(e?.gst||'-')}</td>
                       <td style={{fontSize:'.72rem'}}>{DIRECTION_LABELS[e.direction||'']}</td>
                       <td onClick={ev=>ev.stopPropagation()}>
                         <button className="btn btn-ghost btn-icon btn-sm"
@@ -1220,8 +1220,8 @@ function KbTab() {
                     <tr key={k} style={{cursor:'pointer'}}
                       onClick={()=>{setKwKey(k);setKwForm({gl:e.gl||'',gst:e.gst||'',direction:e.direction||'debit'})}}>
                       <td style={{fontWeight:600,fontSize:'.82rem'}}>{k}</td>
-                      <td><span className="badge badge-neutral" style={{fontSize:'.72rem'}}>{e.gl}</span></td>
-                      <td style={{fontSize:'.72rem',color:'var(--text-3)'}}>{e.gst||'-'}</td>
+                      <td><span className="badge badge-neutral" style={{fontSize:'.72rem'}}>{String(e?.gl||"")}</span></td>
+                      <td style={{fontSize:'.72rem',color:'var(--text-3)'}}>{String(e?.gst||'-')}</td>
                       <td style={{fontSize:'.72rem'}}>{DIRECTION_LABELS[e.direction||'']}</td>
                       <td onClick={ev=>ev.stopPropagation()}>
                         <button className="btn btn-ghost btn-icon btn-sm"
