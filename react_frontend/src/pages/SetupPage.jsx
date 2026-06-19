@@ -150,17 +150,21 @@ function CoaTab() {
   const LABELS = {Code:'Code',Name:'Account Name',Type:'Type',TaxCode:'Tax Code',Description:'Description',Dashboard:'Dashboard'}
   const DEFAULT_WIDTHS = {Code:70,Name:200,Type:110,TaxCode:150,Description:320,Dashboard:100}
   const [colWidths, setColWidths] = useState(DEFAULT_WIDTHS)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(()=>{
     let alive=true
-    fetch('/api/gl/accounts/all').then(r=>r.json()).then(d=>{
+    fetch('/api/gl/accounts/all').then(r=>{
+      if(!r.ok) throw new Error('HTTP '+r.status)
+      return r.json()
+    }).then(d=>{
       if(!alive) return
       const arr = Array.isArray(d)?d:(d.rows||[])
       setRows(arr.length ? arr.map((r,i)=>({id:i,
         Code:r.Code||'', Name:r.Name||r.name||'',
         Type:r.Type||r.type||'', TaxCode:r.TaxCode||r.tax_code||r['Tax Code']||'',
         Description:r.Description||'', Dashboard:r.Dashboard||''})) : [])
-    }).catch(e=>{ if(alive) console.warn('COA load:',e?.message||e) })
+    }).catch(e=>{ if(alive){ console.error('[CoaTab] load failed:',e?.message||e); setLoadError('Could not load Chart of Accounts: '+(e?.message||'server unreachable')) } })
      .finally(()=>{ if(alive) setLoading(false) })
     return ()=>{ alive=false }
   },[])
@@ -264,6 +268,14 @@ function CoaTab() {
   })
 
   return (
+    <>
+    {loadError && (
+      <div style={{background:'var(--danger-bg,#fef2f2)',border:'1px solid var(--danger,#dc2626)',
+        borderRadius:'var(--r-md)',padding:'10px 14px',marginBottom:12,
+        color:'var(--danger,#dc2626)',fontSize:'.85rem'}}>
+        ⚠ {loadError} — check that the API server is running and reachable.
+      </div>
+    )}
     <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,
       height:'calc(100vh - 140px)',minHeight:500,alignItems:'start',overflow:'hidden'}}>
 
@@ -419,6 +431,7 @@ function CoaTab() {
       </div>
       </div>
     </div>
+    </>
   )
 }
 
@@ -439,11 +452,12 @@ function RdrTab() {
   const [editId,   setEditId]  = useState(null)
   const [saving,   setSaving]  = useState(false)
   const [rdrSearch, setRdrSearch]= useState('')
+  const [loadError, setLoadError]= useState('')
 
   useEffect(()=>{
     let alive=true
-    rdrList().then(r=>{ if(alive) setRules(r.data||[]) }).catch(()=>{})
-    coaAccounts().then(r=>{ if(alive) setGlList(r.data||[]) }).catch(()=>{})
+    rdrList().then(r=>{ if(alive) setRules(r.data||[]) }).catch(e=>{ if(alive){ console.error('[RdrTab] rdrList failed:',e?.message||e); setLoadError('Could not load rules: '+(e?.message||'server unreachable')) } })
+    coaAccounts().then(r=>{ if(alive) setGlList(r.data||[]) }).catch(e=>{ if(alive){ console.error('[RdrTab] coaAccounts failed:',e?.message||e); setLoadError(p=>p||'Could not load GL accounts: '+(e?.message||'server unreachable')) } })
     return ()=>{ alive=false }
   },[])
 
@@ -493,6 +507,14 @@ function RdrTab() {
   }
 
   return (
+    <>
+    {loadError && (
+      <div style={{background:'var(--danger-bg,#fef2f2)',border:'1px solid var(--danger,#dc2626)',
+        borderRadius:'var(--r-md)',padding:'10px 14px',marginBottom:12,
+        color:'var(--danger,#dc2626)',fontSize:'.85rem'}}>
+        ⚠ {loadError} — check that the API server is running and reachable.
+      </div>
+    )}
     <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16,alignItems:'start',
       height:'calc(100vh - 220px)',minHeight:500}}>
 
@@ -646,6 +668,7 @@ function RdrTab() {
         }
       </div>
     </div>
+    </>
   )
 }
 
@@ -1003,12 +1026,13 @@ function KbTab() {
   const [vSearch,    setVSearch]   = useState('')
   const [kSearch,    setKSearch]   = useState('')
   const [coSearch,   setCoSearch]  = useState('')
+  const [loadError,  setLoadError] = useState('')
   const PAGE_SIZE = 50
 
   useEffect(()=>{
     let alive=true
-    kbGet().then(r=>{ if(alive) setKb(r.data||{}) }).catch(()=>{ if(alive) setKb({}) })
-    coaAccounts().then(r=>{ if(alive) setGlList(r.data||[]) }).catch(()=>{})
+    kbGet().then(r=>{ if(alive) setKb(r.data||{}) }).catch(e=>{ if(alive){ console.error('[KbTab] kbGet failed:',e?.message||e); setKb({}); setLoadError('Could not load knowledge base: '+(e?.message||'server unreachable')) } })
+    coaAccounts().then(r=>{ if(alive) setGlList(r.data||[]) }).catch(e=>{ if(alive){ console.error('[KbTab] coaAccounts failed:',e?.message||e); setLoadError(p=>p||'Could not load GL accounts: '+(e?.message||'server unreachable')) } })
     setLoading(true)
     companyList({limit:500,skip:0}).then(r=>{
       if(!alive) return
@@ -1018,7 +1042,7 @@ function KbTab() {
         aliases:(c.aliases||[]).map(a=>typeof a==='string'?{id:0,alias:a}:a)
       }))
       setCompanies(normalised)
-    }).catch(e=>{ if(alive){ console.error('[KbTab] companyList:',e?.message||e); setCompanies([]) }
+    }).catch(e=>{ if(alive){ console.error('[KbTab] companyList:',e?.message||e); setCompanies([]); setLoadError(p=>p||'Could not load companies: '+(e?.message||'server unreachable')) }
     }).finally(()=>{ if(alive) setLoading(false) })
     return ()=>{ alive=false }
   },[])
@@ -1113,6 +1137,13 @@ function KbTab() {
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:12}}>
+      {loadError && (
+        <div style={{background:'var(--danger-bg,#fef2f2)',border:'1px solid var(--danger,#dc2626)',
+          borderRadius:'var(--r-md)',padding:'10px 14px',
+          color:'var(--danger,#dc2626)',fontSize:'.85rem'}}>
+          ⚠ {loadError} — check that the API server is running and reachable.
+        </div>
+      )}
       <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
         {[
           ['companies',`- Companies (${companies.length})`],
@@ -1122,8 +1153,6 @@ function KbTab() {
           <button key={k} onClick={()=>{setSubTab(k);setSearch('');setPage(1)}}
             className={`btn btn-sm ${subTab===k?'btn-primary':'btn-ghost'}`}>{l}</button>
         ))}
-        <input className="input input-sm" placeholder="Search..." value={search}
-          onChange={e=>setSearch(e.target.value)} style={{marginLeft:'auto',width:220}}/>
       </div>
 
       {subTab==='companies' && (
