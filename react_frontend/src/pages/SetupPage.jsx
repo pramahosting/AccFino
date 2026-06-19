@@ -661,7 +661,6 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
   const [coSaving, setCoSaving] = useState(false)
   const [newAlias, setNewAlias] = useState('')
 
-
   const startCoEdit = c => {
     setCoEdit(c)
     setCoForm({name:c.name||'',short_name:c.short_name||'',category:c.category||'',
