@@ -901,6 +901,92 @@ function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, t
   )
 }
 
+const KB_GST_OPTS=['','GST on Expenses','GST on Capital','GST on Income','GST Free Expenses','GST Free Income','BAS Excluded']
+
+function GlSel({v,s,glList}) {
+  return (
+    <select className="input input-sm" value={v} onChange={e=>s(e.target.value)}>
+      <option value="">-- GL Account --</option>
+      {(glList||[]).map((g,i)=>{const n=typeof g==='string'?g:String(g?.Name||g?.name||'');return n?(<option key={n} value={n}>{n}</option>):null})}
+    </select>
+  )
+}
+
+function GstSel({v,s}) {
+  return (
+    <select className="input input-sm" value={v} onChange={e=>s(e.target.value)}>
+      {KB_GST_OPTS.map(g=><option key={g} value={g}>{g||'-- Auto --'}</option>)}
+    </select>
+  )
+}
+
+function DirSel({v,s}) {
+  return (
+    <select className="input input-sm" value={v} onChange={e=>s(e.target.value)}>
+      <option value="">- Any</option>
+      <option value="debit">- Outgoing</option>
+      <option value="credit">- Incoming</option>
+    </select>
+  )
+}
+
+function AddForm({keyVal,setKey,form,setForm,onSave,onNew,onDelete,label,ph,onUpload,onDownload,glList,saving}) {
+  const fileRef2 = useRef(null)
+  return (
+    <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',padding:16,
+      border:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:8,
+      overflowY:'auto',maxHeight:'calc(100vh - 160px)'}}>
+      <div style={{display:'flex',alignItems:'center',marginBottom:2}}>
+        <h3 style={{margin:0,fontSize:'.9rem',flex:1}}>
+          {keyVal ? `Edit: ${keyVal}` : `New ${label}`}
+        </h3>
+        {keyVal && onNew && (
+          <button className="btn btn-ghost btn-sm"
+            style={{fontSize:'.75rem',padding:'2px 8px'}} onClick={onNew}>
+            <Plus size={12}/> New
+          </button>
+        )}
+      </div>
+      <div className="input-group">
+        <label>{label} name</label>
+        <input className="input input-sm" value={keyVal} onChange={e=>setKey(e.target.value)} placeholder={ph}/>
+      </div>
+      <div className="input-group"><label>GL Account</label>
+        <GlSel v={form.gl} s={v=>setForm(f=>({...f,gl:v}))} glList={glList}/>
+      </div>
+      <div className="input-group"><label>GST</label>
+        <GstSel v={form.gst} s={v=>setForm(f=>({...f,gst:v}))}/>
+      </div>
+      <div className="input-group"><label>Direction</label>
+        <DirSel v={form.direction} s={v=>setForm(f=>({...f,direction:v}))}/>
+      </div>
+      <button className="btn btn-primary btn-sm" onClick={onSave} disabled={saving}>
+        {saving ? 'Saving...' : keyVal ? 'Update' : '+ Save'}
+      </button>
+      {keyVal && onDelete && (
+        <button className="btn btn-ghost btn-sm"
+          style={{color:'var(--danger)',fontSize:'.78rem'}} onClick={onDelete}>
+          <Trash2 size={12}/> Delete {label}
+        </button>
+      )}
+      {onUpload && (
+        <div style={{borderTop:'1px solid var(--border)',marginTop:4,paddingTop:10,
+          display:'flex',flexDirection:'row',gap:6}}>
+          <input ref={fileRef2} type="file" accept=".csv" style={{display:'none'}}
+            onChange={e=>{if(e.target.files[0])onUpload(e.target.files[0]);e.target.value=''}}/>
+          <button className="btn btn-outline btn-sm" style={{flex:1}}
+            onClick={()=>fileRef2.current.click()}>
+            <Upload size={12}/> Upload {label}
+          </button>
+          <button className="btn btn-outline btn-sm" style={{flex:1}} onClick={onDownload}>
+            <Download size={12}/> Download {label}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function KbTab() {
   const [kb,         setKb]        = useState(null)
   const [glList,     setGlList]    = useState([])
@@ -940,24 +1026,6 @@ function KbTab() {
   useEffect(()=>setPage(1),[search,subTab])
 
   const GST_OPTS=['','GST on Expenses','GST on Capital','GST on Income','GST Free Expenses','GST Free Income','BAS Excluded']
-
-  const GlSel=({v,s})=>(
-    <select className="input input-sm" value={v} onChange={e=>s(e.target.value)}>
-      <option value="">-- GL Account --</option>
-      {glList.map((g,i)=>{const n=typeof g==='string'?g:String(g?.Name||g?.name||'');return n?(<option key={n} value={n}>{n}</option>):null})}
-    </select>)
-
-  const GstSel=({v,s})=>(
-    <select className="input input-sm" value={v} onChange={e=>s(e.target.value)}>
-      {GST_OPTS.map(g=><option key={g} value={g}>{g||'-- Auto --'}</option>)}
-    </select>)
-
-  const DirSel=({v,s})=>(
-    <select className="input input-sm" value={v} onChange={e=>s(e.target.value)}>
-      <option value="">- Any</option>
-      <option value="debit">- Outgoing</option>
-      <option value="credit">- Incoming</option>
-    </select>)
 
   const saveVendor=async()=>{
     if(!vendorKey.trim()){toast.error('Enter vendor name');return}
@@ -1042,61 +1110,6 @@ function KbTab() {
       <button className="btn btn-ghost btn-sm" onClick={()=>set(total)} disabled={cur===total}>-</button>
     </div>)
 
-  const AddForm=({keyVal,setKey,form,setForm,onSave,onNew,onDelete,label,ph,onUpload,onDownload})=>{
-    const fileRef2 = useRef(null)
-    return (
-    <div style={{background:'var(--surface-2)',borderRadius:'var(--r-md)',padding:16,
-      border:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:8,
-      overflowY:'auto',maxHeight:'calc(100vh - 160px)'}}>
-      <div style={{display:'flex',alignItems:'center',marginBottom:2}}>
-        <h3 style={{margin:0,fontSize:'.9rem',flex:1}}>
-          {keyVal ? `Edit: ${keyVal}` : `New ${label}`}
-        </h3>
-        {keyVal && onNew && (
-          <button className="btn btn-ghost btn-sm"
-            style={{fontSize:'.75rem',padding:'2px 8px'}} onClick={onNew}>
-            <Plus size={12}/> New
-          </button>
-        )}
-      </div>
-      <div className="input-group">
-        <label>{label} name</label>
-        <input className="input input-sm" value={keyVal} onChange={e=>setKey(e.target.value)} placeholder={ph}/>
-      </div>
-      <div className="input-group"><label>GL Account</label>
-        <GlSel v={form.gl} s={v=>setForm(f=>({...f,gl:v}))}/>
-      </div>
-      <div className="input-group"><label>GST</label>
-        <GstSel v={form.gst} s={v=>setForm(f=>({...f,gst:v}))}/>
-      </div>
-      <div className="input-group"><label>Direction</label>
-        <DirSel v={form.direction} s={v=>setForm(f=>({...f,direction:v}))}/>
-      </div>
-      <button className="btn btn-primary btn-sm" onClick={onSave} disabled={saving}>
-        {saving ? 'Saving...' : keyVal ? 'Update' : '+ Save'}
-      </button>
-      {keyVal && onDelete && (
-        <button className="btn btn-ghost btn-sm"
-          style={{color:'var(--danger)',fontSize:'.78rem'}} onClick={onDelete}>
-          <Trash2 size={12}/> Delete {label}
-        </button>
-      )}
-      {onUpload && (
-        <div style={{borderTop:'1px solid var(--border)',marginTop:4,paddingTop:10,
-          display:'flex',flexDirection:'row',gap:6}}>
-          <input ref={fileRef2} type="file" accept=".csv" style={{display:'none'}}
-            onChange={e=>{if(e.target.files[0])onUpload(e.target.files[0]);e.target.value=''}}/>
-          <button className="btn btn-outline btn-sm" style={{flex:1}}
-            onClick={()=>fileRef2.current.click()}>
-            <Upload size={12}/> Upload {label}
-          </button>
-          <button className="btn btn-outline btn-sm" style={{flex:1}} onClick={onDownload}>
-            <Download size={12}/> Download {label}
-          </button>
-        </div>
-      )}
-    </div>)
-  }
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:12}}>
@@ -1124,6 +1137,7 @@ function KbTab() {
         <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,
           height:'calc(100vh - 140px)',minHeight:500,alignItems:'start',overflow:'hidden'}}>
           <AddForm keyVal={vendorKey} setKey={setVendorKey} form={vendorForm} setForm={setVendorForm}
+            glList={glList} saving={saving}
             onSave={saveVendor} label="Vendor" ph="e.g. uber, microsoft"
             onNew={()=>{setVendorKey('');setVendorForm({gl:'',gst:'',direction:'debit'})}}
             onDelete={vendorKey?()=>delVendor(vendorKey):undefined}
@@ -1190,6 +1204,7 @@ function KbTab() {
         <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,
           height:'calc(100vh - 140px)',minHeight:500,alignItems:'start',overflow:'hidden'}}>
           <AddForm keyVal={kwKey} setKey={setKwKey} form={kwForm} setForm={setKwForm}
+            glList={glList} saving={saving}
             onSave={saveKw} label="Keyword" ph="e.g. broker fee, cleaning"
             onNew={()=>{setKwKey('');setKwForm({gl:'',gst:'',direction:'debit'})}}
             onDelete={kwKey?()=>delKw(kwKey):undefined}
