@@ -1002,23 +1002,35 @@ function KbTab() {
   const vendors  = Object.entries(kb.vendor_map||{})
   const keywords = Object.entries(kb.keyword_map||{})
 
-  const _sq = coSearch.toLowerCase()
-  const filteredCo = companies.filter(c=>{
-    if(!coSearch) return true
+  const _sq = String(coSearch||'').toLowerCase()
+  const filteredCo = (companies||[]).filter(c=>{
+    if(!_sq) return true
     try {
-      if((c.name||'').toLowerCase().includes(_sq)) return true
-      if((c.short_name||'').toLowerCase().includes(_sq)) return true
-      return (c.aliases||[]).some(a=>{
-        const txt = typeof a==='string' ? a : (a?.alias||'')
-        return String(txt).toLowerCase().includes(_sq)
-      })
-    } catch { return false }
+      if(String(c?.name||'').toLowerCase().includes(_sq)) return true
+      if(String(c?.short_name||'').toLowerCase().includes(_sq)) return true
+      return (Array.isArray(c?.aliases)?c.aliases:[]).some(a=>
+        String(typeof a==='string'?a:a?.alias||'').toLowerCase().includes(_sq))
+    } catch(err) { console.error('Search crash on company:',c,err); return false }
   })
   const totalPages = Math.max(1,Math.ceil(filteredCo.length/PAGE_SIZE))
   const pageCo = filteredCo.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
 
-  const filtV = vendors.filter(([k])=>!vSearch||String(k||'').toLowerCase().includes(vSearch.toLowerCase()))
-  const filtK = keywords.filter(([k])=>!kSearch||String(k||'').toLowerCase().includes(kSearch.toLowerCase()))
+  const _vq = String(vSearch||'').toLowerCase()
+  const filtV = (vendors||[]).filter(([k,e])=>{
+    if(!_vq) return true
+    try {
+      if(String(k||'').toLowerCase().includes(_vq)) return true
+      return String(e?.gl||'').toLowerCase().includes(_vq)
+    } catch(err) { console.error('Search crash on vendor:',k,err); return false }
+  })
+  const _kq = String(kSearch||'').toLowerCase()
+  const filtK = (keywords||[]).filter(([k,e])=>{
+    if(!_kq) return true
+    try {
+      if(String(k||'').toLowerCase().includes(_kq)) return true
+      return String(e?.gl||'').toLowerCase().includes(_kq)
+    } catch(err) { console.error('Search crash on keyword:',k,err); return false }
+  })
 
   const Pager=({total,cur,set})=>total<=1?null:(
     <div style={{display:'flex',gap:4,alignItems:'center',justifyContent:'center',
