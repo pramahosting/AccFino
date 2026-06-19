@@ -654,13 +654,13 @@ const DIRECTION_LABELS = { '': '-', 'debit': '- Out', 'credit': '- In' }
 
 
 // CompaniesPane: proper component so hooks work correctly
-function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, totalPages, page, setPage }) {
+function CompaniesPane({ companies, setCompanies, loading, filteredCo, pageCo, totalPages, page, setPage, coSearch, setCoSearch }) {
   const BLANK_CO = {name:'',short_name:'',category:'',subcategory:'',country:'AU',abn:'',is_government:false}
   const [coForm,   setCoForm]   = useState(BLANK_CO)
   const [coEdit,   setCoEdit]   = useState(null)
   const [coSaving, setCoSaving] = useState(false)
   const [newAlias, setNewAlias] = useState('')
-  const [coSearch, setCoSearch] = useState('')
+
 
   const startCoEdit = c => {
     setCoEdit(c)
@@ -915,6 +915,9 @@ function KbTab() {
   const [saving,     setSaving]    = useState(false)
   const [search,     setSearch]    = useState('')
   const [page,       setPage]      = useState(1)
+  const [vSearch,    setVSearch]   = useState('')
+  const [kSearch,    setKSearch]   = useState('')
+  const [coSearch,   setCoSearch]  = useState('')
   const PAGE_SIZE = 50
 
   useEffect(()=>{
@@ -1015,8 +1018,6 @@ function KbTab() {
   const totalPages = Math.max(1,Math.ceil(filteredCo.length/PAGE_SIZE))
   const pageCo = filteredCo.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
 
-  const [vSearch, setVSearch] = useState('')
-  const [kSearch, setKSearch] = useState('')
   const filtV = vendors.filter(([k])=>!vSearch||String(k||'').toLowerCase().includes(vSearch.toLowerCase()))
   const filtK = keywords.filter(([k])=>!kSearch||String(k||'').toLowerCase().includes(kSearch.toLowerCase()))
 
@@ -1104,7 +1105,8 @@ function KbTab() {
       {subTab==='companies' && (
         <CompaniesPane companies={companies} setCompanies={setCompanies}
           loading={loading} filteredCo={filteredCo} pageCo={pageCo}
-          totalPages={totalPages} page={page} setPage={setPage}/>
+          totalPages={totalPages} page={page} setPage={setPage}
+          coSearch={coSearch} setCoSearch={setCoSearch}/>
       )}
 
       {subTab==='vendors' && (
