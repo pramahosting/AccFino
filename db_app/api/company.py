@@ -84,7 +84,7 @@ class AliasIn(BaseModel):
 @router.get("/search", response_model=List[CompanyOut])
 def search_companies(
     q: str = Query(..., min_length=1),
-    limit: int = Query(20, le=100),
+    limit: int = Query(1000, le=1000),
     db: Session = Depends(get_db),
 ):
     """Search companies by name or alias (substring, case-insensitive)."""
@@ -115,7 +115,7 @@ def list_companies(
     category: Optional[str]  = None,
     country:  Optional[str]  = None,
     skip:     int             = 0,
-    limit:    int             = Query(100, le=500),
+    limit:    int             = Query(1000, le=1000),
     db:       Session         = Depends(get_db),
 ):
     """List companies with optional filters. Admin use."""
