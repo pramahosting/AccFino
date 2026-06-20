@@ -510,10 +510,35 @@ async def reconcile_process_with_session(
     Creates a NEW session with all combined data.
     """
     import json as _json
+    import traceback as _traceback
 
+    try:
+        return await _reconcile_process_with_session_impl(
+            files, bank_names, account_numbers, account_names, session_id, username, _json)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Any unexpected error here is logged with a full traceback and
+        # returned as a clean HTTP 500 instead of propagating up - this
+        # keeps the uvicorn worker alive even if something unforeseen goes
+        # wrong (e.g. a transient file lock or DB hiccup on Windows).
+        logger.error(f"[process-with-session] Unhandled error: {e}\n{_traceback.format_exc()}")
+        raise HTTPException(500, f"Failed to re-process session: {e}")
+
+
+async def _reconcile_process_with_session_impl(
+    files, bank_names, account_numbers, account_names, session_id, username, _json,
+):
     # -- Load saved files from previous session --------------------------------
     prev_sid = session_id
     prev_data = session_manager.load_session_data(norm_username(username), prev_sid)
+    if prev_data is None:
+        raise HTTPException(
+            404,
+            f"Session '{prev_sid}' was not found - it may have been deleted, "
+            f"or the session folder is temporarily inaccessible. Try running "
+            f"a fresh reconciliation instead of re-using this session.",
+        )
     saved_files = prev_data.get("files_data", {})          # filename - bytes
     prev_accounts = prev_data.get("accounts", [])           # accounts_meta from prev session
 
