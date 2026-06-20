@@ -1063,7 +1063,7 @@ function KbTab() {
     kbGet().then(r=>{ if(alive) setKb(r.data||{}) }).catch(e=>{ if(alive){ console.error('[KbTab] kbGet failed:',e?.message||e); setKb({}); setLoadError('Could not load knowledge base: '+(e?.message||'server unreachable')) } })
     coaAccounts().then(r=>{ if(alive) setGlList(r.data||[]) }).catch(e=>{ if(alive){ console.error('[KbTab] coaAccounts failed:',e?.message||e); setLoadError(p=>p||'Could not load GL accounts: '+(e?.message||'server unreachable')) } })
     setLoading(true)
-    companyList({limit:500,skip:0}).then(r=>{
+    companyList({limit:1000,skip:0}).then(r=>{
       if(!alive) return
       const data=Array.isArray(r.data)?r.data:[]
       if(data.length===0) console.warn('[KbTab] companyList returned 0 results')
