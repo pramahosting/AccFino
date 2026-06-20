@@ -2833,6 +2833,103 @@ def legal_index():
     from fastapi.responses import JSONResponse
     return JSONResponse({"documents": list(LEGAL_DOCS.keys())})
 
+# -- sitemap.xml / robots.txt ---------------------------------------------------
+# Must be defined BEFORE the "/{spa_path:path}" catch-all below, otherwise
+# the SPA fallback intercepts these requests and serves index.html — which
+# is exactly why Google Search Console reported "Sitemap appears to be an
+# HTML page" instead of reading real XML.
+_SITE_ORIGIN = "https://accfino.com"
+
+# Public, indexable pages. "/" is the marketing landing page (highest
+# priority); the product module pages (dashboard, reconciliation, trading,
+# cash-flow, invoice) are also public-facing feature pages and indexable.
+# Internal admin-only tools (/admin, /file-manager, /licence,
+# /pricing-admin) and pure auth-flow pages (/reset-password) are excluded
+# — see robots.txt below.
+# Format: (path, priority, changefreq)
+_SITEMAP_PATHS = [
+    ("/",               "1.0", "daily"),
+    ("/login",          "0.6", "monthly"),
+    ("/upgrade",        "0.8", "monthly"),
+    ("/dashboard",      "0.9", "weekly"),
+    ("/reconciliation", "0.9", "weekly"),
+    ("/trading",        "0.9", "weekly"),
+    ("/cash-flow",      "0.9", "weekly"),
+    ("/invoice",        "0.9", "weekly"),
+]
+
+
+def _legal_doc_lastmod(filename: str) -> str:
+    """ISO date the legal PDF was last modified on disk, for sitemap <lastmod>."""
+    import datetime as _dt
+    path = _LEGAL_DIR / filename
+    if path.exists():
+        return _dt.datetime.utcfromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")
+    return _dt.datetime.utcnow().strftime("%Y-%m-%d")
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+def sitemap_xml():
+    from fastapi.responses import Response as _XmlResponse
+
+    entries = [
+        {"loc": path, "priority": priority, "changefreq": freq, "lastmod": None}
+        for path, priority, freq in _SITEMAP_PATHS
+    ]
+    # Legal documents — low priority, rarely change, but genuinely indexable
+    # public pages (each /legal/{doc} route serves a real PDF).
+    for slug, filename in LEGAL_DOCS.items():
+        entries.append({
+            "loc": f"/legal/{slug}",
+            "priority": "0.2",
+            "changefreq": "yearly",
+            "lastmod": _legal_doc_lastmod(filename),
+        })
+
+    url_blocks = []
+    for e in entries:
+        lastmod_tag = f"\n    <lastmod>{e['lastmod']}</lastmod>" if e["lastmod"] else ""
+        url_blocks.append(
+            f"  <url>\n"
+            f"    <loc>{_SITE_ORIGIN}{e['loc']}</loc>{lastmod_tag}\n"
+            f"    <changefreq>{e['changefreq']}</changefreq>\n"
+            f"    <priority>{e['priority']}</priority>\n"
+            f"  </url>"
+        )
+
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "\n".join(url_blocks) +
+        "\n</urlset>"
+    )
+    return _XmlResponse(content=xml, media_type="application/xml")
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots_txt():
+    from fastapi.responses import PlainTextResponse as _TxtResponse
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Allow: /login\n"
+        "Allow: /upgrade\n"
+        "Allow: /legal\n"
+        "Allow: /dashboard\n"
+        "Allow: /reconciliation\n"
+        "Allow: /trading\n"
+        "Allow: /cash-flow\n"
+        "Allow: /invoice\n"
+        "Disallow: /admin\n"
+        "Disallow: /file-manager\n"
+        "Disallow: /licence\n"
+        "Disallow: /pricing-admin\n"
+        "Disallow: /reset-password\n"
+        f"\nSitemap: {_SITE_ORIGIN}/sitemap.xml\n"
+    )
+    return _TxtResponse(content=body)
+
+
 # -- Root "/" - marketing home page (top of page) -----------------------------
 @app.get("/", include_in_schema=False)
 def root():
