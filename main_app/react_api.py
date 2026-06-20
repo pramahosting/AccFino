@@ -415,6 +415,84 @@ def readiness_probe():
     return JSONResponse({"status": "starting"}, status_code=503)
 
 
+def _row_match_key(row: dict) -> tuple:
+    """
+    Build a stable composite key identifying the same underlying bank
+    transaction across re-classification runs. Used to carry forward a
+    user's manual edits (GL Account, GST, Who, Classification, etc.) from
+    an old session's saved output onto the freshly re-classified rows when
+    re-running on top of that session with extra files added.
+    """
+    def _num(v):
+        try:
+            f = float(v)
+            return round(f, 2)
+        except (TypeError, ValueError):
+            return 0.0
+    return (
+        str(row.get("Date", "")).strip(),
+        str(row.get("Bank", "")).strip().lower(),
+        str(row.get("Account", "")).strip().lower(),
+        str(row.get("Description", "")).strip().lower(),
+        _num(row.get("Debit", 0)),
+        _num(row.get("Credit", 0)),
+    )
+
+
+# Fields a user can manually edit in the Output panel — these are the only
+# fields carried forward from a prior session's saved results onto matching
+# rows in a freshly re-classified re-run. Everything else (e.g. PairID for
+# brand-new internal-transfer matches involving newly added files) is left
+# to be recomputed fresh by the classifier so new pairings still work.
+_CARRY_FORWARD_COLS = ["GL Account", "GL Type", "GST Category", "GST", "Who", "Classification"]
+
+
+def _apply_prior_session_edits(classified: pd.DataFrame, prior_results: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """
+    Overlay manually-edited fields from a prior session's saved output onto
+    the freshly re-classified DataFrame, matched by transaction content
+    (date/bank/account/description/amounts) rather than row position - row
+    order can differ once new files are merged in.
+
+    Rows that don't match anything in the prior session (i.e. transactions
+    from newly added files) are left exactly as the fresh classifier output.
+    """
+    if prior_results is None or prior_results.empty:
+        return classified
+
+    prior = prior_results.copy()
+    # prior_results.pkl is stored with Title Case columns (same as `classified`)
+    if "Date" not in prior.columns:
+        return classified
+
+    edit_lookup: dict = {}
+    for rec in prior.to_dict(orient="records"):
+        key = _row_match_key(rec)
+        # If the same content key appears more than once in the prior
+        # session (e.g. two identical-looking transactions), keep the
+        # first - safer than guessing which manual edit belongs to which.
+        if key not in edit_lookup:
+            edit_lookup[key] = {c: rec.get(c) for c in _CARRY_FORWARD_COLS if c in rec}
+
+    if not edit_lookup:
+        return classified
+
+    out = classified.copy()
+    matched = 0
+    for idx, row in out.iterrows():
+        key = _row_match_key(row.to_dict())
+        prev = edit_lookup.get(key)
+        if not prev:
+            continue
+        for col, val in prev.items():
+            if col in out.columns and val is not None and str(val).strip() != "":
+                out.at[idx, col] = val
+        matched += 1
+
+    logger.info(f"[process-with-session] Carried forward manual edits for {matched}/{len(out)} rows from prior session")
+    return out
+
+
 @app.post("/reconcile/process-with-session")
 async def reconcile_process_with_session(
     files: Optional[List[UploadFile]] = File(default=None),
@@ -518,6 +596,15 @@ async def reconcile_process_with_session(
         if col not in classified.columns:
             classified[col] = default
     classified = _run_classify_gl(classified, username=username)
+
+    # -- Carry forward manual edits made in the prior session ------------------
+    # Without this, every re-run from a previous session (e.g. adding new
+    # bank files on top of an already-reviewed session) would silently
+    # discard every manual GL/GST/Who/Classification correction the user
+    # made, since classification always runs fresh on the raw input files.
+    prior_results_df = prev_data.get("results") if isinstance(prev_data, dict) else None
+    classified = _apply_prior_session_edits(classified, prior_results_df)
+
     monthly = _build_monthly_summary(classified)
 
     # -- Create new session ----------------------------------------------------
