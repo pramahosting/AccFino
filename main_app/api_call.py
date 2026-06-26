@@ -18,20 +18,24 @@ app = FastAPI()
 
 @app.on_event("startup")
 def _startup():
-    """Ensure DB is initialised and admin password is correct on every startup."""
-    try:
-        from db_app.init_db import init_db, ensure_demo_licences, migrate_db
-        from db_app.database import SessionLocal
-        from db_app.init_db import _ensure_admin_exists
-        init_db()
-        migrate_db()
-        ensure_demo_licences()
-        # Always reset admin password to match ADMIN_PASSWORD constant
-        _db = SessionLocal()
-        _ensure_admin_exists(_db)
-        _db.close()
-    except Exception as e:
-        print(f"[startup] warning: {e}")
+    """Start DB init in background — uvicorn reports ready immediately."""
+    import threading as _t
+
+    def _bg():
+        try:
+            from db_app.init_db import init_db, ensure_demo_licences, migrate_db
+            from db_app.database import SessionLocal
+            from db_app.init_db import _ensure_admin_exists
+            init_db()
+            migrate_db()
+            ensure_demo_licences()
+            _db = SessionLocal()
+            _ensure_admin_exists(_db)
+            _db.close()
+        except Exception as e:
+            print(f"[startup] warning: {e}")
+
+    _t.Thread(target=_bg, daemon=True, name="api-call-db-init").start()
 
 
 

@@ -19,7 +19,8 @@
       "credit_only": true
     },
     "then": "Owner A Share Capital",
-    "then_gst_category": "BAS Excluded"
+    "then_gst_category": "BAS Excluded",
+    "then_gl_type": "Return"
   },
   {
     "id": "out_internal_transfer",
@@ -57,10 +58,34 @@
         "employment income",
         "wage credit"
       ],
-      "credit_only": true
+      "credit_only": true,
+      "not_contains_any": [
+        "payid",
+        "wise",
+        "osko",
+        "transfer to"
+      ]
     },
     "then": "Wages and Salaries",
-    "then_gst_category": "BAS Excluded"
+    "then_gst_category": "BAS Excluded",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_uber_one_return",
+    "name": "Uber One subscription refund",
+    "priority": 945,
+    "if": {
+      "contains_any": [
+        "uber *one",
+        "uber*one",
+        "uber one",
+        "uber* one"
+      ],
+      "credit_only": true
+    },
+    "then": "Subscriptions",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
   },
   {
     "id": "in_loan",
@@ -83,13 +108,93 @@
     "then_gl_type": "Return"
   },
   {
+    "id": "in_reversal_transfer",
+    "name": "Reversal of transfer/investment \u2192 equity",
+    "priority": 937,
+    "if": {
+      "contains_any": [
+        "reversal",
+        "reversed",
+        "reversal of transfer"
+      ],
+      "also_contains_any": [
+        "transfer",
+        "ibkr",
+        "savings",
+        "investment",
+        "commbank"
+      ],
+      "credit_only": true
+    },
+    "then": "Owner A Share Capital",
+    "then_gst_category": "BAS Excluded",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_ato_credit",
+    "priority": 936,
+    "if": {
+      "contains_any": [
+        "ato refund",
+        "ato credit",
+        "tax refund",
+        "bas refund",
+        "gst refund",
+        "tax return credit",
+        "income tax refund",
+        "ato direct credit"
+      ],
+      "credit_only": true
+    },
+    "then": "Income Tax Expense",
+    "then_gst_category": "BAS Excluded"
+  },
+  {
+    "id": "in_interest_credit",
+    "priority": 935,
+    "if": {
+      "contains_any": [
+        "interest earned",
+        "interest credit",
+        "interest payment",
+        "savings interest",
+        "term deposit interest",
+        "bank interest",
+        "interest received"
+      ],
+      "credit_only": true
+    },
+    "then": "Interest Income",
+    "then_gst_category": "GST Free Income"
+  },
+  {
+    "id": "in_subscription_return",
+    "name": "Subscription vendor refund",
+    "priority": 932,
+    "if": {
+      "contains_any": [
+        "return uber",
+        "refund uber",
+        "microsoft refund",
+        "apple refund",
+        "google refund",
+        "netflix refund",
+        "spotify refund",
+        "adobe refund"
+      ],
+      "credit_only": true
+    },
+    "then": "Subscriptions",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
     "id": "in_all_returns",
     "name": "All returns, refunds and reversals (incoming)",
     "priority": 930,
     "if": {
       "contains_any": [
         "return ",
-        "refund",
         "reversal",
         "credit adj",
         "chargeback",
@@ -97,19 +202,117 @@
         "credit note",
         "reimburs",
         "rebate",
-        "tax refund",
-        "ato refund",
-        "gst refund",
         "insurance claim",
         "insurance refund",
         "claim paid",
         "benefit paid",
         "benefit payment"
       ],
-      "credit_only": true
+      "credit_only": true,
+      "not_contains_any": [
+        "transfer to",
+        "transfer from",
+        "ibkr",
+        "savings",
+        "investment",
+        "uber",
+        "microsoft",
+        "apple.com",
+        "google",
+        "netflix",
+        "spotify",
+        "adobe",
+        "xero",
+        "subscription"
+      ]
     },
     "then": "Other Revenue",
     "then_gst_category": "BAS Excluded",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_uber_trip_refund",
+    "name": "Uber trip refund/credit",
+    "priority": 925,
+    "if": {
+      "contains_any": [
+        "uber* trip",
+        "uber*trip",
+        "uber *trip",
+        "uber trip",
+        "refund uber",
+        "refund purchase uber"
+      ],
+      "credit_only": true
+    },
+    "then": "Travel - National",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_uber_eats_refund",
+    "name": "Refund: Uber Eats / food delivery",
+    "priority": 922,
+    "if": {
+      "contains_any": [
+        "refund uber eats",
+        "return uber eats",
+        "uber eats",
+        "ubereats",
+        "menulog",
+        "doordash",
+        "deliveroo",
+        "door dash",
+        "menu log",
+        "uber* eats",
+        "uber *eats",
+        "uber*eats"
+      ],
+      "credit_only": true
+    },
+    "then": "Entertainment",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_transport_refund",
+    "name": "Refund: ",
+    "priority": 921,
+    "if": {
+      "contains_any": [
+        "refund cabcharge",
+        "refund 13cabs",
+        "uber *pool",
+        "uber *cash",
+        "uber *ride",
+        "uber ride",
+        "uberpool",
+        "didi ride",
+        "didi au",
+        "ola cabs",
+        "cabcharge",
+        "citylink",
+        "transurban",
+        "lime scooter",
+        "neuron mobility",
+        "beam scooter",
+        "taxi fare",
+        "cab fare",
+        "parking fee",
+        "toll charge",
+        "ride share",
+        "rideshare",
+        "uber* pool",
+        "uber*pool",
+        "uber*cash",
+        "uber* cash",
+        "uber*ride",
+        "uber* ride"
+      ],
+      "credit_only": true
+    },
+    "then": "MV - Fuel",
+    "then_gst_category": "GST on Expenses",
     "then_gl_type": "Return"
   },
   {
@@ -129,7 +332,218 @@
       "credit_only": true
     },
     "then": "Services",
+    "then_gst_category": "GST on Income",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "out_uber_trip",
+    "name": "Uber trip / rideshare",
+    "priority": 920,
+    "if": {
+      "contains_any": [
+        "uber* trip",
+        "uber*trip",
+        "uber *trip",
+        "uber trip",
+        "uber ride",
+        "uber* ride",
+        "uber *ride",
+        "uber*ride"
+      ],
+      "debit_only": true
+    },
+    "then": "Travel - National",
+    "then_gst_category": "GST on Expenses"
+  },
+  {
+    "id": "in_fuel_refund",
+    "name": "Refund: ",
+    "priority": 920,
+    "if": {
+      "contains_any": [
+        "fuel refund",
+        "petrol refund",
+        "bp petrol",
+        "bp fuel",
+        "bp service",
+        "shell petrol",
+        "shell fuel",
+        "united petroleum",
+        "puma fuel",
+        "7-eleven fuel",
+        "7eleven fuel",
+        "viva energy",
+        "fuel purchase",
+        "petrol purchase"
+      ],
+      "credit_only": true
+    },
+    "then": "MV - Fuel",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_travel_refund",
+    "name": "Refund: ",
+    "priority": 919,
+    "if": {
+      "contains_any": [
+        "refund qantas",
+        "refund jetstar",
+        "refund airbnb",
+        "travel refund",
+        "jetstar",
+        "virgin australia",
+        "rex airline",
+        "bonza airline",
+        "booking.com",
+        "expedia",
+        "flight centre",
+        "accor hotel",
+        "marriott",
+        "ihg hotel",
+        "hyatt hotel",
+        "airfare",
+        "flight booking",
+        "airline ticket",
+        "hotel booking",
+        "qantas refund",
+        "jetstar refund",
+        "virgin refund",
+        "airbnb refund",
+        "hotel refund",
+        "flight refund",
+        "qantas",
+        "airbnb",
+        "wotif"
+      ],
+      "credit_only": true
+    },
+    "then": "Travel - National",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_rent_received",
+    "priority": 918,
+    "if": {
+      "contains_any": [
+        "rent received",
+        "rental income",
+        "rental payment received",
+        "lease income",
+        "rent credit"
+      ],
+      "credit_only": true
+    },
+    "then": "Other Revenue",
     "then_gst_category": "GST on Income"
+  },
+  {
+    "id": "in_meals_refund",
+    "name": "Refund: ",
+    "priority": 918,
+    "if": {
+      "contains_any": [
+        "refund mcdonald",
+        "food refund",
+        "mcdonald",
+        "hungry jack",
+        "subway ",
+        "pizza hut",
+        "grill'd",
+        "uber eats",
+        "menulog",
+        "doordash",
+        "deliveroo",
+        "guzman y gomez",
+        "soul origin",
+        "boost juice",
+        "starbucks",
+        "gloria jean",
+        "coffee club",
+        "schnitz",
+        "zambrero",
+        "restaurant",
+        "catering invoice"
+      ],
+      "credit_only": true
+    },
+    "then": "Entertainment",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_office_refund",
+    "name": "Refund: ",
+    "priority": 917,
+    "if": {
+      "contains_any": [
+        "refund officeworks",
+        "office refund",
+        "officeworks",
+        "jb hi-fi",
+        "jb hifi",
+        "harvey norman",
+        "the good guys",
+        "good guys",
+        "target australia",
+        "david jones",
+        "amazon.com.au",
+        "amazon au",
+        "kogan.com",
+        "staples",
+        "office national",
+        "office depot",
+        "refund purchase officeworks"
+      ],
+      "credit_only": true
+    },
+    "then": "Office Expenses",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_invoice_payment",
+    "name": "Invoice payment received from client",
+    "priority": 916,
+    "if": {
+      "contains_any": [
+        "credit to account inv",
+        "credit to account invoice",
+        "payment inv-",
+        "payment invoice",
+        "inv-00",
+        "inv-0"
+      ],
+      "credit_only": true
+    },
+    "then": "Services",
+    "then_gst_category": "GST on Income",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_shopping_refund",
+    "name": "Refund: eBay / online shopping",
+    "priority": 916,
+    "if": {
+      "contains_any": [
+        "refund amazon",
+        "amazon return",
+        "ebay refund",
+        "amazon.com.au",
+        "amazon au",
+        "catch.com",
+        "catch com",
+        "david jones",
+        "the iconic",
+        "target australia"
+      ],
+      "credit_only": true
+    },
+    "then": "Office Expenses",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
   },
   {
     "id": "in_direct_credit",
@@ -137,15 +551,176 @@
     "name": "Direct Credit (client invoice)",
     "if": {
       "contains_any": [
-        "direct credit",
-        "osko credit",
-        "eft credit",
         "osko payment"
       ],
       "credit_only": true
     },
     "then": "Services",
-    "then_gst_category": "GST on Income"
+    "then_gst_category": "GST on Income",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_telco_refund",
+    "name": "Refund: ",
+    "priority": 915,
+    "if": {
+      "contains_any": [
+        "telstra refund",
+        "optus refund",
+        "telco refund",
+        "telstra",
+        "vodafone",
+        "tpg telecom",
+        "internode",
+        "aussie broadband",
+        "superloop",
+        "amaysim",
+        "boost mobile",
+        "phone bill",
+        "mobile bill",
+        "internet bill",
+        "broadband bill"
+      ],
+      "credit_only": true
+    },
+    "then": "Telephone & Internet",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_utilities_refund",
+    "name": "Refund: ",
+    "priority": 914,
+    "if": {
+      "contains_any": [
+        "energy refund",
+        "electricity refund",
+        "agl energy",
+        "origin energy",
+        "energyaustralia",
+        "alinta energy",
+        "simply energy",
+        "red energy",
+        "powershop",
+        "ergon energy",
+        "energex",
+        "ausgrid",
+        "endeavour energy",
+        "essential energy",
+        "synergy wa",
+        "sa power networks",
+        "powercor",
+        "sydney water",
+        "melbourne water",
+        "yarra valley water",
+        "south east water",
+        "icon water",
+        "actewagl",
+        "electricity bill",
+        "gas bill",
+        "water bill",
+        "power bill"
+      ],
+      "credit_only": true
+    },
+    "then": "Light, Power, Heating",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_software_refund",
+    "name": "Refund: ",
+    "priority": 913,
+    "if": {
+      "contains_any": [
+        "refund microsoft",
+        "refund xero",
+        "software refund",
+        "microsoft",
+        "quickbooks",
+        "atlassian",
+        "zoom.us",
+        "dropbox",
+        "amazon web services",
+        "aws invoice",
+        "google workspace",
+        "apple subscription",
+        "shopify",
+        "hubspot",
+        "salesforce",
+        "mailchimp",
+        "cloudflare",
+        "godaddy",
+        "ventraip",
+        "software subscription",
+        "saas subscription",
+        "cloud subscription",
+        "app subscription"
+      ],
+      "credit_only": true
+    },
+    "then": "Subscriptions",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_streaming_refund",
+    "name": "Refund: ",
+    "priority": 912,
+    "if": {
+      "contains_any": [
+        "refund netflix",
+        "refund spotify",
+        "streaming refund",
+        "netflix",
+        "spotify",
+        "stan entertainment",
+        "disney+",
+        "amazon prime",
+        "apple tv+",
+        "binge streaming",
+        "kayo sports",
+        "youtube premium"
+      ],
+      "credit_only": true
+    },
+    "then": "Subscriptions",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_insurance_refund",
+    "name": "Refund: ",
+    "priority": 911,
+    "if": {
+      "contains_any": [
+        "insurance refund",
+        "premium refund",
+        "insurance return",
+        "nrma insurance",
+        "aami insurance",
+        "allianz premium",
+        "qbe premium",
+        "cgu premium",
+        "suncorp insurance",
+        "youi insurance",
+        "gio insurance",
+        "budget direct",
+        "real insurance",
+        "medibank premium",
+        "bupa premium",
+        "hcf premium",
+        "nib premium",
+        "hbf premium",
+        "insurance premium",
+        "insurance renewal",
+        "insurance policy"
+      ],
+      "credit_only": true
+    },
+    "then": "Insurance",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
   },
   {
     "id": "out_tax",
@@ -172,6 +747,84 @@
     },
     "then": "Income Tax Expense",
     "then_gst_category": "BAS Excluded"
+  },
+  {
+    "id": "in_postage_refund",
+    "name": "Refund: ",
+    "priority": 909,
+    "if": {
+      "contains_any": [
+        "auspost refund",
+        "courier refund",
+        "postage refund",
+        "australia post",
+        "auspost",
+        "dhl express",
+        "ups parcel",
+        "tnt courier",
+        "startrack",
+        "toll logistics",
+        "couriers please",
+        "postage",
+        "courier fee",
+        "freight charge",
+        "shipping cost"
+      ],
+      "credit_only": true
+    },
+    "then": "Freight & Courier",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_professional_refund",
+    "name": "Refund: ",
+    "priority": 908,
+    "if": {
+      "contains_any": [
+        "consulting refund",
+        "fee refund",
+        "professional refund",
+        "consulting fee",
+        "professional fee",
+        "legal fee",
+        "accounting fee",
+        "advisory fee",
+        "audit fee",
+        "solicitor",
+        "barrister",
+        "conveyancing"
+      ],
+      "credit_only": true
+    },
+    "then": "Consulting & Accounting",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
+  },
+  {
+    "id": "in_advertising_refund",
+    "name": "Refund: ",
+    "priority": 907,
+    "if": {
+      "contains_any": [
+        "google ads refund",
+        "facebook refund",
+        "ad credit",
+        "google ads",
+        "facebook ads",
+        "meta advertising",
+        "linkedin ads",
+        "tiktok ads",
+        "adwords",
+        "advertising fee",
+        "marketing spend",
+        "ad spend"
+      ],
+      "credit_only": true
+    },
+    "then": "Marketing & Advertisement",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
   },
   {
     "id": "out_super",
@@ -203,6 +856,28 @@
     },
     "then": "Superannuation",
     "then_gst_category": "BAS Excluded"
+  },
+  {
+    "id": "in_generic_expense_refund",
+    "name": "Generic expense refund/reversal",
+    "priority": 900,
+    "if": {
+      "contains_any": [
+        "refund purchase",
+        "return purchase",
+        "credit adjustment",
+        "reversal of purchase",
+        "purchase reversal",
+        "refund of payment",
+        "payment reversal",
+        "merchant refund",
+        "pos refund"
+      ],
+      "credit_only": true
+    },
+    "then": "Other Revenue",
+    "then_gst_category": "GST on Expenses",
+    "then_gl_type": "Return"
   },
   {
     "id": "out_wages",
@@ -293,7 +968,8 @@
       "contains_any": [
         "uber *one",
         "uber*one",
-        "uber one"
+        "uber one",
+        "uber* one"
       ],
       "debit_only": true
     },
@@ -312,7 +988,10 @@
         "doordash",
         "deliveroo",
         "door dash",
-        "menu log"
+        "menu log",
+        "uber* eats",
+        "uber *eats",
+        "uber*eats"
       ],
       "debit_only": true
     },
@@ -324,13 +1003,9 @@
     "priority": 885,
     "if": {
       "contains_any": [
-        "uber ",
-        "uber*trip",
         "uber *pool",
         "uber *cash",
-        "uber *trip",
         "uber *ride",
-        "uber trip",
         "uber ride",
         "uberpool",
         "didi ride",
@@ -350,7 +1025,13 @@
         "parking fee",
         "toll charge",
         "ride share",
-        "rideshare"
+        "rideshare",
+        "uber* pool",
+        "uber*pool",
+        "uber*cash",
+        "uber* cash",
+        "uber*ride",
+        "uber* ride"
       ],
       "debit_only": true
     },
@@ -568,6 +1249,25 @@
     "then_gst_category": "GST on Expenses"
   },
   {
+    "id": "out_investment_deposit",
+    "name": "Investment account deposit (equity movement)",
+    "priority": 855,
+    "if": {
+      "contains_any": [
+        "interactive brokers",
+        "ibkr",
+        "to ibkr",
+        "commsec deposit",
+        "nabtrade deposit",
+        "selfwealth deposit",
+        "stake deposit"
+      ],
+      "debit_only": true
+    },
+    "then": "Owner A Share Capital",
+    "then_gst_category": "BAS Excluded"
+  },
+  {
     "id": "out_software",
     "priority": 850,
     "if": {
@@ -677,20 +1377,6 @@
     "then_gst_category": "GST Free Expenses"
   },
   {
-    "id": "out_bpay",
-    "priority": 830,
-    "if": {
-      "contains_any": [
-        "bpay payment",
-        "bpay ref",
-        "bpay "
-      ],
-      "debit_only": true
-    },
-    "then": "Office Expenses",
-    "then_gst_category": "GST on Expenses"
-  },
-  {
     "id": "out_postage",
     "priority": 825,
     "if": {
@@ -742,7 +1428,6 @@
     "priority": 818,
     "if": {
       "contains_any": [
-        "interactive brokers",
         "broker fee",
         "brokerage fee",
         "commsec",

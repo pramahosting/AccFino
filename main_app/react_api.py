@@ -8,6 +8,31 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Currency + loan helpers (new files — gracefully absent if not yet deployed)
+_apply_currency_conversion  = None
+_detect_loan_payments       = None
+_persist_transactions_to_db = None
+try:
+    from main_app.react_api_helpers import (
+        _apply_currency_conversion,
+        _detect_loan_payments,
+        _persist_transactions_to_db,
+    )
+except ImportError:
+    try:
+        from react_api_helpers import (
+            _apply_currency_conversion,
+            _detect_loan_payments,
+            _persist_transactions_to_db,
+        )
+    except ImportError:
+        pass   # helpers not deployed yet — currency/loan features silently disabled
+
+try:
+    from backend.reconciliation.currency_service import SUPPORTED_CURRENCIES
+except Exception:
+    SUPPORTED_CURRENCIES = ["AUD","USD","EUR","GBP","INR","JPY","CNY","CAD","NZD","SGD","HKD","CHF"]
+
 import pandas as pd
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -87,8 +112,72 @@ _ACTIVE_COA_PATH = None   # tracks which COA file is in use; None = DEFAULT
 from backend.llm_classifier.classify_category import (
     CATEGORY_ENUM,
 )
-# extract_who_bank removed - Who field is now resolved by CompanyResolver only
-def extract_who_bank(desc): return ""
+# extract_who_bank: fallback WHO resolver when CompanyResolver is unavailable.
+# Parses common vendor/payee names directly from the bank description text.
+def extract_who_bank(desc: str) -> str:
+    """Fallback WHO resolver when CompanyResolver is unavailable."""
+    import re as _re
+    text = str(desc or "").lower().strip()
+    if not text:
+        return ""
+
+    # ATO / tax office
+    if any(k in text for k in ("australian taxation office", "tax office", "ato ", " ato", "bpay to tax")):
+        return "Australian Taxation Office"
+    # Macquarie
+    if "macquarie" in text:
+        return "Macquarie Bank"
+    # Interactive Brokers / IBKR
+    if "interactive brokers" in text or "ibkr" in text:
+        return "Interactive Brokers"
+    # Uber
+    if "uber eats" in text:
+        return "Uber Eats"
+    if "uber" in text:
+        return "Uber Australia"
+    # Microsoft
+    if "microsoft" in text:
+        return "Microsoft"
+    # Google
+    if "google ads" in text:
+        return "Google Ads"
+    if "google" in text:
+        return "Google"
+    # Xero
+    if "xero payroll" in text:
+        return "Xero Payroll"
+    if "xero" in text:
+        return "Xero"
+    # Wise
+    if "wise australia" in text or "wise" in text:
+        return "Wise"
+    # Banks
+    if "commonwealth bank" in text or "commbank" in text:
+        return "Commonwealth Bank of Australia"
+    if "westpac" in text:
+        return "Westpac"
+    if "anz" in text:
+        return "ANZ"
+    # Invoice payment: "Fast Transfer From PAYEE CREDIT TO ACCOUNT INV-xxxx"
+    m = _re.search(
+        r'(?:fast transfer from|transfer from|payment from)\s+([a-z][a-z0-9 &\-]{2,35}?)'
+        r'\s+(?:credit to account|inv-|invoice|payment)',
+        text
+    )
+    if m:
+        candidate = m.group(1).strip().title()
+        if candidate and len(candidate) > 2:
+            return candidate
+    # Generic: "From/To PAYEE" before receipt/BSB/number
+    m = _re.search(
+        r'^(?:from|to)\s+([a-z][a-z0-9 &\-]{2,40}?)(?:\s+(?:receipt|bsb|a\/c|crn|pty|ltd|inc|\d)|\s*$)',
+        text
+    )
+    if m:
+        candidate = m.group(1).strip().title()
+        if candidate and len(candidate) > 2:
+            return candidate
+    return ""
 from backend.reconciliation.gst_calculator import GST_CATEGORY_OPTIONS
 
 try:
@@ -340,9 +429,45 @@ def capture_who_edit(
 
 @app.on_event("startup")
 async def _on_startup():
-    """Mark app as ready after all modules have finished loading."""
+    """
+    Mark app as ready immediately so health checks pass.
+    Run DB housekeeping in a background thread so slow Neon cold-starts
+    don't block uvicorn from finishing startup.
+    """
     global _app_ready
     _app_ready = True
+
+    import threading as _threading
+
+    def _bg_init():
+        try:
+            from db_app.database import engine as _db_engine
+            from db_app.models.licence import LicenceRecord as _LR
+            from db_app.models.password_reset_token import PasswordResetToken as _PRT
+            _LR.__table__.create(bind=_db_engine, checkfirst=True)
+            _PRT.__table__.create(bind=_db_engine, checkfirst=True)
+        except Exception as _e:
+            logger.warning(f"startup: table create skipped: {_e}")
+        try:
+            from db_app.init_db import migrate_db as _mdb
+            _mdb()
+        except Exception as _e:
+            logger.warning(f"startup: migrate_db skipped: {_e}")
+        try:
+            from db_app.migrations.add_currency_loan_columns import run as _mc
+            from db_app.database import engine as _db_engine
+            _mc(_db_engine)
+        except Exception as _e:
+            logger.warning(f"startup: currency/loan migration skipped: {_e}")
+        try:
+            from db_app.migrations.create_account_balances import run as _mab
+            from db_app.database import engine as _db_engine
+            _mab(_db_engine)
+        except Exception as _e:
+            logger.warning(f"startup: account_balances migration skipped: {_e}")
+        logger.info("startup: background DB init complete")
+
+    _threading.Thread(target=_bg_init, daemon=True, name="startup-db-init").start()
 
 
 @app.post("/auth/reset-admin", include_in_schema=False)
@@ -691,20 +816,6 @@ app.include_router(db_invoice.router,        prefix="/invoice",      tags=["invo
 app.include_router(db_password_reset.router, prefix="/auth",         tags=["auth"])
 app.include_router(db_payments.router,       prefix="/payments",     tags=["payments"])
 
-# Ensure new tables exist and columns migrated (safe on existing DBs)
-from db_app.database import engine as _db_engine
-try:
-    LicenceRecord.__table__.create(bind=_db_engine, checkfirst=True)
-    PasswordResetToken.__table__.create(bind=_db_engine, checkfirst=True)
-except Exception:
-    pass
-
-try:
-    from db_app.init_db import migrate_db
-    migrate_db()
-except Exception:
-    pass
-
 _cf_cache: dict = {}
 
 
@@ -768,25 +879,49 @@ def _norm_cols(df: pd.DataFrame) -> pd.DataFrame:
         "who":          "Who",
         "month":        "Month",
         "year":         "Year",
+        "balance":      "Balance",    # bank-supplied running balance from CSV
     })
 
 def _to_frontend(df: pd.DataFrame) -> list:
     """Convert df to frontend-friendly records using lowercase keys."""
     df2 = df.copy()
-    # Rename Title Case back to lowercase for consistent frontend keys
     df2 = df2.rename(columns={
         "Date": "date", "Bank": "bank", "Account Name": "account_name",
         "Account": "account", "Description": "description",
         "Debit": "debit", "Credit": "credit",
+        "Balance": "balance",
         "Classification": "classification", "PairID": "pairid",
         "GL Account": "gl_account", "GL Type": "gl_type", "GST": "gst",
         "GST Category": "gst_category", "Who": "who",
         "Month": "month", "Year": "year",
     })
+    # Ensure new columns always present with safe defaults
+    for col, default in [
+        ("balance",                None),
+        ("currency",               "AUD"),
+        ("exchange_rate",          1.0),
+        ("amount_original_debit",  None),
+        ("amount_original_credit", None),
+        ("is_loan_payment",        False),
+        ("loan_principal",         None),
+        ("loan_interest",          None),
+        ("loan_interest_rate",     None),
+        ("loan_principal_gl",      None),
+        ("loan_interest_gl",       None),
+    ]:
+        if col not in df2.columns:
+            df2[col] = default
     return _clean(df2)
 
-def _build_monthly_summary(df: pd.DataFrame) -> list:
-    """Replicate EXACT monthly summary from render_output_ui.py."""
+def _build_monthly_summary(df: pd.DataFrame, username: str = "",
+                            account_balances: dict | None = None) -> list:
+    """
+    Build monthly summary with opening balance, closing balance, and net movement.
+
+    account_balances: dict keyed (bank, account, year, month) -> float
+      Injected from the DB AccountBalance table so the summary always shows
+      the correct opening balance even when viewing a partial month.
+    """
     if "Date" not in df.columns or df["Date"].isna().all():
         return []
 
@@ -796,9 +931,64 @@ def _build_monthly_summary(df: pd.DataFrame) -> list:
     df["Year"]    = df["Date_dt"].dt.year
     df["Date"]    = df["Date_dt"].dt.strftime("%d/%m/%Y")
 
-    # Ensure GST column exists
     if "GST" not in df.columns:
         df["GST"] = 0.0
+
+    # ── Derive opening/closing balance from bank_balance column ─────────────
+    # bank_balance is the running balance after each transaction from the CSV.
+    # Opening balance of month M  = bank_balance of the row BEFORE the first
+    #   transaction of month M   = bank_balance of last row in month M-1.
+    # Closing balance of month M  = bank_balance of last row in month M.
+    _has_bank_bal = "Balance" in df.columns and df["Balance"].notna().any()
+
+    # Build per-(bank,account,year,month) opening/closing from CSV balance column
+    _csv_balances: dict[tuple, dict] = {}
+    if _has_bank_bal:
+        _has_ba = "Bank" in df.columns and "Account" in df.columns
+        df["_row_order"] = range(len(df))
+        for keys, grp in df.groupby(
+            ["Bank", "Account", "Year", "Month"] if _has_ba else ["Year", "Month"]
+        ):
+            if _has_ba: bank, acct, year, month = keys
+            else: bank, acct = "", ""; year, month = keys
+            # Sort oldest-first: date asc, row_order desc (higher idx = older in newest-first CSVs)
+            grp_all = grp.sort_values(["Date_dt", "_row_order"], ascending=[True, False])
+            if grp_all.empty: continue
+            # Forward-simulate closing from last known balance (handles trailing balance-less rows)
+            last_pos = grp_all["Balance"].last_valid_index()
+            if last_pos is None: continue
+            sim = float(grp_all.loc[last_pos, "Balance"])
+            iloc_pos = grp_all.index.get_loc(last_pos)
+            for _ri in grp_all.index[iloc_pos + 1:]:
+                sim += float(grp_all.loc[_ri, "Credit"] or 0) - float(grp_all.loc[_ri, "Debit"] or 0)
+            closing = round(float(sim), 4)
+            # Opening = closing - net of ALL rows (not just balance-having rows)
+            net_all = float(
+                (grp_all["Credit"].fillna(0).sum() if "Credit" in grp_all.columns else 0)
+                - (grp_all["Debit"].fillna(0).sum()  if "Debit"  in grp_all.columns else 0)
+            )
+            opening = round(float(closing - net_all), 4)
+            key = (bank, acct, int(year), int(month)) if _has_ba else (int(year), int(month))
+            _csv_balances[key] = {"opening": opening, "closing": closing}
+        df.drop(columns=["_row_order"], inplace=True, errors="ignore")
+
+    def _get_opening(bank, acct, year, month):
+        """Opening balance: DB record > CSV-derived > None"""
+        db_key = (bank, acct, int(year), int(month))
+        if account_balances and db_key in account_balances:
+            return account_balances[db_key], "db"
+        csv_key = (bank, acct, int(year), int(month)) if "Bank" in df.columns else (int(year), int(month))
+        if csv_key in _csv_balances:
+            return _csv_balances[csv_key]["opening"], "csv"
+        return None, None
+
+    def _get_closing(bank, acct, year, month):
+        """Closing balance: DB next-month opening > CSV-derived > None"""
+        # Try CSV first
+        csv_key = (bank, acct, int(year), int(month)) if "Bank" in df.columns else (int(year), int(month))
+        if csv_key in _csv_balances:
+            return _csv_balances[csv_key]["closing"], "csv"
+        return None, None
 
     def _make_row(label, src, row_type="month"):
         return {
@@ -811,23 +1001,54 @@ def _build_monthly_summary(df: pd.DataFrame) -> list:
             "Total 🟡Outgoing Expense": round(sum(r["Total 🟡Outgoing Expense"] for r in src), 2),
             "Total 🔵Incoming GST":     round(sum(r["Total 🔵Incoming GST"]     for r in src), 2),
             "Total 🟡Outgoing GST":     round(sum(r["Total 🟡Outgoing GST"]     for r in src), 2),
+            "opening_balance":          None,
+            "closing_balance":          None,
+            "balance_source":           None,
         }
 
     months_by_year = {}
-    for (year, month), group in df.groupby(["Year", "Month"]):
-        _cls = group["Classification"].fillna("")
+    group_cols = ["Bank", "Account", "Year", "Month"] if ("Bank" in df.columns and "Account" in df.columns) else ["Year", "Month"]
+    for group_keys, group in df.groupby(group_cols):
+        if len(group_cols) == 4:
+            bank, acct, year, month = group_keys
+        else:
+            bank, acct = "", ""
+            year, month = group_keys
+
+        _cls = group["Classification"].fillna("") if "Classification" in group.columns else pd.Series([""] * len(group))
         internal_count = _cls.str.contains("Internal", na=False).sum()
         incoming_count = _cls.str.contains("Incoming", na=False).sum()
         outgoing_count = _cls.str.contains("Outgoing", na=False).sum()
         _in_m  = _cls.str.contains("Incoming", na=False)
         _out_m = _cls.str.contains("Outgoing", na=False)
-        total_income   = group.loc[_in_m,  "Credit"].sum() if "Credit" in group.columns else 0
-        total_expense  = group.loc[_out_m, "Debit"].sum()  if "Debit"  in group.columns else 0
-        gst_in         = group.loc[_in_m,  "GST"].sum()    if "GST"    in group.columns else 0
-        gst_out        = group.loc[_out_m, "GST"].sum()    if "GST"    in group.columns else 0
+        total_income  = group.loc[_in_m,  "Credit"].sum() if "Credit" in group.columns else 0
+        total_expense = group.loc[_out_m, "Debit"].sum()  if "Debit"  in group.columns else 0
+        gst_in        = group.loc[_in_m,  "GST"].sum()    if "GST"    in group.columns else 0
+        gst_out       = group.loc[_out_m, "GST"].sum()    if "GST"    in group.columns else 0
+
+        opening, ob_src = _get_opening(bank, acct, year, month)
+        closing, cb_src = _get_closing(bank, acct, year, month)
+
+        # Derive missing balance using ALL transactions (internal transfers affect balance!)
+        _all_cr  = group["Credit"].fillna(0).sum() if "Credit" in group.columns else 0
+        _all_db  = group["Debit"].fillna(0).sum()  if "Debit"  in group.columns else 0
+        _net_all = float(_all_cr) - float(_all_db)
+        if opening is None and closing is not None:
+            opening = round(float(closing) - _net_all, 4); ob_src = "derived"
+        elif closing is None and opening is not None:
+            closing = round(float(opening) + _net_all, 4); cb_src = "derived"
+
+        ym_label = f"{int(year)}/{int(month):02d}"
+        _acct_name = ""
+        if "Account Name" in group.columns:
+            _first = group["Account Name"].dropna()
+            _acct_name = str(_first.iloc[0]) if not _first.empty else ""
         row = {
-            "Year/Month":               f"{int(year)}/{int(month):02d}",
+            "Year/Month":               ym_label,
             "_row_type":                "month",
+            "_bank":                    bank,
+            "_account":                 acct,
+            "_account_name":            _acct_name,
             "🟢Internal Transfers":     int(internal_count),
             "🔵Incoming Count":         int(incoming_count),
             "🟡Outgoing Count":         int(outgoing_count),
@@ -835,8 +1056,27 @@ def _build_monthly_summary(df: pd.DataFrame) -> list:
             "Total 🟡Outgoing Expense": round(float(total_expense), 2),
             "Total 🔵Incoming GST":     round(float(gst_in),  2),
             "Total 🟡Outgoing GST":     round(float(gst_out), 2),
+            "opening_balance":          opening,
+            "closing_balance":          closing,
+            "balance_source":           ob_src or cb_src,
         }
         months_by_year.setdefault(int(year), []).append(row)
+
+    # ── Propagate closing→next-month opening ────────────────────────────────
+    # Sort all months chronologically and fill gaps
+    all_months_flat = []
+    for year in sorted(months_by_year):
+        all_months_flat.extend(sorted(months_by_year[year], key=lambda r: int(r["Year/Month"].split("/")[1])))
+
+    for i in range(len(all_months_flat) - 1):
+        cur  = all_months_flat[i]
+        nxt  = all_months_flat[i + 1]
+        if cur["closing_balance"] is not None and nxt["opening_balance"] is None:
+            nxt["opening_balance"] = cur["closing_balance"]
+            nxt["balance_source"]  = "derived"
+        if nxt["opening_balance"] is not None and cur["closing_balance"] is None:
+            cur["closing_balance"] = nxt["opening_balance"]  # closing[M] == opening[M+1]
+            cur["balance_source"]  = "derived"
 
     result, all_rows = [], []
     for year in sorted(months_by_year):
@@ -844,12 +1084,147 @@ def _build_monthly_summary(df: pd.DataFrame) -> list:
         result.extend(yr_rows)
         all_rows.extend(yr_rows)
         if len(months_by_year) > 1:
-            result.append(_make_row(f"{year} Total", yr_rows, "year_total"))
+            totals_row = _make_row(f"{year} Total", yr_rows, "year_total")
+            result.append(totals_row)
 
     if all_rows:
         result.append(_make_row("Grand Total", all_rows, "grand_total"))
 
     return result
+
+
+# ── Account Balance API endpoints ────────────────────────────────────────────
+
+class AccountBalanceIn(BaseModel):
+    user_id: int
+    bank:    str
+    account: str
+    year:    int
+    month:   int
+    balance: float
+    is_manual: bool = True
+
+class AccountBalanceOut(BaseModel):
+    id:        int
+    bank:      str
+    account:   str
+    year:      int
+    month:     int
+    balance:   float
+    is_manual: bool
+    source:    str
+
+@app.get("/account-balances/{user_id}")
+def get_account_balances(user_id: int):
+    """Return all stored opening balances for a user as a dict keyed 'bank|account|year|month'."""
+    try:
+        from db_app.database import SessionLocal as _SL
+        from db_app.models.account_balance import AccountBalance as _AB
+        db = _SL()
+        try:
+            rows = db.query(_AB).filter(_AB.user_id == user_id).all()
+            return {
+                f"{r.bank}|{r.account}|{r.year}|{r.month}": {
+                    "id": r.id, "bank": r.bank, "account": r.account,
+                    "year": r.year, "month": r.month,
+                    "balance": r.balance, "is_manual": r.is_manual, "source": r.source,
+                }
+                for r in rows
+            }
+        finally:
+            db.close()
+    except Exception as e:
+        raise HTTPException(500, f"Error: {e}")
+
+
+@app.post("/account-balances")
+def upsert_account_balance(body: AccountBalanceIn):
+    """Create or update an opening balance record."""
+    try:
+        from db_app.database import SessionLocal as _SL
+        from db_app.models.account_balance import AccountBalance as _AB
+        from db_app.models.user import User as _U
+        db = _SL()
+        try:
+            if not db.query(_U).filter(_U.id == body.user_id).first():
+                raise HTTPException(404, "User not found")
+            existing = db.query(_AB).filter(
+                _AB.user_id == body.user_id,
+                _AB.bank    == body.bank,
+                _AB.account == body.account,
+                _AB.year    == body.year,
+                _AB.month   == body.month,
+            ).first()
+            if existing:
+                existing.balance   = body.balance
+                existing.is_manual = body.is_manual
+                existing.source    = "manual" if body.is_manual else "csv"
+            else:
+                db.add(_AB(
+                    user_id   = body.user_id,
+                    bank      = body.bank,
+                    account   = body.account,
+                    year      = body.year,
+                    month     = body.month,
+                    balance   = body.balance,
+                    is_manual = body.is_manual,
+                    source    = "manual" if body.is_manual else "csv",
+                ))
+            db.commit()
+            return {"ok": True}
+        finally:
+            db.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Error: {e}")
+
+
+@app.post("/account-balances/bulk")
+def bulk_upsert_account_balances(body: dict):
+    """
+    Bulk-upsert opening balances derived from CSV bank_balance column.
+    Called after processing when we have reliable CSV balance data.
+    body: { user_id, entries: [{bank, account, year, month, balance, source}] }
+    """
+    try:
+        from db_app.database import SessionLocal as _SL
+        from db_app.models.account_balance import AccountBalance as _AB
+        db = _SL()
+        try:
+            uid     = body.get("user_id")
+            entries = body.get("entries", [])
+            saved   = 0
+            for e in entries:
+                existing = db.query(_AB).filter(
+                    _AB.user_id == uid,
+                    _AB.bank    == e["bank"],
+                    _AB.account == e["account"],
+                    _AB.year    == e["year"],
+                    _AB.month   == e["month"],
+                ).first()
+                is_manual = e.get("source") == "manual"
+                if existing:
+                    # Never overwrite a manual entry with a CSV-derived one
+                    if existing.is_manual and not is_manual:
+                        continue
+                    existing.balance   = e["balance"]
+                    existing.is_manual = is_manual
+                    existing.source    = e.get("source", "csv")
+                else:
+                    db.add(_AB(
+                        user_id=uid, bank=e["bank"], account=e["account"],
+                        year=e["year"], month=e["month"],
+                        balance=e["balance"], is_manual=is_manual,
+                        source=e.get("source", "csv"),
+                    ))
+                saved += 1
+            db.commit()
+            return {"ok": True, "saved": saved}
+        finally:
+            db.close()
+    except Exception as e:
+        raise HTTPException(500, f"Error: {e}")
 
 
 # ------------------------------------------------------------------------------
@@ -995,6 +1370,28 @@ class SaveSessReq(BaseModel):
 # ── Knowledge Base endpoints ──────────────────────────────────────────────────
 _KB_PATH = ROOT / "data" / "knowledge_base.json"
 
+# Module-level cached prefixes so _run_classify_gl never reads disk per call
+_KB_RETURN_PREFIXES:    tuple = ("return ", "refund", "reversal", "credit adj", "chargeback",
+                                  "credit note", "reimburs", "rebate", "cashback", "correction",
+                                  "reversal of", "reversed ", "cancelled ", "cancellation",
+                                  "fee waived", "fee reversal", "duplicate charge")
+_KB_INTERNAL_KEYWORDS: list  = ["internal transfer", "funds transfer", "fund transfer",
+                                  "own account transfer", "inter account", "account transfer",
+                                  "interbank transfer", "tfr", "trf"]
+
+def _reload_kb_prefixes():
+    """Call once at startup and after KB edits to refresh the cached prefix lists."""
+    global _KB_RETURN_PREFIXES, _KB_INTERNAL_KEYWORDS
+    try:
+        _kb = json.loads(_KB_PATH.read_text(encoding="utf-8"))
+        _KB_RETURN_PREFIXES    = tuple(_kb.get("return_prefixes",   list(_KB_RETURN_PREFIXES)))
+        _KB_INTERNAL_KEYWORDS  = _kb.get("internal_keywords", _KB_INTERNAL_KEYWORDS)
+    except Exception:
+        pass   # keep existing defaults
+
+# Load at startup
+_reload_kb_prefixes()
+
 def _load_kb():
     try:
         return json.loads(_KB_PATH.read_text(encoding="utf-8"))
@@ -1003,6 +1400,7 @@ def _load_kb():
 
 def _save_kb(kb: dict):
     _KB_PATH.write_text(json.dumps(kb, indent=2, ensure_ascii=False), encoding="utf-8")
+    _reload_kb_prefixes()   # keep module-level prefix cache in sync
 
 @app.get("/kb")
 def kb_get():
@@ -1180,7 +1578,27 @@ def get_session(username: str, sid: str):
             df.loc[_int_mask, ["GL Account","GL Type","GST Category"]] = ""
             df.loc[_int_mask, "GST"] = 0.0
 
-        monthly = _build_monthly_summary(df)
+        # Load saved account balances for this user
+        _ses_ab: dict = {}
+        try:
+            from db_app.database import SessionLocal as _SL_ab
+            from db_app.models.user import User as _U_ab
+            from db_app.models.account_balance import AccountBalance as _AB_ses
+            _db_ab = _SL_ab()
+            try:
+                _u_ab = _db_ab.query(_U_ab).filter(_U_ab.username == norm_username(d.get("username",""))).first()
+                if not _u_ab:
+                    # Try from session username field
+                    _u_ab = _db_ab.query(_U_ab).filter(_U_ab.username == norm_username(username if 'username' in dir() else "")).first()
+                if _u_ab:
+                    for _ab in _db_ab.query(_AB_ses).filter(_AB_ses.user_id == _u_ab.id).all():
+                        _ses_ab[(_ab.bank, _ab.account, _ab.year, _ab.month)] = _ab.balance
+            finally:
+                _db_ab.close()
+        except Exception:
+            pass
+
+        monthly = _build_monthly_summary(df, account_balances=_ses_ab if _ses_ab else None)
         txns = _to_frontend(df)
     # accounts from load_session_data is the accounts.json list
     accounts_meta = d.get("accounts") or []
@@ -1217,8 +1635,15 @@ async def reconcile_process(
     account_numbers: List[str]=Form(...),
     account_names:   Optional[List[str]]=Form(default=None),
     username: str=Form(...),
+    currency: str=Form(default="AUD"),
 ):
+  import time as _time
+  _t0 = _time.time()
+  def _step(n): logger.info(f"[process] STEP {n} (+{_time.time()-_t0:.1f}s)")
+  try:
+    _step("start")
     normed = []
+    _parse_errors = []
     _acc_files: dict = {}   # (bank, account) -> [filename, ...]
     _saved_files: dict = {} # filename -> raw bytes (for session restore)
     for i, upload in enumerate(files):
@@ -1234,13 +1659,27 @@ async def reconcile_process(
             normalized = normalize_transactions(df, bank, account)
             if account_name:
                 normalized["account_name"] = account_name
-            normed.append(normalized)
+            if normalized is not None and not normalized.empty:
+                normed.append(normalized)
+            else:
+                _parse_errors.append(f"{fname}: normalised to 0 rows (check bank selection)")
         except Exception as e:
+            msg = f"{fname}: {type(e).__name__}: {e}"
             logger.warning(f"Skip {upload.filename}: {e}")
-    if not normed: raise HTTPException(400, "No valid CSVs")
+            _parse_errors.append(msg)
+    if not normed:
+        detail = "No valid CSVs parsed."
+        if _parse_errors:
+            detail += " Errors: " + " | ".join(_parse_errors[:3])
+        raise HTTPException(400, detail)
 
     combined = pd.concat(normed, ignore_index=True)
     combined.columns = combined.columns.str.strip().str.lower()
+
+    # ── Currency conversion (convert all amounts to AUD) ─────────────────────
+    _currency = (currency or "AUD").upper().strip()
+    if _apply_currency_conversion and _currency != "AUD":
+        combined = _apply_currency_conversion(combined, _currency)
 
     # Safety: ensure account_name column always exists (may be missing if
     # bank_normalizer didn't produce it for some files)
@@ -1264,10 +1703,15 @@ async def reconcile_process(
         _db2.close()
     except Exception:
         pass
-    classified = rec_classifier.classify_transactions(
-        combined, show_progress=False,
-        home_company=_home_company,
-    )
+    try:
+        classified = rec_classifier.classify_transactions(
+            combined, show_progress=False,
+            home_company=_home_company,
+        )
+    except Exception as _ce:
+        logger.error(f"classify_transactions failed: {_ce}", exc_info=True)
+        # Return raw combined as fallback so user gets data even without GL
+        classified = combined.copy()
     classified = _norm_cols(classified)
 
     # Safety: ensure Account Name survives _norm_cols
@@ -1278,10 +1722,93 @@ async def reconcile_process(
     for col, default in [("GL Account",""),("GL Type",""),("GST Category",""),("GST",0.0),("Who",""),("PairID","")]:
         if col not in classified.columns: classified[col] = default
 
-    # Auto-classify immediately (replicates needs_classification=True logic)
-    classified = _run_classify_gl(classified, username=username)
+    # Auto-classify GL (wrapped — never crash the endpoint)
+    try:
+        classified = _run_classify_gl(classified, username=username)
+    except Exception as _ge:
+        logger.error(f"_run_classify_gl failed: {_ge}", exc_info=True)
 
-    monthly = _build_monthly_summary(classified)
+    # Loan payment detection (wrapped)
+    try:
+        if _detect_loan_payments:
+            classified = _detect_loan_payments(classified)
+    except Exception as _le:
+        logger.warning(f"Loan detection skipped: {_le}")
+
+    # Persist to DB in background thread — never blocks the HTTP response
+    if _persist_transactions_to_db:
+        _txns_snap  = _to_frontend(classified)
+        _uname_snap = norm_username(username)
+        _cur_snap   = _currency
+        import threading as _thr
+        def _bg_persist():
+            try: _persist_transactions_to_db(_uname_snap, _txns_snap, _cur_snap)
+            except Exception as _pe: logger.warning(f"DB persist bg error: {_pe}")
+        _thr.Thread(target=_bg_persist, daemon=True, name="db-persist").start()
+        _step("db-persist-started-in-background")
+
+    # ── Extract opening/closing balances from CSV and save to DB ─────────────
+    _norm_user = norm_username(username)
+    _ab_entries = []
+    _db_account_balances: dict = {}
+    try:
+        _bal_df = classified.copy()
+        _bd = _bal_df.get("Date", _bal_df.get("date",""))
+        _bal_df["_dt"] = pd.to_datetime(_bd, errors="coerce", dayfirst=True)
+        _bal_df["_ro"] = range(len(_bal_df))
+        _grp_cols = ["Bank","Account"] if "Bank" in _bal_df.columns and "Account" in _bal_df.columns else []
+        if "Balance" in _bal_df.columns and _bal_df["Balance"].notna().any():
+            for keys, grp in _bal_df.groupby(_grp_cols + [_bal_df["_dt"].dt.year.rename("_y"), _bal_df["_dt"].dt.month.rename("_m")]):
+                if _grp_cols: _bank, _acct, _yr, _mo = keys[0], keys[1], keys[2], keys[3]
+                else: _bank, _acct = "", ""; _yr, _mo = keys[0], keys[1]
+                grp_all = grp.sort_values(["_dt","_ro"], ascending=[True,False])
+                last_pos = grp_all["Balance"].last_valid_index()
+                if last_pos is None: continue
+                sim = float(grp_all.loc[last_pos,"Balance"])
+                ip = grp_all.index.get_loc(last_pos)
+                for _ri in grp_all.index[ip+1:]:
+                    sim += float(grp_all.loc[_ri,"Credit"] or 0) - float(grp_all.loc[_ri,"Debit"] or 0)
+                _closing = round(float(sim), 4)
+                _net_all = float(
+                    (grp_all["Credit"].fillna(0).sum() if "Credit" in grp_all.columns else 0)
+                    - (grp_all["Debit"].fillna(0).sum() if "Debit" in grp_all.columns else 0)
+                )
+                _opening = round(float(_closing - _net_all), 4)
+                _next_mo = int(_mo)+1; _next_yr = int(_yr)
+                if _next_mo > 12: _next_mo = 1; _next_yr += 1
+                _ab_entries.append({"bank":_bank,"account":_acct,"year":int(_yr),"month":int(_mo),
+                                     "balance":float(_opening),"source":"csv"})
+                _ab_entries.append({"bank":_bank,"account":_acct,"year":_next_yr,"month":_next_mo,
+                                     "balance":float(_closing),"source":"derived"})
+    except Exception as _be:
+        logger.warning(f"Balance extraction failed: {_be}", exc_info=True)
+
+    try:
+        from db_app.database import SessionLocal as _SLDB
+        from db_app.models.user import User as _UDBB
+        from db_app.models.account_balance import AccountBalance as _ABDB
+        _dbb = _SLDB()
+        try:
+            _u = _dbb.query(_UDBB).filter(_UDBB.username == _norm_user).first()
+            if _u:
+                _uid = _u.id
+                for _ab in _dbb.query(_ABDB).filter(_ABDB.user_id == _uid).all():
+                    _db_account_balances[(_ab.bank,_ab.account,_ab.year,_ab.month)] = _ab.balance
+                for _e in _ab_entries:
+                    _ex = _dbb.query(_ABDB).filter(_ABDB.user_id==_uid,_ABDB.bank==_e["bank"],
+                        _ABDB.account==_e["account"],_ABDB.year==_e["year"],_ABDB.month==_e["month"]).first()
+                    if _ex:
+                        if not _ex.is_manual: _ex.balance=float(_e["balance"]); _ex.source=_e["source"]
+                    else:
+                        _dbb.add(_ABDB(user_id=_uid,bank=_e["bank"],account=_e["account"],
+                            year=_e["year"],month=_e["month"],balance=float(_e["balance"]),
+                            is_manual=False,source=_e["source"]))
+                _dbb.commit()
+        finally: _dbb.close()
+    except Exception as _dbe:
+        logger.warning(f"AccountBalance DB save failed: {_dbe}")
+
+    monthly = _build_monthly_summary(classified, account_balances=_db_account_balances)
 
     username = norm_username(username)
     sid = session_manager.create_session(username)
@@ -1321,6 +1848,11 @@ async def reconcile_process(
         "count": len(classified),
         "accounts_meta": accounts_meta,
     }
+  except HTTPException:
+      raise
+  except Exception as _top_err:
+      logger.error(f"/reconcile/process unhandled error: {_top_err}", exc_info=True)
+      raise HTTPException(status_code=500, detail=f"Processing failed: {_top_err}")
 
 
 def _run_classify_gl(df: pd.DataFrame, username: str = "") -> pd.DataFrame:
@@ -1328,6 +1860,12 @@ def _run_classify_gl(df: pd.DataFrame, username: str = "") -> pd.DataFrame:
     Classify GL account, GST category and GST amount for every row.
     Delegates to backend.classifier.engine - single call per transaction,
     all three fields resolved from COA in one TF-IDF pass.
+
+    Refund/return matching: when a row is detected as a refund/return, the
+    function first looks up the most recent matching debit row in the SAME
+    DataFrame (same WHO or overlapping description tokens) and re-uses its
+    GL Account and GST Category — so a Microsoft refund gets "Subscriptions",
+    not "Other Revenue".
     """
     if "Description" not in df.columns:
         return df
@@ -1359,12 +1897,16 @@ def _run_classify_gl(df: pd.DataFrame, username: str = "") -> pd.DataFrame:
         pass
 
     def _resolve_who(desc_text):
-        """Resolve Who field using CompanyResolver, fallback to extract_who_bank."""
+        """Resolve Who field. Returns (who_str, is_internal)."""
         if _who_resolver:
-            who, _ = _who_resolver.resolve(desc_text)
-            if who and who not in ("", "Other/Unknown"):
-                return who
-        return extract_who_bank(desc_text)
+            try:
+                who, is_int = _who_resolver.resolve(desc_text)
+                if who and who not in ("", "Other/Unknown"):
+                    return who, bool(is_int)
+            except Exception:
+                pass
+        who_fb = extract_who_bank(desc_text)
+        return who_fb, False
 
     def _to_float(v):
         parsed = pd.to_numeric(v, errors="coerce")
@@ -1372,60 +1914,170 @@ def _run_classify_gl(df: pd.DataFrame, username: str = "") -> pd.DataFrame:
 
     _engine_warm(coa_path=_ACTIVE_COA_PATH)
 
+    # Use module-level cached KB prefixes (loaded once at startup, never re-read per call)
+    _return_prefixes   = _KB_RETURN_PREFIXES
+    _internal_keywords = _KB_INTERNAL_KEYWORDS
+
+    def _is_refund_desc(desc_lower: str) -> bool:
+        return any(desc_lower.startswith(p) for p in _return_prefixes)
+
+    # ── PRE-PASS 1: Resolve WHO for all rows + detect home-company internals ──
+    _all_who: list[str] = []
+    _all_internal: list[bool] = []
+    for idx in df.index:
+        desc = str(df.at[idx, "Description"]) if pd.notnull(df.at[idx, "Description"]) else ""
+        who, is_int = _resolve_who(desc)
+        _all_who.append(who)
+        # Also check desc text for internal keywords (belt-and-suspenders)
+        desc_lower = desc.lower()
+        if not is_int:
+            is_int = any(kw in desc_lower for kw in _internal_keywords)
+        _all_internal.append(is_int)
+
+    df["Who"] = _all_who
+
+    # Mark Classification = Internal for home-company rows NOW so the main loop
+    # can fast-skip them and blank their GL/GST
+    if "Classification" not in df.columns:
+        df["Classification"] = ""
+    for idx, is_int in zip(df.index, _all_internal):
+        if is_int:
+            df.at[idx, "Classification"] = "🟢Internal"
+
+    # ── PRE-PASS 2: Build vendor→GL lookup from debit (outgoing) rows ─────────
+    # Maps vendor_key (lower WHO, or significant desc tokens) → (gl_account, gst_category, gl_type)
+    # Uses the last-seen debit row for each key so more recent payments win.
+    _vendor_gl: dict[str, tuple[str, str, str]] = {}
+
+    def _vendor_keys_for(who: str, desc: str) -> list[str]:
+        """Keys under which to index / look up a vendor GL mapping."""
+        keys = []
+        who_lower = (who or "").strip().lower()
+        if who_lower and who_lower not in ("", "other/unknown"):
+            keys.append(who_lower)
+        # Also key on significant description tokens (3+ char words, not stop-words)
+        import re as _re_vk
+        _stop = {"the", "and", "for", "from", "to", "of", "a", "an", "in", "on",
+                 "at", "by", "payment", "paid", "pay", "pty", "ltd", "aust",
+                 "australia", "australian", "bpay", "ref", "transfer", "credit",
+                 "debit", "return", "refund", "reversal", "chargeback"}
+        tokens = [t for t in _re_vk.split(r"[^a-z0-9]+", desc.lower())
+                  if len(t) >= 3 and t not in _stop]
+        # Use up to 2 most significant tokens (longest)
+        for tok in sorted(tokens, key=len, reverse=True)[:2]:
+            keys.append(tok)
+        return keys
+
+    # Index debit rows (money out = original purchase)
+    for idx in df.index:
+        desc   = str(df.at[idx, "Description"]) if pd.notnull(df.at[idx, "Description"]) else ""
+        debit  = _to_float(df.at[idx, "Debit"]  if "Debit"  in df.columns else 0)
+        credit = _to_float(df.at[idx, "Credit"] if "Credit" in df.columns else 0)
+        who    = str(df.at[idx, "Who"]).strip()
+
+        if debit <= 0 or credit > 0:
+            continue  # only index outgoing rows
+
+        gl  = str(df.at[idx, "GL Account"]).strip()   # may be blank at this point
+        gst = str(df.at[idx, "GST Category"]).strip()
+        glt = str(df.at[idx, "GL Type"]).strip()
+
+        # Only pre-index rows that already have a GL (carried-forward from prior session)
+        # Blank GL rows will be filled in the classify loop below, then indexed for refunds
+        if not gl:
+            continue
+
+        for vk in _vendor_keys_for(who, desc):
+            _vendor_gl[vk] = (gl, gst, glt)
+
+    # ── MAIN CLASSIFY LOOP ─────────────────────────────────────────────────────
     for idx in df.index:
         desc = str(df.at[idx, "Description"]) if pd.notnull(df.at[idx, "Description"]) else ""
         cl   = str(df.at[idx, "Classification"]) if "Classification" in df.columns and pd.notnull(df.at[idx, "Classification"]) else ""
 
-        # Internal — trust classifier.py result OR detect from description text
-        # (engine also detects via knowledge_base.json internal_keywords)
+        # Internal rows — ALWAYS zero out GL/GST (even if rec_classifier set something)
         _desc_lower_int = desc.lower()
-        from pathlib import Path as _Path
-        try:
-            import json as _json
-            _kb_path = _Path(__file__).parent / "data" / "knowledge_base.json"
-            _kb_int  = _json.loads(_kb_path.read_text(encoding="utf-8")).get("internal_keywords", [])
-        except Exception:
-            _kb_int = ["internal transfer","funds transfer","fund transfer",
-                       "own account transfer","inter account","account transfer"]
-        _is_text_internal = any(kw in _desc_lower_int for kw in _kb_int)
+        _is_text_internal = any(kw in _desc_lower_int for kw in _internal_keywords)
         if "Internal" in cl or _is_text_internal:
             df.at[idx, "GL Account"]   = ""
             df.at[idx, "GL Type"]      = ""
             df.at[idx, "GST Category"] = ""
             df.at[idx, "GST"]          = 0.0
-            df.at[idx, "Who"]          = _resolve_who(desc)
+            # WHO already written in pre-pass
             continue
         if not desc.strip():
             continue
 
         debit  = _to_float(df.at[idx, "Debit"]  if "Debit"  in df.columns else 0)
         credit = _to_float(df.at[idx, "Credit"] if "Credit" in df.columns else 0)
-
-        # Resolve Who first so TF-IDF/RDR can use it via description enrichment
-        _who_resolved = _resolve_who(desc)
-        df.at[idx, "Who"] = _who_resolved
+        who    = str(df.at[idx, "Who"]).strip()  # already set in pre-pass
 
         existing_gl  = normalize_gl_account(df.at[idx, "GL Account"])
         existing_gst = normalize_gst_category(df.at[idx, "GST Category"])
 
-        # Run classifier - RDR rules (rdr_rules.json) fire first, then TF-IDF
-        # Direction safety is built into the engine (credit_only/debit_only in RDR,
-        # restrict_types in TF-IDF Stage 3)
-        # Pass WHO to engine so vendor_map can match by company name
-        _who_val = str(df.at[idx, "Who"]).strip() if "Who" in df.columns else ""
+        # Fast path: row already fully classified — just index it for refund lookup
+        if existing_gl and existing_gst and existing_gst not in ("", "Unknown"):
+            if debit > 0 and credit == 0:
+                for vk in _vendor_keys_for(who, desc):
+                    if vk not in _vendor_gl:
+                        _vendor_gl[vk] = (existing_gl, existing_gst,
+                                          str(df.at[idx, "GL Type"]).strip() if "GL Type" in df.columns else "")
+            continue
+
+        # ── Refund/return: look up original GL from same-vendor debit rows ──────
+        _desc_lower = desc.lower()
+        _row_is_refund = credit > 0 and debit == 0 and _is_refund_desc(_desc_lower)
+
+        if _row_is_refund and not existing_gl:
+            _ref_gl = _ref_gst = _ref_glt = ""
+            for vk in _vendor_keys_for(who, desc):
+                if vk in _vendor_gl:
+                    _ref_gl, _ref_gst, _ref_glt = _vendor_gl[vk]
+                    break
+
+            if _ref_gl:
+                # Use the original GL account — refund reverses the same expense
+                df.at[idx, "GL Account"]   = _ref_gl
+                df.at[idx, "GL Type"]      = _ref_glt
+                df.at[idx, "GST Category"] = _ref_gst
+                from backend.reconciliation.gst_calculator import calculate_gst_value
+                df.at[idx, "GST"] = calculate_gst_value(debit, credit, _ref_gst)
+                # Also update the DB lookup so future refunds from the same vendor chain
+                for vk in _vendor_keys_for(who, desc):
+                    _vendor_gl[vk] = (_ref_gl, _ref_gst, _ref_glt)
+                continue  # skip engine classify for this row
+
+        # ── Normal classify: RDR → KB → TF-IDF ───────────────────────────────
+        _who_val = who
         _desc_with_who = f"{desc}|who:{_who_val.lower()}" if _who_val else desc
-        result = _engine_classify(_desc_with_who, debit, credit)
+        try:
+            result = _engine_classify(_desc_with_who, debit, credit)
+        except Exception as _row_err:
+            logger.warning(f"classify row [{idx}] '{desc[:60]}': {_row_err}")
+            continue
 
         # Write GL Account if: RDR/TF-IDF found something AND field is empty
-        # (preserve manual edits - only overwrite blank fields)
         if result.matched and not existing_gl:
             df.at[idx, "GL Account"] = result.gl_account
             df.at[idx, "GL Type"]    = result.gl_type or _COA_NAME_TO_TYPE.get(result.gl_account, "")
 
         if existing_gst in ("", "Unknown"):
             df.at[idx, "GST Category"] = result.gst_category
-            from backend.reconciliation.gst_calculator import calculate_gst_value
-            df.at[idx, "GST"] = calculate_gst_value(debit, credit, result.gst_category)
+            try:
+                from backend.reconciliation.gst_calculator import calculate_gst_value
+                df.at[idx, "GST"] = calculate_gst_value(debit, credit, result.gst_category)
+            except Exception:
+                df.at[idx, "GST"] = 0.0
+
+        # ── Index this debit row for future refund lookups (after GL is set) ───
+        if debit > 0 and credit == 0:
+            _gl_now = str(df.at[idx, "GL Account"]).strip()
+            if _gl_now:
+                _gst_now = str(df.at[idx, "GST Category"]).strip()
+                _glt_now = str(df.at[idx, "GL Type"]).strip()
+                for vk in _vendor_keys_for(who, desc):
+                    _vendor_gl[vk] = (_gl_now, _gst_now, _glt_now)
+
     return df
 
 
@@ -1485,6 +2137,80 @@ def reconcile_export(body: ExportReq):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=accfino_reconciliation.xlsx"})
 
+
+
+# ── DB Stats endpoint ────────────────────────────────────────────────────────
+@app.get("/db/stats/{user_id}")
+def db_stats(user_id: int):
+    try:
+        from db_app.database import SessionLocal as _SL
+        from db_app.models.transaction import Transaction as _Tx
+        from db_app.models.user import User as _U
+        import sqlalchemy as _sa
+        db = _SL()
+        try:
+            user = db.query(_U).filter(_U.id == user_id).first()
+            if not user: raise HTTPException(404, "User not found")
+            base_q = db.query(_Tx).filter(_Tx.user_id == user_id)
+            total  = base_q.count()
+            if total == 0: return None
+            gl_set  = base_q.filter(_Tx.gl_account.isnot(None),  _Tx.gl_account  != "").count()
+            gst_set = base_q.filter(_Tx.gst_category.isnot(None),_Tx.gst_category!= "").count()
+            who_set = base_q.filter(_Tx.who.isnot(None),          _Tx.who         != "").count()
+            bal_set = base_q.filter(_Tx.bank_balance.isnot(None)).count()
+            loans   = base_q.filter(_Tx.is_loan_payment == True).count()
+            loan_split = base_q.filter(_Tx.loan_principal.isnot(None)).count()
+            currencies = [r[0] for r in db.query(_Tx.currency).filter(_Tx.user_id==user_id).distinct().all() if r[0]]
+            last = db.query(_sa.func.max(_Tx.date)).filter(_Tx.user_id==user_id).scalar()
+            # Return shape matching frontend expectation: dbStats.columns.gl_account etc
+            return {
+                "total": total,
+                "columns": {
+                    "gl_account":    gl_set,
+                    "gst_category":  gst_set,
+                    "who":           who_set,
+                    "bank_balance":  bal_set,
+                    "is_loan_payment": loans,
+                    "loan_split":    loan_split,
+                },
+                "currencies":  currencies,
+                "last_saved":  str(last) if last else None,
+            }
+        finally: db.close()
+    except HTTPException: raise
+    except Exception as e:
+        logger.error(f"/db/stats error: {e}", exc_info=True)
+        raise HTTPException(500, str(e))
+
+
+# ── Clear user DB transactions ────────────────────────────────────────────────
+@app.delete("/db/transactions/{user_id}")
+def db_clear_user_transactions(user_id: int):
+    """Delete ALL transactions for this user only. Other users unaffected."""
+    try:
+        from db_app.database import SessionLocal as _SL
+        from db_app.models.transaction import Transaction as _Tx
+        from db_app.models.user import User as _U
+        db = _SL()
+        try:
+            user = db.query(_U).filter(_U.id == user_id).first()
+            if not user: raise HTTPException(404, "User not found")
+            tx_count = db.query(_Tx).filter(_Tx.user_id == user_id).count()
+            db.query(_Tx).filter(_Tx.user_id == user_id).delete(synchronize_session=False)
+            ab_count = 0
+            try:
+                from db_app.models.account_balance import AccountBalance as _AB
+                ab_count = db.query(_AB).filter(_AB.user_id == user_id).count()
+                db.query(_AB).filter(_AB.user_id == user_id).delete(synchronize_session=False)
+            except Exception: pass
+            db.commit()
+            logger.info(f"DB cleared for user {user_id} ({user.username}): {tx_count} tx, {ab_count} balances deleted")
+            return {"ok": True, "transactions_deleted": tx_count, "balances_deleted": ab_count, "user": user.username}
+        finally: db.close()
+    except HTTPException: raise
+    except Exception as e:
+        logger.error(f"/db/transactions delete error: {e}", exc_info=True)
+        raise HTTPException(500, str(e))
 
 
 # ------------------------------------------------------------------------------
