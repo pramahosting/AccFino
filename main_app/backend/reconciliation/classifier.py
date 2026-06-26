@@ -117,7 +117,16 @@ def classify_transactions(
             row["debit"], row["credit"] = d, 0
         return row
 
-    df = df.apply(_resolve, axis=1)
+    # Vectorised resolve: rows where both debit>0 and credit>0 simultaneously
+    _both = (df["debit"] > 0) & (df["credit"] > 0)
+    if _both.any():
+        _desc = df.loc[_both, "description"].astype(str).str.lower() if "description" in df.columns else pd.Series("", index=df.index[_both])
+        _debit_kw  = _desc.str.contains("transfer to|payment|card|bill|invoice", na=False)
+        _credit_kw = _desc.str.contains("direct credit|salary|refund|fast transfer from", na=False)
+        # Default: treat as debit
+        df.loc[_both & _debit_kw,  "credit"] = 0
+        df.loc[_both & _credit_kw & ~_debit_kw, "debit"] = 0
+        df.loc[_both & ~_debit_kw & ~_credit_kw, "credit"] = 0
 
     # -- Initialise output columns ----------------------------------------
     df["classification"] = None
@@ -163,6 +172,7 @@ def classify_transactions(
             credit_by_amt.setdefault(c, []).append((idx, dt, bank, acct, desc))
 
     MAX_DAYS = 5
+    MAX_CANDIDATES = 50   # cap per-amount bucket to prevent O(n²) blowup
 
     # -- Scoring helper -------------------------------------------------------
     # A pair qualifies as an internal transfer if it meets AT LEAST ONE of:
@@ -186,11 +196,11 @@ def classify_transactions(
         debits = sorted(
             [x for x in debit_by_amt[amount]  if x[0] not in matched_debits],
             key=lambda x: x[1] if pd.notnull(x[1]) else pd.Timestamp.max,
-        )
+        )[:MAX_CANDIDATES]
         credits = sorted(
             [x for x in credit_by_amt[amount] if x[0] not in matched_credits],
             key=lambda x: x[1] if pd.notnull(x[1]) else pd.Timestamp.max,
-        )
+        )[:MAX_CANDIDATES]
         if not debits or not credits:
             continue
 
@@ -200,6 +210,12 @@ def classify_transactions(
 
                 # Rule: must be different account or different bank
                 if dac == cac and dbk == cbk:
+                    continue
+
+                # Rule: skip if either description has an exclude keyword
+                # (salary, payroll, invoice etc — these are NOT internal transfers)
+                _ddl, _cdl = dds.lower(), cds.lower()
+                if any(k in _ddl for k in _EXCLUDE_KW) or any(k in _cdl for k in _EXCLUDE_KW):
                     continue
 
                 # Rule: dates must be available

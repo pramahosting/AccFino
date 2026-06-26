@@ -282,6 +282,14 @@ class _Index:
                 return r
         return None
 
+    def row_by_name(self, name: str) -> Optional[_Row]:
+        """Return the _Row whose name matches exactly (case-insensitive)."""
+        nl = name.strip().lower()
+        for r in self._rows:
+            if r.name.lower() == nl:
+                return r
+        return None
+
     @property
     def size(self) -> int:
         return len(self._rows)
@@ -389,6 +397,18 @@ class _Rdr:
             if "contains_any" in cond:
                 needles = cond["contains_any"]
                 if not isinstance(needles, list) or not any(str(k).lower() in text for k in needles):
+                    continue
+
+            # not_contains_any: rule must NOT match if any of these are in desc
+            if "not_contains_any" in cond:
+                blockers = cond["not_contains_any"]
+                if isinstance(blockers, list) and any(str(k).lower() in text for k in blockers):
+                    continue
+
+            # also_contains_any: ALL conditions must match (secondary AND filter)
+            if "also_contains_any" in cond:
+                also = cond["also_contains_any"]
+                if isinstance(also, list) and not any(str(k).lower() in text for k in also):
                     continue
 
             if "regex_any" in cond:
@@ -640,21 +660,36 @@ def classify(
 
         # 1. Vendor map: try WHO first, then description text
         # For return/refund transactions, ignore direction (return reverses original)
+        # IMPORTANT: sort vendor keys longest-first so "uber eats" wins over "uber",
+        # "xero payroll" wins over "xero", "google ads" wins over "google", etc.
         _vm = _kb.get("vendor_map", {})
+        _vm_sorted = sorted(_vm.items(), key=lambda kv: -len(kv[0]))
         _match = None
-        for _txt in ([_who_str] if _who_str else []) + [_kbtext]:
-            for _vk, _ve in _vm.items():
-                if _vk not in _txt: continue
+        for _search_who in [True, False]:  # True = search WHO text first, then desc text
+            _txt = _who_str if _search_who else _kbtext
+            if not _txt:
+                continue
+            for _vk, _ve in _vm_sorted:
+                if _vk not in _txt:
+                    continue
+                # When matching against WHO text: skip shorter keys if a longer key
+                # from the same vendor_map also matches (e.g. skip "uber" when
+                # "uber eats" also appears in _txt — longest-first sort handles this
+                # automatically since we break on first match).
                 if not _is_return:
-                    _d = _ve.get("direction","")
+                    _d = _ve.get("direction", "")
                     if _d == "debit"  and not _is_out: continue
                     if _d == "credit" and not _is_in:  continue
-                _match = _ve; break
-            if _match: break
+                _match = _ve
+                break
+            if _match:
+                break
 
         # 2. Keyword map: fallback if no vendor match
+        # Sort longest-first so specific phrases ("rent payment") beat short ones ("rent")
         if not _match:
-            for _kk, _ke in _kb.get("keyword_map", {}).items():
+            _km_sorted = sorted(_kb.get("keyword_map", {}).items(), key=lambda kv: -len(kv[0]))
+            for _kk, _ke in _km_sorted:
                 if _kk not in _kbtext: continue
                 if not _is_return:
                     _d = _ke.get("direction","")
@@ -666,8 +701,9 @@ def classify(
             _mgl  = _match.get("gl","")
             _mtyp = _match.get("gl_type","")
             _mgst = _match.get("gst","")
-            if _is_return and _mgl:
-                _mtyp = "Return"; _mgst = "BAS Excluded"
+            # For returns/refunds, keep the same GL and GST as the original purchase.
+            # _run_classify_gl handles the vendor-GL lookup from prior rows; the engine
+            # only reaches here when no prior row exists, so just use the vendor's GL as-is.
             if _mgl and not _mtyp:
                 _r2 = index.row_by_name(_mgl)
                 if _r2: _mtyp = _r2.atype; _mgst = _mgst or _r2.tax_code
@@ -676,12 +712,8 @@ def classify(
                 gst_amount=_calc_gst(debit, credit, _mgst),
                 matched=bool(_mgl), score=0.9, source="kb")
 
-        # Return/refund with no vendor match
-        if _is_return and _is_in:
-            return ClassifyResult(
-                gl_account="Other Revenue", gl_type="Return",
-                gst_category="BAS Excluded", gst_amount=0.0,
-                matched=True, score=0.85, source="kb_return")
+        # Return/refund with no vendor match — fall through to TF-IDF
+        # (don't hard-code Other Revenue; let direction-aware TF-IDF decide)
 
     # -- Stage 3: TF-IDF semantic match - direction-first ----------------
     # -- Stage 3: TF-IDF semantic match - direction-first ----------------

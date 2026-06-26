@@ -274,4 +274,13 @@ def normalize_transactions(df: pd.DataFrame, bank_name: str, account_number: str
         df_out["debit"], df_out["credit"] = 0,0
 
     logger.info(f"- Normalized {len(df_out)} rows for {bank_name} | Account {account_number}")
+
+    # Preserve the bank's own balance column when available
+    if balance_col and balance_col in df_local.columns:
+        df_out["balance"] = df_local[balance_col].apply(
+            lambda x: clean_amount(x) if str(x).strip() not in ("", "nan") else None
+        )
+    else:
+        df_out["balance"] = None
+
     return df_out
