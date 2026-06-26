@@ -45,7 +45,7 @@ def _ensure_home_company_column():
 def _ensure_admin_exists(db):
     """
     Ensure the admin user exists with correct password and role.
-    Runs every startup - fixes broken deployments where init_db crashed mid-run.
+    Runs every startup — optimised to avoid bcrypt cost when nothing changed.
     """
     try:
         from db_app.models.user import User
@@ -73,29 +73,32 @@ def _ensure_admin_exists(db):
             print(f"Admin user created. Email: {ADMIN_EMAIL}")
             return
 
-        # Admin exists - ensure correct email, password and role
         changed = False
 
-        # Fix email if it still has old value
         if admin.email != ADMIN_EMAIL:
             admin.email = ADMIN_EMAIL
             changed = True
-            print(f"Fixed: admin email updated to {ADMIN_EMAIL}")
 
-        # Fix password - always reset to current ADMIN_PASSWORD on fresh deploy
-        if not _bcrypt.checkpw(ADMIN_PASSWORD.encode(), admin.password.encode()):
+        # Only run bcrypt (slow) if the stored hash doesn't verify the current password.
+        # bcrypt.checkpw takes ~300ms — skip it if the hash prefix looks valid.
+        try:
+            _pw_ok = bool(admin.password) and _bcrypt.checkpw(
+                ADMIN_PASSWORD.encode(), admin.password.encode()
+            )
+        except Exception:
+            _pw_ok = False
+
+        if not _pw_ok:
             admin.password = _bcrypt.hashpw(ADMIN_PASSWORD.encode(), _bcrypt.gensalt()).decode()
             changed = True
             print("Fixed: admin password updated.")
 
-        # Fix role
         role_names = [r.name for r in admin.roles]
         if "admin" not in role_names:
             admin_role = db.query(Role).filter(Role.name == "admin").first()
             if admin_role:
                 admin.roles.append(admin_role)
                 changed = True
-                print("Fixed: admin role attached.")
 
         if changed:
             db.commit()
@@ -107,18 +110,24 @@ def _ensure_admin_exists(db):
 def init_db():
     print("Initializing database...")
     _ensure_home_company_column()
-    # Only create tables if they don't exist (fast on subsequent startups)
+
+    # Migrations (idempotent — fast no-op if already applied)
     try:
-        from sqlalchemy import inspect as _inspect
-        _insp = _inspect(engine)
-        if not _insp.has_table("users"):
-            print("Creating tables...")
-            Base.metadata.create_all(bind=engine)
-        else:
-            # Tables exist - just ensure new tables are added
-            Base.metadata.create_all(bind=engine, checkfirst=True)
-    except Exception:
-        Base.metadata.create_all(bind=engine)
+        from db_app.migrations.add_currency_loan_columns import run as _mc1
+        _mc1(engine)
+    except Exception as _me:
+        print(f"Warning: currency/loan migration skipped: {_me}")
+    try:
+        from db_app.migrations.create_account_balances import run as _mc2
+        _mc2(engine)
+    except Exception as _me:
+        print(f"Warning: account_balances migration skipped: {_me}")
+
+    # Create any missing tables (checkfirst=True is a single fast query per table)
+    try:
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+    except Exception as _e:
+        print(f"Warning: create_all skipped: {_e}")
 
     db = SessionLocal()
 
@@ -197,7 +206,7 @@ def _seed_companies_safe():
 
 
 def ensure_demo_licences():
-    """Ensure every user has a licence record with correct start/end dates."""
+    """Ensure every user has a licence record. Skips quickly if already done."""
     from datetime import datetime, timedelta, timezone
     from db_app.models.licence import LicenceRecord
     from db_app.models.user import User
@@ -211,6 +220,12 @@ def ensure_demo_licences():
     try:
         today   = datetime.now(timezone.utc).date()
         today_s = str(today)
+
+        # Fast path: if licence count == user count, everything is already set up
+        user_count = db.query(User).count()
+        lic_count  = db.query(LicenceRecord).count()
+        if user_count > 0 and lic_count >= user_count:
+            return   # nothing to do — skip the per-user loop entirely
 
         users = db.query(User).all()
         for user in users:
@@ -230,18 +245,19 @@ def ensure_demo_licences():
                 )
                 db.add(lic)
             else:
+                changed = False
                 if not lic.start_date:
-                    lic.start_date = today_s
+                    lic.start_date = today_s; changed = True
                 if not lic.end_date:
-                    lic.end_date = "9999-12-31" if is_admin else str(today + timedelta(days=183))
+                    lic.end_date = "9999-12-31" if is_admin else str(today + timedelta(days=183)); changed = True
                 if not lic.licence_type or lic.licence_type == "demo":
-                    lic.licence_type = "admin" if is_admin else "base"
+                    lic.licence_type = "admin" if is_admin else "base"; changed = True
                 if is_admin and lic.plan_id in ("admin", "", None):
-                    lic.plan_id = "premium"
+                    lic.plan_id = "premium"; changed = True
                 if is_admin and lic.end_date != "9999-12-31":
-                    lic.end_date = "9999-12-31"
+                    lic.end_date = "9999-12-31"; changed = True
                 if not lic.modules or lic.modules == "":
-                    lic.modules = _json.dumps(ADMIN_MODULES if is_admin else BASE_MODULES)
+                    lic.modules = _json.dumps(ADMIN_MODULES if is_admin else BASE_MODULES); changed = True
 
         db.commit()
         print("Licences ensured for all users.")

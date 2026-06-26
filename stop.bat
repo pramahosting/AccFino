@@ -39,4 +39,3 @@ echo   2. Close the AccFino Launcher window
 echo   3. Delete the folder in Explorer
 echo  ================================================
 echo.
-pause
