@@ -3,7 +3,7 @@ import { getSessions, deleteSession, getSession, getBanks } from '../../lib/api.
 import { PlusCircle, Trash2, Upload, PlayCircle, Folder, FileText, X, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-export default function InputPanel({ accounts, setAccounts, username, onProcess, running, onLoadSession, processLabel="⚡ Agent Run" }) {
+export default function InputPanel({ accounts, setAccounts, username, onProcess, running, onLoadSession, processLabel="⚡ Agent Run", currency, onCurrencyChange }) {
   const [banks,      setBanks]      = useState([])
   const [bankName,   setBankName]   = useState('')
   const [accNum,     setAccNum]     = useState('')
@@ -12,6 +12,36 @@ export default function InputPanel({ accounts, setAccounts, username, onProcess,
   const [loadingSid, setLoadingSid] = useState(null)
   const [dragging,   setDragging]   = useState(false)
   const fileRef = useRef()
+
+  const CURRENCIES = [
+    { code: 'AUD', label: '🇦🇺 AUD — Australian Dollar' },
+    { code: 'USD', label: '🇺🇸 USD — US Dollar' },
+    { code: 'EUR', label: '🇪🇺 EUR — Euro' },
+    { code: 'GBP', label: '🇬🇧 GBP — British Pound' },
+    { code: 'INR', label: '🇮🇳 INR — Indian Rupee' },
+    { code: 'JPY', label: '🇯🇵 JPY — Japanese Yen' },
+    { code: 'CNY', label: '🇨🇳 CNY — Chinese Yuan' },
+    { code: 'CAD', label: '🇨🇦 CAD — Canadian Dollar' },
+    { code: 'NZD', label: '🇳🇿 NZD — New Zealand Dollar' },
+    { code: 'SGD', label: '🇸🇬 SGD — Singapore Dollar' },
+    { code: 'HKD', label: '🇭🇰 HKD — Hong Kong Dollar' },
+    { code: 'CHF', label: '🇨🇭 CHF — Swiss Franc' },
+    { code: 'KRW', label: '🇰🇷 KRW — South Korean Won' },
+    { code: 'AED', label: '🇦🇪 AED — UAE Dirham' },
+    { code: 'MYR', label: '🇲🇾 MYR — Malaysian Ringgit' },
+    { code: 'THB', label: '🇹🇭 THB — Thai Baht' },
+    { code: 'IDR', label: '🇮🇩 IDR — Indonesian Rupiah' },
+    { code: 'PHP', label: '🇵🇭 PHP — Philippine Peso' },
+    { code: 'PKR', label: '🇵🇰 PKR — Pakistani Rupee' },
+    { code: 'BDT', label: '🇧🇩 BDT — Bangladeshi Taka' },
+    { code: 'VND', label: '🇻🇳 VND — Vietnamese Dong' },
+    { code: 'ZAR', label: '🇿🇦 ZAR — South African Rand' },
+    { code: 'MXN', label: '🇲🇽 MXN — Mexican Peso' },
+    { code: 'BRL', label: '🇧🇷 BRL — Brazilian Real' },
+    { code: 'SEK', label: '🇸🇪 SEK — Swedish Krona' },
+    { code: 'NOK', label: '🇳🇴 NOK — Norwegian Krone' },
+    { code: 'DKK', label: '🇩🇰 DKK — Danish Krone' },
+  ]
 
   useEffect(() => {
     getBanks().then(r => setBanks(r.data || [])).catch(() => {})
@@ -86,6 +116,37 @@ export default function InputPanel({ accounts, setAccounts, username, onProcess,
           <div className="input-group">
             <label>Account Number</label>
             <input className="input" value={accNum} onChange={e => setAccNum(e.target.value)} placeholder="e.g. 12345678" />
+          </div>
+
+          {/* Currency selector */}
+          <div className="input-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              Currency of Statement
+              {currency && currency !== 'AUD' && (
+                <span style={{
+                  fontSize: '.7rem', background: 'var(--warning-bg)', color: 'var(--warning)',
+                  padding: '2px 8px', borderRadius: 100, fontWeight: 700,
+                }}>
+                  Will convert to AUD
+                </span>
+              )}
+            </label>
+            <select value={currency || 'AUD'} onChange={e => onCurrencyChange && onCurrencyChange(e.target.value)}>
+              {CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </select>
+            {currency && currency !== 'AUD' && (
+              <div style={{
+                marginTop: 6, padding: '8px 10px',
+                background: 'var(--info-bg)', borderRadius: 'var(--r-sm)',
+                fontSize: '.75rem', color: 'var(--info)',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                <span>💱</span>
+                Amounts will be converted from <strong>{currency}</strong> to <strong>AUD</strong> using live Google Finance rates before processing. Output always shows AUD.
+              </div>
+            )}
           </div>
 
           {/* Drop zone */}

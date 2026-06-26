@@ -46,6 +46,7 @@ export default function ReconciliationPage() {
 
   const [inputMode,      setInputMode]      = useState('csv')
   const [running,        setRunning]        = useState(false)
+  const [currency,       setCurrency]       = useState('AUD')   // input currency; output always AUD
 
   const username = user?.username || user?.email || 'default_user'
 
@@ -121,6 +122,7 @@ export default function ReconciliationPage() {
         const fd = new FormData()
         fd.append('session_id', sessionId)
         fd.append('username', username)
+        fd.append('currency', currency || 'AUD')
         // Only append the NEW files (restored ones are loaded from saved session)
         newAccounts.forEach(acc => {
           acc.files.forEach(f => {
@@ -152,6 +154,7 @@ export default function ReconciliationPage() {
           })
         })
         fd.append('username', username)
+        fd.append('currency', currency || 'AUD')
         const res = await processFiles(fd)
         data = res.data
         toast.success(`Agent processed ${(data.transactions||[]).length} transactions`)
@@ -270,7 +273,7 @@ export default function ReconciliationPage() {
                 })}
               </div>
               {inputMode==='csv' && (
-                <CSVAddAccount accounts={accounts} setAccounts={setAccounts} username={username}/>
+                <CSVAddAccount accounts={accounts} setAccounts={setAccounts} username={username} currency={currency} onCurrencyChange={setCurrency}/>
               )}
               {inputMode==='openbanking' && (
                 <OpenBankingInput onTransactions={handleObTransactions}/>
@@ -309,7 +312,7 @@ export default function ReconciliationPage() {
 }
 
 // ── CSV Add Account ──────────────────────────────────────────────────────────
-function CSVAddAccount({ accounts, setAccounts }) {
+function CSVAddAccount({ accounts, setAccounts, currency, onCurrencyChange }) {
   const [banks,       setBanks]      = useState([])
   const [bankName,    setBankName]   = useState('')
   const [accNum,      setAccNum]     = useState('')
@@ -318,8 +321,48 @@ function CSVAddAccount({ accounts, setAccounts }) {
   const [dragging, setDragging]= useState(false)
   const fileRef = React.useRef()
 
+  const CURRENCIES = [
+    { code: 'AUD', label: 'AUD — Australian Dollar' },
+    { code: 'USD', label: 'USD — US Dollar' },
+    { code: 'EUR', label: 'EUR — Euro' },
+    { code: 'GBP', label: 'GBP — British Pound' },
+    { code: 'INR', label: 'INR — Indian Rupee' },
+    { code: 'JPY', label: 'JPY — Japanese Yen' },
+    { code: 'CNY', label: 'CNY — Chinese Yuan' },
+    { code: 'CAD', label: 'CAD — Canadian Dollar' },
+    { code: 'NZD', label: 'NZD — New Zealand Dollar' },
+    { code: 'SGD', label: 'SGD — Singapore Dollar' },
+    { code: 'HKD', label: 'HKD — Hong Kong Dollar' },
+    { code: 'CHF', label: 'CHF — Swiss Franc' },
+    { code: 'KRW', label: 'KRW — South Korean Won' },
+    { code: 'AED', label: 'AED — UAE Dirham' },
+    { code: 'MYR', label: 'MYR — Malaysian Ringgit' },
+    { code: 'THB', label: 'THB — Thai Baht' },
+    { code: 'IDR', label: 'IDR — Indonesian Rupiah' },
+    { code: 'PHP', label: 'PHP — Philippine Peso' },
+    { code: 'PKR', label: 'PKR — Pakistani Rupee' },
+    { code: 'BDT', label: 'BDT — Bangladeshi Taka' },
+    { code: 'VND', label: 'VND — Vietnamese Dong' },
+    { code: 'ZAR', label: 'ZAR — South African Rand' },
+    { code: 'MXN', label: 'MXN — Mexican Peso' },
+    { code: 'BRL', label: 'BRL — Brazilian Real' },
+    { code: 'SEK', label: 'SEK — Swedish Krona' },
+    { code: 'NOK', label: 'NOK — Norwegian Krone' },
+    { code: 'DKK', label: 'DKK — Danish Krone' },
+  ]
+
   useEffect(() => {
-    getBanks().then(r => setBanks(r.data||[])).catch(()=>{})
+    let attempts = 0
+    const fetchBanks = () => {
+      getBanks()
+        .then(r => {
+          const banks = Array.isArray(r.data) ? r.data : []
+          if (banks.length > 0) { setBanks(banks) }
+          else if (++attempts < 10) { setTimeout(fetchBanks, 2000) }
+        })
+        .catch(() => { if (++attempts < 10) setTimeout(fetchBanks, 2000) })
+    }
+    fetchBanks()
   }, [])
 
   const addFiles = fs => setPending(p=>[...p,...Array.from(fs).filter(f=>f.name.endsWith('.csv'))])
@@ -334,21 +377,52 @@ function CSVAddAccount({ accounts, setAccounts }) {
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:12}}>
-      <div className="input-group">
-        <label>Bank</label>
-        <select value={bankName} onChange={e=>setBankName(e.target.value)}>
-          <option value="">Select bank…</option>
-          {banks.map(b=><option key={b} value={b}>{b}</option>)}
-        </select>
+
+      {/* Row 1: Bank | Account Name */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+        <div className="input-group" style={{margin:0}}>
+          <label>Bank</label>
+          <select value={bankName} onChange={e=>setBankName(e.target.value)}>
+            <option value="">Select bank…</option>
+            {banks.map(b=><option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+        <div className="input-group" style={{margin:0}}>
+          <label>Account Name</label>
+          <input className="input" value={accountName} onChange={e=>setAccountName(e.target.value)} placeholder="e.g. Business Cheque"/>
+        </div>
       </div>
-      <div className="input-group">
-        <label>Account Name</label>
-        <input className="input" value={accountName} onChange={e=>setAccountName(e.target.value)} placeholder="e.g. Business Cheque"/>
+
+      {/* Row 2: Account Number | Statement Currency */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+        <div className="input-group" style={{margin:0}}>
+          <label>Account Number</label>
+          <input className="input" value={accNum} onChange={e=>setAccNum(e.target.value)} placeholder="e.g. 12345678"/>
+        </div>
+        <div className="input-group" style={{margin:0}}>
+          <label style={{display:'flex',alignItems:'center',gap:6}}>
+            Statement Currency
+            {currency && currency !== 'AUD' && (
+              <span style={{fontSize:'.65rem',background:'var(--warning-bg)',color:'var(--warning)',
+                padding:'1px 6px',borderRadius:100,fontWeight:700,whiteSpace:'nowrap'}}>
+                → AUD
+              </span>
+            )}
+          </label>
+          <select value={currency||'AUD'} onChange={e=>onCurrencyChange&&onCurrencyChange(e.target.value)}>
+            {CURRENCIES.map(c=><option key={c.code} value={c.code}>{c.label}</option>)}
+          </select>
+        </div>
       </div>
-      <div className="input-group">
-        <label>Account Number</label>
-        <input className="input" value={accNum} onChange={e=>setAccNum(e.target.value)} placeholder="e.g. 12345678"/>
-      </div>
+
+      {/* Currency conversion notice (only when non-AUD selected) */}
+      {currency && currency !== 'AUD' && (
+        <div style={{padding:'7px 10px',background:'var(--info-bg)',borderRadius:'var(--r-sm)',
+          fontSize:'.73rem',color:'var(--info)',display:'flex',alignItems:'center',gap:6}}>
+          💱 Live rate from Google Finance · All amounts shown in <strong>AUD</strong>
+        </div>
+      )}
+
       <div className="input-group">
         <label>CSV Statement Files</label>
         <div className={`drop-zone${dragging?' drag-over':''}`} style={{padding:'16px'}}
@@ -408,13 +482,17 @@ function AccountsReady({ accounts, setAccounts }) {
               </div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:700,fontSize:'.8rem',color:'var(--text-1)'}}>{acc.bankName}</div>
+                {acc.accountName && (
+                  <div style={{fontSize:'.75rem',color:'var(--text-2)',fontWeight:500,marginBottom:1}}>{acc.accountName}</div>
+                )}
                 <div style={{fontFamily:'var(--font-mono)',fontSize:'.7rem',color:'var(--text-3)'}}>{acc.accountNumber}</div>
                 {acc.restored ? (
                   <div style={{fontSize:'.7rem',color:'var(--warning)'}}>⚠ Re-upload to re-run</div>
                 ) : (
                   <div style={{fontSize:'.7rem',color:'var(--text-3)'}}>{acc.files.length} file{acc.files.length!==1?'s':''}</div>
                 )}
-                {acc.fileNames?.map((fn,j)=>(
+                {/* File names — from File objects (new) or fileNames array (restored) */}
+                {(acc.files.length > 0 ? acc.files.map(f=>f.name) : acc.fileNames || []).map((fn,j)=>(
                   <div key={j} style={{fontSize:'.68rem',color:'var(--text-3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📄 {fn}</div>
                 ))}
               </div>

@@ -50,6 +50,11 @@ export const exportExcel   = (txns)          => http.post('/reconcile/export', {
 // ── Transactions (DB) ─────────────────────────────────────────────────────────
 export const saveToDB      = (uid, txns)     => http.post('/transactions/save', { user_id:uid, transactions:txns })
 export const getUserTxns   = (uid)           => http.get(`/transactions/user/${uid}`)
+export const getDbStats    = (uid)           => http.get(`/db/stats/${uid}`)
+export const clearUserDb   = (uid)           => http.delete(`/db/transactions/${uid}`)
+export const getAccountBalances  = (uid)     => http.get(`/account-balances/${uid}`)
+export const upsertAccountBalance= (body)    => http.post('/account-balances', body)
+export const bulkUpsertBalances  = (body)    => http.post('/account-balances/bulk', body)
 
 // ── Trading ───────────────────────────────────────────────────────────────────
 export const tradingAnalyze = (fd)           => http.post('/trading/analyze', fd, { headers:{'Content-Type':'multipart/form-data'} })
