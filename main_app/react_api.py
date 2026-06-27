@@ -465,6 +465,18 @@ async def _on_startup():
             _mab(_db_engine)
         except Exception as _e:
             logger.warning(f"startup: account_balances migration skipped: {_e}")
+        try:
+            from db_app.migrations.create_accounting_tables import run as _mac
+            from db_app.database import engine as _db_engine
+            _mac(_db_engine)
+        except Exception as _e:
+            logger.warning(f"startup: accounting migration skipped: {_e}")
+        try:
+            from db_app.migrations.create_payroll_tables import run as _mpr
+            from db_app.database import engine as _db_engine
+            _mpr(_db_engine)
+        except Exception as _e:
+            logger.warning(f"startup: payroll migration skipped: {_e}")
         logger.info("startup: background DB init complete")
 
     _threading.Thread(target=_bg_init, daemon=True, name="startup-db-init").start()
@@ -815,6 +827,26 @@ app.include_router(db_transactions.router,   prefix="/transactions", tags=["tran
 app.include_router(db_invoice.router,        prefix="/invoice",      tags=["invoice"])
 app.include_router(db_password_reset.router, prefix="/auth",         tags=["auth"])
 app.include_router(db_payments.router,       prefix="/payments",     tags=["payments"])
+
+# ── Accounting module ──────────────────────────────────────────────────────────
+try:
+    from db_app.api.accounting import router as _accounting_router
+    app.include_router(_accounting_router, prefix="/accounting", tags=["accounting"])
+    print("[accfino] Accounting router registered OK")
+except Exception as _acc_err:
+    print(f"[accfino] WARNING: Accounting router not loaded: {_acc_err}")
+
+# ── Payroll module ─────────────────────────────────────────────────────────────
+try:
+    from main_app.backend.payroll.router import router as _payroll_router
+    app.include_router(_payroll_router, prefix="/payroll", tags=["payroll"])
+    print("[accfino] Payroll router registered OK")
+except Exception as _pr_err:
+    try:
+        from backend.payroll.router import router as _payroll_router
+        app.include_router(_payroll_router, prefix="/payroll", tags=["payroll"])
+    except Exception as _pr_err2:
+        print(f"[accfino] WARNING: Payroll router not loaded: {_pr_err2}")
 
 _cf_cache: dict = {}
 
@@ -2213,6 +2245,31 @@ def db_clear_user_transactions(user_id: int):
         raise HTTPException(500, str(e))
 
 
+# ── Cash Flow from DB ─────────────────────────────────────────────────────────
+@app.get("/cashflow/from-db/{user_id}")
+def cashflow_from_db(user_id: int):
+    """Build a transaction dataset from the user's saved DB transactions."""
+    try:
+        from db_app.database import SessionLocal as _SL
+        from db_app.models.transaction import Transaction as _Tx
+        _db = _SL()
+        try:
+            txns = _db.query(_Tx).filter(_Tx.user_id == user_id).order_by(_Tx.date).all()
+            if not txns:
+                return {"rows":[],"columns":[],"detected":{},"row_count":0,
+                        "message":"No transactions in database"}
+            rows = [{"date":str(t.date)[:10] if t.date else "","debit":float(t.debit or 0),
+                     "credit":float(t.credit or 0),"balance":float(t.bank_balance or 0),
+                     "description":t.description or ""} for t in txns]
+            detected = {"date":"date","debit":"debit","credit":"credit","balance":"balance","desc":"description"}
+            return {"rows":rows,"columns":list(rows[0].keys()),"detected":detected,
+                    "row_count":len(rows),"message":f"{len(rows)} transactions loaded from database"}
+        finally: _db.close()
+    except Exception as e:
+        logger.error(f"/cashflow/from-db: {e}", exc_info=True)
+        raise HTTPException(500, str(e))
+
+
 # ------------------------------------------------------------------------------
 # DASHBOARD STATS  - aggregates from ALL session pickles (no Save-to-DB needed)
 # ------------------------------------------------------------------------------
@@ -3177,8 +3234,8 @@ def _get_db_session():
 
 # All module keys available for licence assignment
 ALL_MODULES = [
-    "dashboard", "reconciliation", "trading",
-    "cash-flow", "invoice", "admin", "file-manager", "licence"
+    "dashboard", "accounting", "reconciliation", "trading",
+    "cash-flow", "invoice", "admin", "file-manager", "licence", "payroll"
 ]
 
 @app.get("/licence/list")
