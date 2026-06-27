@@ -59,6 +59,20 @@ const CATEGORIES = [
     ],
   },
   {
+    key:   'lending',
+    icon:  '🏦',
+    label: 'Smart Lending',
+    color: '#0891b2',
+    bg:    '#ecfeff',
+    border:'#a5f3fc',
+    modules: [
+      { key:'lending', icon:'📤', label:'Upload Statement',      desc:'PDF · image · CSV bank statement extraction',         to:'/lending' },
+      { key:'lending', icon:'🗂', label:'Transaction Analysis',  desc:'AI classification into 40+ expense categories',       to:'/lending' },
+      { key:'lending', icon:'📊', label:'Lending Metrics',       desc:'NDI · UMI · DSR · HEM · LTI · risk score',           to:'/lending' },
+      { key:'lending', icon:'🏛', label:'Serviceability Check',  desc:'ASIC RG 209 · APRA buffer · max borrowing capacity',  to:'/lending' },
+    ],
+  },
+  {
     key:   'setup',
     icon:  '⚙️',
     label: 'Control Panel · Setup',
@@ -104,6 +118,8 @@ export default function OverviewPage() {
     if (key === 'setup' || key === 'dashboard' || key === 'accounting') return true
     // Vault/Base plan: reconciliation always accessible
     if (key === 'reconciliation') return true
+    // Smart Lending always accessible
+    if (key === 'lending') return true
     // Cash Flow requires Accounting Pro or above — check plan_id, not just modules
     // (modules may contain stale cash-flow from previous plan merges)
     if (key === 'cash-flow') {

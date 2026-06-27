@@ -14,6 +14,7 @@ const NAV = [
   { to:'/accounting',     icon:BookOpen,        label:'Accounting',       sub:'Dashboard · Recon · Sale', key:'accounting',     adminOnly:false },
   { to:'/trading',        icon:TrendingUp,      label:'Taxation & Trading',sub:'CGT · Tax Return',        key:'trading',        adminOnly:false },
   { to:'/payroll',        icon:Users,           label:'Payroll',          sub:'PAYG · Super · STP',       key:'payroll',        adminOnly:false },
+  { to:'/lending',        icon:DollarSign,      label:'Smart Lending',    sub:'Statement analysis · HEM · UMI', key:'lending',     adminOnly:false },
 ]
 
 // Setup is always visible; admin items below only for admins
@@ -68,6 +69,7 @@ export default function Layout() {
   const canAccess = (moduleKey) => {
     if (moduleKey === 'setup') return true        // Control Panel always accessible
     if (moduleKey === 'accounting') return true   // Accounting always accessible — Reconciliation is free for all
+    if (moduleKey === 'lending')     return true   // Smart Lending always accessible
     if (moduleKey === 'dashboard') return true    // Overview always accessible
     if (isAdmin) return true
     if (allowedModules === null) return false     // still loading
