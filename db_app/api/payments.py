@@ -59,8 +59,8 @@ def _load_plans() -> dict:
     return _FALLBACK_PLANS
 
 _FALLBACK_PLANS = {
-    "base":         {"name":"Base",         "price_monthly":0,    "price_yearly":0,
-                     "modules":["dashboard","reconciliation"],
+    "base":         {"name":"Vault",        "price_monthly":0,    "price_yearly":0,
+                     "modules":["dashboard","reconciliation","accounting"],
                      "features":["Dashboard","CSV reconciliation (up to 5000 txns/mo)"],"highlight":False,"badge":"Free",
                      "description":"Start free - Dashboard + CSV Reconciliation included"},
     "reconciliation":{"name":"Reconciliation","price_monthly":1900,"price_yearly":19000,
