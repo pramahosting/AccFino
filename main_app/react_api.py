@@ -848,6 +848,19 @@ except Exception as _pr_err:
     except Exception as _pr_err2:
         print(f"[accfino] WARNING: Payroll router not loaded: {_pr_err2}")
 
+# ── Smart Lending module ───────────────────────────────────────────────────────
+try:
+    from main_app.backend.lending.router import router as _lending_router
+    app.include_router(_lending_router, tags=["lending"])
+    print("[accfino] Smart Lending router registered OK")
+except Exception as _lr_err:
+    try:
+        from backend.lending.router import router as _lending_router
+        app.include_router(_lending_router, tags=["lending"])
+        print("[accfino] Smart Lending router registered OK (fallback)")
+    except Exception as _lr_err2:
+        print(f"[accfino] WARNING: Smart Lending router not loaded: {_lr_err2}")
+
 _cf_cache: dict = {}
 
 
@@ -3235,7 +3248,7 @@ def _get_db_session():
 # All module keys available for licence assignment
 ALL_MODULES = [
     "dashboard", "accounting", "reconciliation", "trading",
-    "cash-flow", "invoice", "admin", "file-manager", "licence", "payroll"
+    "cash-flow", "invoice", "admin", "file-manager", "licence", "payroll", "lending"
 ]
 
 @app.get("/licence/list")
