@@ -1,107 +1,114 @@
 {
     "base": {
         "name": "Vault",
-        "description": "Start free — Dashboard + CSV Reconciliation included",
+        "description": "Free forever \u2014 CSV Reconciliation + Sales, Purchases, Customers & Suppliers",
         "price_monthly": 0,
         "price_yearly": 0,
         "badge": "Free",
         "highlight": false,
+        "category": "accounting",
         "features": [
-            "Dashboard overview & stats",
-            "CSV bank reconciliation (up to 5000 txns/mo)",
-            "Open Banking unlocked when you add any paid plan",
-            "12 months free access",
-            "Upgrade anytime"
+            "Unlimited CSV reconciliation (1,000 txns/mo)",
+            "GL & GST auto-classification",
+            "Sales \u2014 Customers, Quotes & Tax Invoices",
+            "Purchases \u2014 Suppliers, POs, Bills & Receipts",
+            "Excel export"
         ],
         "modules": [
             "dashboard",
+            "accounting",
             "reconciliation"
         ],
-        "price_effective_from": "2026-05-18"
+        "price_effective_from": "2026-06-27"
     },
-    "trading": {
-        "name": "Trading",
-        "description": "Crypto & equity CGT tax reports + Open Banking",
-        "price_monthly": 1500,
-        "price_yearly": 15000,
+    "accounting_pro": {
+        "name": "Accounting Pro",
+        "description": "Full accounting suite with Open Banking, Cash Flow & 20+ financial reports",
+        "price_monthly": 2900,
+        "price_yearly": 29000,
+        "badge": "Popular",
+        "highlight": true,
+        "category": "accounting",
+        "features": [
+            "Everything in Accounting Starter",
+            "Open Banking / direct bank feeds",
+            "Unlimited transactions",
+            "ML Cash Flow forecasting",
+            "20+ Financial Reports (P&L, Balance Sheet, BAS, Aged)"
+        ],
+        "modules": [
+            "dashboard",
+            "accounting",
+            "reconciliation",
+            "cash-flow"
+        ],
+        "price_effective_from": "2026-06-27"
+    },
+    "taxation_complete": {
+        "name": "Taxation Complete",
+        "description": "Complete Australian tax \u2014 CGT (Crypto, Shares, Property) + full ITR data",
+        "price_monthly": 2500,
+        "price_yearly": 25000,
         "badge": "",
         "highlight": false,
+        "category": "trading",
         "features": [
-            "Crypto CGT calculation",
-            "Equity CGT reports",
-            "ATO-ready tax summaries",
-            "Multi-exchange support",
-            "Open Banking / direct bank feeds included"
+            "Everything in Taxation Basic",
+            "Property CGT calculator",
+            "Tax Return Data \u2014 full ITR",
+            "All income, deductions & offsets",
+            "HELP/HECS repayment estimate"
         ],
         "modules": [
             "dashboard",
             "trading"
         ],
-        "price_effective_from": "2026-05-18"
+        "price_effective_from": "2026-06-27"
     },
-    "cashflow": {
-        "name": "Cash Flow",
-        "description": "ML-powered cash flow forecasting",
-        "price_monthly": 1500,
-        "price_yearly": 15000,
-        "badge": "",
-        "highlight": false,
+    "payroll_business": {
+        "name": "Payroll Business",
+        "description": "Full Australian payroll with STP Phase 2, unlimited employees & ATO compliance",
+        "price_monthly": 4900,
+        "price_yearly": 49000,
+        "badge": "Popular",
+        "highlight": true,
+        "category": "payroll",
         "features": [
-            "ML next-month prediction",
-            "Visual cash flow charts",
-            "Export to Excel",
-            "Historical trend analysis",
-            "Open Banking / direct bank feeds included"
+            "Everything in Payroll Essential",
+            "Unlimited employees",
+            "STP Phase 2 / ATO filing",
+            "Annual payment summaries",
+            "Priority support"
         ],
         "modules": [
             "dashboard",
-            "reconciliation",
-            "cash-flow"
+            "payroll"
         ],
-        "price_effective_from": "2026-05-18"
-    },
-    "invoice": {
-        "name": "Invoice",
-        "description": "GST invoices & PDF extraction",
-        "price_monthly": 1200,
-        "price_yearly": 12000,
-        "badge": "",
-        "highlight": false,
-        "features": [
-            "Create GST-compliant invoices",
-            "Extract data from PDF invoices",
-            "Customer & business management",
-            "Invoice status tracking",
-            "Open Banking / direct bank feeds included"
-        ],
-        "modules": [
-            "dashboard",
-            "reconciliation",
-            "invoice"
-        ],
-        "price_effective_from": "2026-05-18"
+        "price_effective_from": "2026-06-27"
     },
     "premium": {
-        "name": "Ultra",
-        "description": "Complete suite — best value, all modules + Open Banking",
-        "price_monthly": 2500,
-        "price_yearly": 25000,
+        "name": "Ultra Plan",
+        "description": "All modules \u2014 Accounting, Taxation & Payroll \u2014 best value complete suite",
+        "price_monthly": 7900,
+        "price_yearly": 79000,
         "badge": "Best Value",
         "highlight": true,
+        "category": "bundle",
         "features": [
-            "Everything in Full Bundle",
-            "Save $17/month vs Full Bundle",
-            "Priority support",
-            "Early access to new features",
-            "Unlimited transactions & exports"
+            "Everything in Accounting Pro",
+            "Everything in Taxation Complete",
+            "Full Payroll Business",
+            "Open Banking included",
+            "Priority support + early access features"
         ],
         "modules": [
             "dashboard",
+            "accounting",
             "reconciliation",
             "trading",
             "cash-flow",
-            "invoice"
+            "payroll"
         ],
-        "price_effective_from": "2026-05-18"
+        "price_effective_from": "2026-06-27"
     }
 }
