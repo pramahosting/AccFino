@@ -59,34 +59,40 @@ def _load_plans() -> dict:
     return _FALLBACK_PLANS
 
 _FALLBACK_PLANS = {
-    "base":         {"name":"Vault",        "price_monthly":0,    "price_yearly":0,
-                     "modules":["dashboard","reconciliation","accounting"],
-                     "features":["Dashboard","CSV reconciliation (up to 5000 txns/mo)"],"highlight":False,"badge":"Free",
-                     "description":"Start free - Dashboard + CSV Reconciliation included"},
-    "reconciliation":{"name":"Reconciliation","price_monthly":1900,"price_yearly":19000,
-                     "modules":["dashboard","reconciliation"],
-                     "features":["Unlimited transactions","Open Banking","GL & GST auto-classify","Excel export"],"highlight":False,"badge":"",
-                     "description":"Full bank reconciliation with Open Banking & unlimited transactions"},
-    "trading":      {"name":"Trading",      "price_monthly":1500, "price_yearly":15000,
-                     "modules":["dashboard","trading"],
-                     "features":["Crypto CGT","Equity CGT","ATO-ready summaries"],"highlight":False,"badge":"",
-                     "description":"Crypto & equity CGT tax reports + Open Banking"},
-    "cashflow":     {"name":"Cash Flow",    "price_monthly":1500, "price_yearly":15000,
-                     "modules":["dashboard","reconciliation","cash-flow"],
-                     "features":["ML next-month prediction","Visual charts","Excel export"],"highlight":False,"badge":"",
-                     "description":"ML-powered cash flow forecasting"},
-    "invoice":      {"name":"Invoice",      "price_monthly":1200, "price_yearly":12000,
-                     "modules":["dashboard","reconciliation","invoice"],
-                     "features":["GST-compliant invoices","PDF extraction","Customer management"],"highlight":False,"badge":"",
-                     "description":"GST invoices & PDF extraction"},
-    "full_bundle":  {"name":"Full Bundle",  "price_monthly":4900, "price_yearly":49000,
-                     "modules":["dashboard","reconciliation","trading","cash-flow","invoice"],
-                     "features":["Reconciliation + Trading + Cash Flow + Invoice","Open Banking","Priority support"],"highlight":False,"badge":"Popular",
-                     "description":"Reconciliation + Trading + Cash Flow + Invoice"},
-    "premium":      {"name":"Premium",      "price_monthly":3900, "price_yearly":39000,
-                     "modules":["dashboard","reconciliation","trading","cash-flow","invoice"],
-                     "features":["Everything in Full Bundle","Save vs Full Bundle","Priority support","Early access"],"highlight":True,"badge":"Best Value",
-                     "description":"Complete suite - best value, all modules + Open Banking"},
+    # ── Free base / Vault plan ─────────────────────────────────────────────────
+    "base":          {"name":"Vault",          "price_monthly":0,    "price_yearly":0,
+                      "modules":["dashboard","accounting","reconciliation"],
+                      "features":["Unlimited CSV Reconciliation","GL & GST auto-classify","Sales & Purchases","Customers & Suppliers","Excel export"],
+                      "highlight":False,"badge":"Free","category":"accounting",
+                      "description":"Free forever — CSV Reconciliation + Sales, Purchases, Customers & Suppliers"},
+
+    # ── Accounting plans ────────────────────────────────────────────────────────
+    "accounting_pro":     {"name":"Accounting Pro",    "price_monthly":2900,"price_yearly":29000,
+                      "modules":["dashboard","accounting","reconciliation","cash-flow"],
+                      "features":["Everything in Starter","Open Banking","ML Cash Flow forecast","Financial Reports (P&L, BS, BAS)","20+ reports"],
+                      "highlight":True,"badge":"Popular","category":"accounting",
+                      "description":"Full accounting suite with Open Banking, Cash Flow & 20+ financial reports"},
+
+    # ── Trading & Taxation plans ────────────────────────────────────────────────
+    "taxation_complete":  {"name":"Taxation Complete", "price_monthly":2500,"price_yearly":25000,
+                      "modules":["dashboard","trading"],
+                      "features":["Everything in Basic","Property CGT calculator","Tax Return Data (full ITR)","All income, deductions & offsets","HELP/HECS repayment"],
+                      "highlight":False,"badge":"","category":"trading",
+                      "description":"Complete Australian tax — CGT (Crypto, Shares, Property) + full ITR data"},
+
+    # ── Payroll plans ───────────────────────────────────────────────────────────
+    "payroll_business":   {"name":"Payroll Business",  "price_monthly":4900,"price_yearly":49000,
+                      "modules":["dashboard","payroll"],
+                      "features":["Everything in Essential","Unlimited employees","STP Phase 2 / ATO filing","Annual payment summaries","Priority support"],
+                      "highlight":True,"badge":"Popular","category":"payroll",
+                      "description":"Full Australian payroll with STP Phase 2, unlimited employees & ATO compliance"},
+
+    # ── Bundle plans ────────────────────────────────────────────────────────────
+    "premium":                    {"name":"Ultra Plan",            "price_monthly":7900,"price_yearly":79000,
+                      "modules":["dashboard","accounting","reconciliation","trading","cash-flow","payroll"],
+                      "features":["Everything in Accounting Pro","Everything in Taxation Complete","Full Payroll Business","Open Banking","Priority support","Early access features"],
+                      "highlight":True,"badge":"Best Value","category":"bundle",
+                      "description":"Ultra Plan — all modules — Accounting, Taxation & Payroll — best value complete suite"},
 }
 
 # Load plans dynamically - refreshed on each request via property
