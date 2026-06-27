@@ -2038,9 +2038,10 @@ export default function OutputPanel({
                       }
                     </td>
                     {/* Who + per-row Cancel button */}
-                    <td style={{overflow:'hidden',display:'flex',alignItems:'center',gap:4}}>
+                    <td style={{overflow:'visible',whiteSpace:'nowrap'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:4}}>
                       <input className="cell-input" value={v('who')||''} onChange={setV('who')}
-                        title={v('who')||''} style={{flex:1,fontSize:'.78rem',color:'var(--text-2)'}}/>
+                        title={v('who')||''} style={{flex:1,minWidth:80,fontSize:'.78rem',color:'var(--text-2)'}}/>
                       {/* Cancel button — only visible when this row has unsaved edits */}
                       {inlineEdits[ai] && (
                         <button
@@ -2064,6 +2065,7 @@ export default function OutputPanel({
                           onMouseLeave={e=>{e.currentTarget.style.background='none';e.currentTarget.style.color='var(--danger,#ef4444)'}}
                         >↩ Cancel</button>
                       )}
+                      </div>
                     </td>
                     {/* User Checked */}
                     <td style={{textAlign:'center',width:60,padding:'4px 10px 4px 4px',cursor:'pointer',verticalAlign:'middle'}}

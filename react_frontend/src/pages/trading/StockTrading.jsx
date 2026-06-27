@@ -66,7 +66,13 @@ export default function StockTrading() {
   const discount   = parseFloat(s['CGT Discount Applied']||s['cgt_discount_applied']||0)
 
   return (
-    <div>
+    <div className="fade-in">
+      <div style={{marginBottom:22}}>
+        <h1>📊 Stock / Equity Trading Analysis</h1>
+        <p style={{color:'var(--text-3)',marginTop:4,fontSize:'.9rem'}}>
+          Upload broker files · ATO-compliant CGT · CGT discount · tax report · export Excel
+        </p>
+      </div>
       {/* Module status */}
       {moduleStatus && !moduleStatus.available && (
         <div className="alert alert-warning" style={{marginBottom:16}}>

@@ -40,10 +40,13 @@ import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import Layout                from './components/layout/Layout.jsx'
 import LoginPage             from './pages/LoginPage.jsx'
 import DashboardPage         from './pages/DashboardPage.jsx'
+import OverviewPage          from './pages/OverviewPage.jsx'
 import ReconciliationPage    from './pages/ReconciliationPage.jsx'
 import TradingPage           from './pages/TradingPage.jsx'
 import CashFlowPage          from './pages/CashFlowPage.jsx'
 import InvoicePage           from './pages/InvoicePage.jsx'
+import AccountingPage        from './pages/accounting/AccountingPage.jsx'
+import PayrollPage           from './pages/accounting/PayrollPage.jsx'
 import AdminPage             from './pages/AdminPage.jsx'
 import PaymentPage           from './pages/PaymentPage.jsx'
 import FileManagerPage       from './pages/FileManagerPage.jsx'
@@ -69,8 +72,11 @@ function AppRoutes() {
       <Route path="/login"          element={user ? <Navigate to="/" replace /> : <LoginPage />} />
       <Route path="/reset-password" element={user ? <Navigate to="/" replace /> : <ResetPasswordPage />} />
       <Route path="/" element={<Guard><Layout /></Guard>}>
-        <Route index                    element={<DashboardPage />} />
+        <Route index                    element={<OverviewPage />} />
+        <Route path="dashboard"           element={<DashboardPage />} />
         <Route path="reconciliation"    element={<ReconciliationPage />} />
+        <Route path="accounting"        element={<AccountingPage />} />
+        <Route path="payroll"           element={<PayrollPage />} />
         <Route path="trading"           element={<TradingPage />} />
         <Route path="cash-flow"         element={<CashFlowPage />} />
         <Route path="invoice"           element={<InvoicePage />} />

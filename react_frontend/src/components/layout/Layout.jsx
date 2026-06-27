@@ -4,20 +4,22 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.jsx'
 import UpgradeBanner from '../UpgradeBanner.jsx'
 import { licenceMyModules, getMyPlan } from '../../lib/api.js'
-import { Building2, LayoutDashboard, ArrowLeftRight, TrendingUp, BarChart2, FileText, ShieldCheck, ChevronLeft, ChevronRight, FolderOpen, BadgeCheck, Settings, Cpu } from 'lucide-react'
+import { Building2, LayoutDashboard, ArrowLeftRight, TrendingUp, BarChart2, FileText, ShieldCheck, ChevronLeft, ChevronRight, FolderOpen, BadgeCheck, Settings, Cpu, BookOpen, DollarSign, Users } from 'lucide-react'
 
 // ── Reconciliation session context — persists across route navigation ─────────
 export const ReconciliationContext = React.createContext(null)
 
 const NAV = [
-  { to:'/',               icon:LayoutDashboard, label:'Dashboard',       sub:'Overview',                key:'dashboard',      adminOnly:false },
-  { to:'/reconciliation', icon:ArrowLeftRight,  label:'Reconciliation',  sub:'CSV & Open Banking',      key:'reconciliation', adminOnly:false },
-  { to:'/trading',        icon:TrendingUp,      label:'Trading',         sub:'Crypto & Equity CGT',     key:'trading',        adminOnly:false },
-  { to:'/cash-flow',      icon:BarChart2,       label:'Cash Flow',       sub:'ML forecast',             key:'cash-flow',      adminOnly:false },
-  { to:'/invoice',        icon:FileText,        label:'Invoice',         sub:'Generate & extract',      key:'invoice',        adminOnly:false },
-  { to:'/setup',          icon:Settings,        label:'Setup',           sub:'COA & configuration',     key:'setup',          adminOnly:false },
+  { to:'/',               icon:LayoutDashboard, label:'Overview',         sub:'Modules & Plan',           key:'dashboard',      adminOnly:false, allPlans:true },
+  { to:'/accounting',     icon:BookOpen,        label:'Accounting',       sub:'Dashboard · Recon · Sale', key:'accounting',     adminOnly:false },
+  { to:'/trading',        icon:TrendingUp,      label:'Taxation & Trading',sub:'CGT · Tax Return',        key:'trading',        adminOnly:false },
+  { to:'/payroll',        icon:Users,           label:'Payroll',          sub:'PAYG · Super · STP',       key:'payroll',        adminOnly:false },
 ]
 
+// Setup is always visible; admin items below only for admins
+const CONTROL_PANEL_SETUP = [
+  { to:'/setup',          icon:Settings,        label:'Setup',           sub:'COA · Rules · Invoice',   key:'setup'          },
+]
 const CONTROL_PANEL = [
   { to:'/admin',          icon:ShieldCheck,     label:'ML Classifier',   sub:'Training & RDR rules',    key:'admin'          },
   { to:'/file-manager',   icon:FolderOpen,      label:'File Manager',    sub:'Files, tables, data',     key:'file-manager'   },
@@ -73,7 +75,7 @@ export default function Layout() {
 
   const initials = (user?.name || user?.email || 'U').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()
   const userName = user?.name || user?.email || ''
-  const pageName = loc.pathname === '/' ? 'Dashboard' : loc.pathname.slice(1).replace(/-/g,' ').replace(/\b\w/g, c => c.toUpperCase())
+  const pageName = loc.pathname === '/' ? 'Overview' : loc.pathname.slice(1).replace(/-/g,' ').replace(/\b\w/g, c => c.toUpperCase())
 
   // ── Reconciliation state — kept in Layout so it survives navigation ──────
   const [reconTransactions,   setReconTransactions]   = useState(null)
@@ -177,29 +179,45 @@ export default function Layout() {
             )
           })}
 
-          {/* Control Panel — admin only ───────────────────────────────────── */}
-          {isAdmin && (<>
-            <div style={{
-              fontSize:'.9rem', fontWeight:700, color:'rgba(255,255,255,.35)',
-              letterSpacing:'.1em', textTransform:'uppercase',
-              padding: col ? '12px 0 6px' : '12px 12px 6px',
-              marginTop:8, borderTop:'1px solid rgba(255,255,255,.08)',
-              display:'flex', alignItems:'center', gap:6,
-            }}>
-              <Cpu size={13} style={{opacity:.6}}/>
-              {!col && 'Control Panel'}
-            </div>
-            {CONTROL_PANEL.map(({to, icon:Icon, label, sub, key}) => (
-              <NavLink key={to} to={to} title={col ? label : undefined}
-                className={({isActive}) => `nav-item${isActive ? ' active' : ''}`}>
-                <Icon size={23} strokeWidth={1.8} style={{flexShrink:0}}/>
-                {!col && <div style={{minWidth:0}}>
-                  <div style={{fontSize:'.8rem', fontWeight:600, lineHeight:1.2}}>{label}</div>
-                  <div style={{fontSize:'.6rem', opacity:.55, lineHeight:1.3, marginTop:1}}>{sub}</div>
-                </div>}
-              </NavLink>
-            ))}
-          </>)}
+          {/* Control Panel section — Setup visible to all; admin items for admin only */}
+          <div style={{
+            fontSize:'.9rem', fontWeight:700, color:'rgba(255,255,255,.35)',
+            letterSpacing:'.1em', textTransform:'uppercase',
+            padding: col ? '12px 0 6px' : '12px 12px 6px',
+            marginTop:8, borderTop:'1px solid rgba(255,255,255,.08)',
+            display:'flex', alignItems:'center', gap:6,
+          }}>
+            <Cpu size={13} style={{opacity:.6}}/>
+            {!col && 'Control Panel'}
+          </div>
+
+          {/* Setup — always visible to all users */}
+          {CONTROL_PANEL_SETUP.map(({to, icon:Icon, label, sub}) => (
+            <NavLink key={to} to={to} title={col ? label : undefined}
+              className={({isActive}) => `nav-item${isActive ? ' active' : ''}`}>
+              <Icon size={23} strokeWidth={1.8} style={{flexShrink:0}}/>
+              {!col && <div style={{minWidth:0}}>
+                <div style={{fontSize:'.8rem', fontWeight:600, lineHeight:1.2}}>{label}</div>
+                <div style={{fontSize:'.6rem', opacity:.55, lineHeight:1.3, marginTop:1}}>{sub}</div>
+              </div>}
+            </NavLink>
+          ))}
+
+          {/* Admin tools — admin only */}
+          {isAdmin && (
+            <>
+              {CONTROL_PANEL.map(({to, icon:Icon, label, sub}) => (
+                <NavLink key={to} to={to} title={col ? label : undefined}
+                  className={({isActive}) => `nav-item${isActive ? ' active' : ''}`}>
+                  <Icon size={23} strokeWidth={1.8} style={{flexShrink:0}}/>
+                  {!col && <div style={{minWidth:0}}>
+                    <div style={{fontSize:'.8rem', fontWeight:600, lineHeight:1.2}}>{label}</div>
+                    <div style={{fontSize:'.6rem', opacity:.55, lineHeight:1.3, marginTop:1}}>{sub}</div>
+                  </div>}
+                </NavLink>
+              ))}
+            </>
+          )}
         </nav>
 
         {/* Collapse toggle */}

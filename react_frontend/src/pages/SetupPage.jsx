@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { BookOpen, Plus, Pencil, Trash2, Check, X, Upload, Save, Download, ArrowUp, ArrowDown, ArrowUpDown, Zap } from 'lucide-react'
 import { parseCSVText, toCSV, downloadCSV } from '../lib/csvUtils.js'
 import { rdrList, rdrCreate, rdrUpdate, rdrDelete, coaAccounts, kbGet, kbVendorUpsert, kbVendorDelete, kbKeywordUpsert, kbKeywordDelete, companyList, companyUpdate, companyCreate, companyDelete, companyAddAlias } from '../lib/api.js'
+import { useAuth } from '../hooks/useAuth.jsx'
 import toast from 'react-hot-toast'
 
 // - CsvBar: reusable upload/download button pair -----------------------
@@ -1329,16 +1330,140 @@ function KbTab() {
 }
 
 
-const TABS = [{ key:'coa', label:'Chart of Accounts', icon:'-' }, { key:'rdr', label:'Business Rules', icon:'-' }, { key:'kb', label:'Knowledge Base', icon:'-' }]
+const TABS = [
+  { key:'business', label:'🏢 Business Account' },
+  { key:'coa',      label:'📋 Chart of Accounts' },
+  { key:'rdr',      label:'⚙️ Business Rules' },
+  { key:'kb',       label:'📚 Knowledge Base' },
+]
+
+// ── Business Account Tab ──────────────────────────────────────────────────────
+function BusinessAccountTab() {
+  const { user } = useAuth()
+  const [biz, setBiz] = React.useState({
+    business_name: '', abn: '', acn: '', gst_registered: false,
+    gst_registration_date: '', business_type: 'company',
+    address_line1: '', suburb: '', state: 'NSW', postcode: '',
+    phone: '', email: '', website: '',
+    bank_name: '', bank_bsb: '', bank_account: '',
+    financial_year_end: 'June', tax_agent_name: '', tax_agent_number: '',
+    logo_url: '',
+  })
+  const [saved, setSaved] = React.useState(false)
+  const BIZ_TYPES = ['company','sole_trader','partnership','trust','other']
+  const AU_STATES = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA']
+
+  const F = ({label, field, type='text', opts, hint}) => (
+    <div className="input-group">
+      <label>{label}{hint && <span title={hint} style={{marginLeft:4,cursor:'help',color:'var(--text-3)',fontSize:'.75rem'}}>ⓘ</span>}</label>
+      {opts
+        ? <select className="input input-sm" value={biz[field]||''} onChange={e=>setBiz(b=>({...b,[field]:e.target.value}))}>
+            {opts.map(o=><option key={o.v||o} value={o.v||o}>{o.l||o.replace(/_/g,' ')}</option>)}
+          </select>
+        : type === 'checkbox'
+          ? <label style={{display:'flex',alignItems:'center',gap:6,marginTop:4}}>
+              <input type="checkbox" checked={!!biz[field]} onChange={e=>setBiz(b=>({...b,[field]:e.target.checked}))}/>
+              <span style={{fontSize:'.82rem'}}>Yes</span>
+            </label>
+          : <input className="input input-sm" type={type} value={biz[field]||''}
+              onChange={e=>setBiz(b=>({...b,[field]:e.target.value}))}/>
+      }
+    </div>
+  )
+
+  const handleSave = () => {
+    try { localStorage.setItem('accfino_business_account', JSON.stringify(biz)) } catch {}
+    setSaved(true); setTimeout(()=>setSaved(false), 3000)
+    toast?.success?.('Business account saved ✓') || console.log('Saved')
+  }
+
+  React.useEffect(() => {
+    try { const saved = JSON.parse(localStorage.getItem('accfino_business_account')||'{}'); if (saved.business_name) setBiz(b=>({...b,...saved})) } catch {}
+  }, [])
+
+  return (
+    <div>
+      <div style={{marginBottom:16,padding:'10px 14px',background:'var(--brand-xlight,#eff6ff)',
+        borderRadius:'var(--r-md)',border:'1px solid #bfdbfe',fontSize:'.8rem',color:'#1e40af'}}>
+        ℹ️ Your business details are used on Invoices, Purchase Orders and Reports. This information is stored locally.
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:24}}>
+        {/* Business details */}
+        <div>
+          <h4 style={{marginBottom:12,paddingBottom:8,borderBottom:'1px solid var(--border)'}}>🏢 Business Details</h4>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div style={{gridColumn:'span 2'}}><F label="Business / Trading Name *" field="business_name"/></div>
+            <F label="ABN" field="abn" hint="11-digit Australian Business Number"/>
+            <F label="ACN" field="acn" hint="9-digit Australian Company Number (companies only)"/>
+            <F label="Business Type" field="business_type" opts={BIZ_TYPES}/>
+            <F label="Financial Year End" field="financial_year_end" opts={['June','December','March','September']}/>
+            <F label="GST Registered" field="gst_registered" type="checkbox"/>
+            {biz.gst_registered && <F label="GST Registration Date" field="gst_registration_date" type="date"/>}
+          </div>
+
+          <h4 style={{marginTop:20,marginBottom:12,paddingBottom:8,borderBottom:'1px solid var(--border)'}}>📍 Address</h4>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div style={{gridColumn:'span 2'}}><F label="Street Address" field="address_line1"/></div>
+            <F label="Suburb / City" field="suburb"/>
+            <F label="State" field="state" opts={AU_STATES}/>
+            <F label="Postcode" field="postcode"/>
+            <F label="Phone" field="phone" type="tel"/>
+            <div style={{gridColumn:'span 2'}}><F label="Business Email" field="email" type="email"/></div>
+            <div style={{gridColumn:'span 2'}}><F label="Website" field="website"/></div>
+          </div>
+        </div>
+
+        {/* Banking & Tax */}
+        <div>
+          <h4 style={{marginBottom:12,paddingBottom:8,borderBottom:'1px solid var(--border)'}}>🏦 Banking Details</h4>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <F label="Bank Name" field="bank_name"/>
+            <F label="BSB" field="bank_bsb"/>
+            <div style={{gridColumn:'span 2'}}><F label="Account Number" field="bank_account"/></div>
+          </div>
+
+          <h4 style={{marginTop:20,marginBottom:12,paddingBottom:8,borderBottom:'1px solid var(--border)'}}>🧾 Tax Agent</h4>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <F label="Tax Agent Name" field="tax_agent_name"/>
+            <F label="Tax Agent Number" field="tax_agent_number" hint="Registered tax agent number"/>
+          </div>
+
+          {/* Logo */}
+          <h4 style={{marginTop:20,marginBottom:12,paddingBottom:8,borderBottom:'1px solid var(--border)'}}>🖼 Logo (for Invoices)</h4>
+          <div className="input-group">
+            <label>Logo URL</label>
+            <input className="input input-sm" type="url" value={biz.logo_url||''}
+              onChange={e=>setBiz(b=>({...b,logo_url:e.target.value}))}
+              placeholder="https://yourwebsite.com/logo.png"/>
+          </div>
+          {biz.logo_url && (
+            <div style={{marginTop:8,padding:8,background:'var(--surface-2)',borderRadius:'var(--r-md)',textAlign:'center'}}>
+              <img src={biz.logo_url} alt="Logo preview" style={{maxHeight:60,maxWidth:200,objectFit:'contain'}}
+                onError={e=>{e.target.style.display='none'}}/>
+            </div>
+          )}
+
+          <div style={{marginTop:24}}>
+            <button className="btn btn-primary" onClick={handleSave} style={{marginRight:8}}>
+              {saved ? '✓ Saved!' : '💾 Save Business Account'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 export default function SetupPage() {
-  const [tab, setTab] = useState('coa')
+  const [tab, setTab] = useState('business')
   return (
     <div className="fade-in">
       <div style={{marginBottom:20}}>
-        <h1>- Setup</h1>
+        <h1>⚙️ Setup</h1>
         <p style={{color:'var(--text-3)',marginTop:4,fontSize:'.9rem'}}>
-          Configure Chart of Accounts, tax codes and classification rules
+          Chart of Accounts · Business Rules · Knowledge Base · Invoice Generator
         </p>
       </div>
       <div className="tabs-bar" style={{marginBottom:0}}>
@@ -1350,6 +1475,7 @@ export default function SetupPage() {
       </div>
       <div style={{background:'var(--surface)',borderRadius:'0 0 var(--r-lg) var(--r-lg)',
         border:'1px solid var(--border)',borderTop:'none',padding:'20px 24px',boxShadow:'var(--sh-sm)'}}>
+        {tab==='business' && <BusinessAccountTab/>}
         {tab==='coa' && <CoaTab/>}
         {tab==='rdr' && <RdrTab/>}
         {tab==='kb'  && <KbTab/>}
