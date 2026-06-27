@@ -66,9 +66,11 @@ export default function Layout() {
   const isAdmin = (Array.isArray(user?.roles) && user.roles.includes('admin')) || user?.is_admin === true
 
   const canAccess = (moduleKey) => {
-    if (moduleKey === 'setup') return true   // Setup always accessible — all users
+    if (moduleKey === 'setup') return true        // Control Panel always accessible
+    if (moduleKey === 'accounting') return true   // Accounting always accessible — Reconciliation is free for all
+    if (moduleKey === 'dashboard') return true    // Overview always accessible
     if (isAdmin) return true
-    if (allowedModules === null) return false   // still loading
+    if (allowedModules === null) return false     // still loading
     if (allowedModules === 'all') return true
     return allowedModules.includes(moduleKey)
   }
