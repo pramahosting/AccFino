@@ -1,4 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
+import { getMyPlan } from '../../lib/api.js'
 import { useAuth } from '../../hooks/useAuth.jsx'
 
 // Sub-pages
@@ -9,19 +11,30 @@ import ReconciliationWrapper from './ReconciliationWrapper.jsx'
 import CashFlowPage          from './CashFlowPage.jsx'
 import FinancialReports      from './FinancialReports.jsx'
 
-const TABS = [
-  { key:'dashboard',      label:'📊 Dashboard'          },
-  { key:'reconciliation', label:'🔀 Reconciliation'      },
-  { key:'sales',          label:'💼 Sales'              },
-  { key:'purchases',      label:'🧾 Purchases'          },
-  { key:'cashflow',       label:'📈 Cash Flow'           },
-  { key:'reports',        label:'📋 Financial Reports'   },
-]
+// TABS defined inside component so hasCashFlow is in scope
 
 export default function AccountingPage() {
   const { user } = useAuth()
   const userId   = user?.id
-  const [tab, setTab] = useState('dashboard')
+  const location = useLocation()
+  const [hasCashFlow, setHasCashFlow] = useState(false)
+  const [tab, setTab] = useState(() => location.state?.tab || 'dashboard')
+
+  useEffect(() => {
+    if (!userId) return
+    const isAdmin = user?.is_admin || (Array.isArray(user?.roles) && user.roles.includes('admin'))
+    if (isAdmin) { setHasCashFlow(true); return }
+    getMyPlan(userId).then(r => {
+      const planId = r.data?.plan_id || 'base'
+      const VAULT_PLANS = new Set(['base','accounting_starter',''])
+      setHasCashFlow(!VAULT_PLANS.has(planId))
+    }).catch(() => {})
+  }, [userId])
+
+  // Navigate to a specific tab when arriving from Overview page
+  useEffect(() => {
+    if (location.state?.tab) setTab(location.state.tab)
+  }, [location.state?.tab])
 
   return (
     <div className="fade-in">
@@ -33,11 +46,21 @@ export default function AccountingPage() {
       </div>
 
       <div className="tabs-bar" style={{marginBottom:0}}>
-        {TABS.map(t => (
+        {[
+          { key:'dashboard',      label:'📊 Dashboard'        },
+          { key:'reconciliation', label:'🔀 Reconciliation'    },
+          { key:'sales',          label:'💼 Sales'            },
+          { key:'purchases',      label:'🧾 Purchases'        },
+          { key:'cashflow',       label:'📈 Cash Flow',  locked:!hasCashFlow },
+          { key:'reports',        label:'📋 Financial Reports' },
+        ].map(t => (
           <button key={t.key}
             className={`tab-btn${tab===t.key?' active':''}`}
-            onClick={() => setTab(t.key)}>
-            {t.label}
+            onClick={() => t.locked ? null : setTab(t.key)}
+            disabled={t.locked}
+            title={t.locked ? 'Upgrade to Accounting Pro to access Cash Flow forecasting' : undefined}
+            style={t.locked ? {opacity:.45,cursor:'not-allowed'} : undefined}>
+            {t.label}{t.locked ? ' 🔒' : ''}
           </button>
         ))}
       </div>

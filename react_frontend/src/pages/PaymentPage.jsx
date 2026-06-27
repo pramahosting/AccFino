@@ -3,30 +3,71 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import TopBar from '../components/ui/TopBar.jsx'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { createCheckout, getMyPlan, getPricingPlans } from '../lib/api'
-import { Check, ArrowRight } from 'lucide-react'
+import { Check, Star, Zap } from 'lucide-react'
 import toast from 'react-hot-toast'
-import AccfinoLogo from '../components/ui/AccfinoLogo.jsx'
 
-// Keys treated as bundles (shown separately at the bottom)
-const BUNDLE_KEYS = ['premium']
-// Keys never shown as purchasable plans
-const HIDDEN_KEYS = ['base', 'admin', 'file-manager', 'licence', 'dashboard']
+const HIDDEN_KEYS = ['base', 'admin', 'file-manager', 'licence', 'dashboard', 'reconciliation', 'cashflow', 'invoice', 'full_bundle']
 
-// All prices + labels come exclusively from pricing.json via API
+// Category groups for display
+const CATEGORIES = [
+  {
+    key:   'accounting',
+    emoji: '🏦',
+    label: 'Accounting',
+    color: '#2563eb',
+    bg:    '#eff6ff',
+    desc:  'Reconciliation · Sales · Purchases · Cash Flow · Financial Reports',
+  },
+  {
+    key:   'trading',
+    emoji: '🧾',
+    label: 'Taxation & Trading',
+    color: '#7c3aed',
+    bg:    '#f5f3ff',
+    desc:  'Crypto · Equity · Property CGT · Full Australian Tax Return',
+  },
+  {
+    key:   'payroll',
+    emoji: '👔',
+    label: 'Payroll',
+    color: '#0891b2',
+    bg:    '#ecfeff',
+    desc:  'PAYG · Superannuation · Payslips · STP Phase 2',
+  },
+  {
+    key:   'bundle',
+    emoji: '⭐',
+    label: 'Bundles',
+    color: '#d97706',
+    bg:    '#fffbeb',
+    desc:  'Combine modules and save — best value plans',
+  },
+]
+
+const fmtPrice = (cents, period) => {
+  if (!cents) return 'Free'
+  const dollars = cents / 100
+  return period === 'yearly'
+    ? `$${dollars / 12 % 1 === 0 ? dollars/12 : (dollars/12).toFixed(0)}/mo`
+    : `$${dollars}/mo`
+}
+
+const fmtYearly = (cents) => {
+  if (!cents) return null
+  return `$${cents / 100}/yr`
+}
+
 export default function PaymentPage() {
   const { user }       = useAuth()
   const navigate       = useNavigate()
   const [searchParams] = useSearchParams()
 
-  const [plans,     setPlans]     = useState({})   // raw API response
-  const [modPlans,  setModPlans]  = useState([])   // individual module plans [{key, plan}]
-  const [bndPlans,  setBndPlans]  = useState([])   // bundle plans [{key, plan}]
-  const [myPlan,    setMyPlan]    = useState(null)
-  const [billing,   setBilling]   = useState('monthly')
-  const [selKeys,   setSelKeys]   = useState([])   // selected plan keys
-  const [selBundle, setSelBundle] = useState(null)
-  const [paying,    setPaying]    = useState(false)
-  const [loading,   setLoading]   = useState(true)
+  const [plans,    setPlans]    = useState({})
+  const [myPlan,   setMyPlan]   = useState(null)
+  const [billing,  setBilling]  = useState('monthly')
+  const [selKey,   setSelKey]   = useState(null)
+  const [paying,   setPaying]   = useState(false)
+  const [loading,  setLoading]  = useState(true)
 
   useEffect(() => {
     if (searchParams.get('success')) {
@@ -42,96 +83,49 @@ export default function PaymentPage() {
       getPricingPlans(),
       user?.id ? getMyPlan(user.id) : Promise.resolve({ data: null }),
     ]).then(([pr, mr]) => {
-      const api = pr.data || {}
-      setPlans(api)
+      setPlans(pr.data || {})
       setMyPlan(mr.data)
-      // Split into module plans and bundle plans
-      const mods = [], bnds = []
-      Object.entries(api).forEach(([key, plan]) => {
-        if (HIDDEN_KEYS.includes(key)) return
-        if (BUNDLE_KEYS.includes(key)) bnds.push({ key, plan })
-        else mods.push({ key, plan })
-      })
-      setModPlans(mods)
-      setBndPlans(bnds)
-    }).catch(() => toast.error('Could not load pricing — please refresh.'))
+    }).catch(() => toast.error('Could not load pricing'))
       .finally(() => setLoading(false))
   }, [user?.id])
 
-  const toggleMod = (key) => {
-    setSelBundle(null)
-    setSelKeys(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
-  }
+  // Group plans by category
+  const grouped = React.useMemo(() => {
+    const result = {}
+    Object.entries(plans).forEach(([key, plan]) => {
+      if (HIDDEN_KEYS.includes(key)) return
+      const cat = plan.category || (key === 'premium' ? 'bundle' : 'other')
+      if (!result[cat]) result[cat] = []
+      result[cat].push({ key, plan })
+    })
+    return result
+  }, [plans])
 
-  const selectBundle = (key) => {
-    if (selBundle === key) { setSelBundle(null); setSelKeys([]) }
-    else { setSelBundle(key); setSelKeys([]) }
-  }
-
-  // Calculate total price
-  const calcTotal = () => {
-    if (selBundle) {
-      const b = plans[selBundle]
-      if (!b) return 0
-      return billing === 'yearly' ? b.price_yearly : b.price_monthly
-    }
-    return selKeys.reduce((sum, k) => {
-      const p = plans[k]
-      if (!p) return sum
-      return sum + (billing === 'yearly' ? p.price_yearly : p.price_monthly)
-    }, 0)
-  }
-
-  const totalPrice = calcTotal()
-  const isFree     = totalPrice === 0 && !selBundle && !selKeys.length
-  const isLoggedIn = !!user
-
-  const selectedLabel = () => {
-    if (selBundle) return plans[selBundle]?.name || selBundle
-    if (!selKeys.length) return plans.base?.name || 'Vault'
-    return selKeys.map(k => plans[k]?.name || k).join(' + ')
-  }
+  const selected = selKey ? plans[selKey] : null
+  const price    = selected
+    ? (billing === 'yearly' ? selected.price_yearly : selected.price_monthly)
+    : 0
 
   const handleCheckout = async () => {
-    if (!isLoggedIn) { navigate('/login'); return }
-    if (!selBundle && !selKeys.length) { navigate('/'); return }
+    if (!user) { navigate('/login'); return }
+    if (!selKey) return
     setPaying(true)
     try {
-      const allMods = selBundle
-        ? (plans[selBundle]?.modules || [])
-        : [...new Set(['dashboard', 'reconciliation', ...selKeys.flatMap(k => plans[k]?.modules || [k])])]
-      const planId = selBundle || (selKeys.length === 1 ? selKeys[0] : 'custom')
+      const mods   = selected?.modules || ['dashboard']
       const { data } = await createCheckout({
-        plan_id:        planId,
+        plan_id:        selKey,
         billing_period: billing,
         user_id:        user.id,
         user_email:     user.email,
-        modules:        allMods,
-        amount:         totalPrice,
-        plan_name:      selectedLabel(),
+        modules:        mods,
+        amount:         price,
+        plan_name:      selected?.name || selKey,
       })
       if (data.checkout_url) window.location.href = data.checkout_url
     } catch (e) {
       toast.error(e.response?.data?.detail || 'Checkout failed')
     } finally { setPaying(false) }
   }
-
-  // Left panel: all plans from API in order
-  const leftPlans = [
-    { name: plans.base?.name || 'Vault', price: 'Free', desc: plans.base?.description || '' },
-    ...modPlans.map(({ key, plan }) => ({
-      name:  plan.name,
-      price: plan.price_monthly ? `$${plan.price_monthly / 100}/mo` : '…',
-      desc:  plan.description || '',
-    })),
-    ...bndPlans.map(({ key, plan }) => ({
-      name:  plan.name,
-      price: plan.price_monthly ? `$${plan.price_monthly / 100}/mo` : '…',
-      desc:  plan.description || '',
-    })),
-  ]
-
-  const ICONS = { trading:'📈', cashflow:'💰', 'cash-flow':'💰', invoice:'🧾', premium:'⭐', ultra:'⭐' }
 
   return (
     <>
@@ -141,298 +135,233 @@ export default function PaymentPage() {
       onStartFree={() => navigate('/login?tab=register')}
     />
 
-    <div className="login-page" style={{ paddingTop: 56 }}>
+    <div style={{ paddingTop:56, minHeight:'100vh', background:'var(--bg,#f8fafc)' }}>
+      <div style={{ maxWidth:1100, margin:'0 auto', padding:'40px 24px' }}>
 
-      {/* ── Left panel ── */}
-      <div className="login-left" style={{
-        flex: '0 0 320px', padding: '32px',
-        alignItems: 'flex-start', justifyContent: 'flex-start',
-        paddingTop: '48px',
-      }}>
-        <div style={{ width: '100%' }}>
-          <div style={{ marginTop: 28, marginBottom: 24 }}>
-            <h2 style={{ color:'#fff', fontSize:'1.3rem', fontFamily:"'Instrument Serif', serif", marginBottom:8 }}>
-              Choose what you need
-            </h2>
-            <p style={{ color:'rgba(255,255,255,.6)', fontSize:'.85rem', lineHeight:1.7 }}>
-              Pick individual modules or save with a bundle. Start free, upgrade anytime.
-            </p>
-          </div>
-
-          {/* Plan list from API */}
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {leftPlans.map(p => (
-              <div key={p.name} style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-                <Check size={13} color="#FF6B35" style={{ marginTop:3, flexShrink:0 }}/>
-                <div>
-                  <span style={{ fontSize:'.82rem', fontWeight:700, color:'#fff' }}>{p.name}</span>
-                  <span style={{ fontSize:'.82rem', color:'rgba(255,255,255,.55)' }}> — {p.price}</span>
-                  {p.desc && <div style={{ fontSize:'.72rem', color:'rgba(255,255,255,.38)', lineHeight:1.4, marginTop:1 }}>{p.desc}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ marginTop:28, paddingTop:18, borderTop:'1px solid rgba(255,255,255,.12)',
-            fontSize:'.75rem', color:'rgba(255,255,255,.35)', lineHeight:1.7 }}>
-            🔒 Secured by Stripe · Cancel anytime · AUD pricing incl. GST
-          </div>
-        </div>
-      </div>
-
-      {/* ── Right panel ── */}
-      <div className="login-right" style={{
-        width:'auto', flex:1, padding:'32px 40px',
-        overflowY:'auto', alignItems:'flex-start',
-      }}>
-        <div className="login-form-wrap" style={{ maxWidth:720, width:'100%' }}>
-
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-            <button onClick={() => window.location.href = isLoggedIn ? '/' : '/index-marketing.html'}
-              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-3)',
-                fontSize:'.82rem', padding:0, display:'flex', alignItems:'center', gap:4 }}>
-              ← {isLoggedIn ? 'Back to Dashboard' : 'Back'}
-            </button>
-            {myPlan && (
-              <span style={{ fontSize:'.75rem', color:'var(--text-3)' }}>
-                Current: <strong>{plans[myPlan.plan_id]?.name || (myPlan.plan_id === 'admin' ? 'Ultra' : myPlan.plan_id)}</strong>
-              </span>
-            )}
-          </div>
-
-          <h1 style={{ fontSize:'1.4rem', marginBottom:4 }}>Subscription Plans</h1>
-          <p style={{ color:'var(--text-3)', fontSize:'.85rem', marginBottom:20 }}>
-            Select a plan — price updates instantly.
+        {/* Header */}
+        <div style={{ textAlign:'center', marginBottom:40 }}>
+          <h1 style={{ fontSize:'2rem', fontWeight:800, marginBottom:10 }}>
+            AccFino Pricing
+          </h1>
+          <p style={{ color:'var(--text-3)', fontSize:'1rem', marginBottom:20 }}>
+            Pick the modules your business needs. Start free, upgrade anytime.
           </p>
 
           {/* Billing toggle */}
-          <div style={{ display:'flex', background:'var(--surface-3)', borderRadius:'var(--r-md)',
-            padding:3, marginBottom:20, gap:2 }}>
+          <div style={{ display:'inline-flex', borderRadius:100, overflow:'hidden',
+            border:'1px solid var(--border)', background:'var(--surface)' }}>
             {['monthly','yearly'].map(p => (
               <button key={p} onClick={() => setBilling(p)} style={{
-                flex:1, padding:'7px', border:'none', cursor:'pointer',
-                borderRadius:'var(--r-sm)', fontFamily:'inherit',
-                fontWeight: billing===p ? 700 : 500, fontSize:'.82rem',
-                background: billing===p ? 'var(--surface)' : 'transparent',
-                color: billing===p ? 'var(--brand)' : 'var(--text-3)',
-                boxShadow: billing===p ? 'var(--sh-sm)' : 'none', transition:'all .15s',
+                padding:'8px 24px', border:'none', cursor:'pointer', fontFamily:'inherit',
+                fontSize:'.85rem', fontWeight:600,
+                background: billing===p ? 'var(--brand)' : 'transparent',
+                color:      billing===p ? '#fff'         : 'var(--text-2)',
+                transition: 'background .15s',
               }}>
-                {p.charAt(0).toUpperCase()+p.slice(1)}
-                {p==='yearly' && <span style={{ marginLeft:6, fontSize:'.68rem', color:'#38A169', fontWeight:700 }}>SAVE 17%</span>}
+                {p === 'monthly' ? 'Monthly' : 'Yearly'}{p === 'yearly' ? ' (save ~17%)' : ''}
               </button>
             ))}
           </div>
 
-          {loading ? (
-            <div style={{ textAlign:'center', padding:30, color:'var(--text-3)' }}>
-              <span className="spinner"/> Loading…
-            </div>
-          ) : (<>
-
-          {/* ── Base (free) plan ── */}
-          <div style={{
-            border:'2px solid var(--brand)', borderRadius:'var(--r-lg)',
-            padding:'16px', marginBottom:16, background:'var(--brand-light)',
-            cursor:'pointer', position:'relative',
-          }} onClick={() => { setSelKeys([]); setSelBundle(null) }}>
-            <div style={{ position:'absolute', top:12, right:12, width:18, height:18,
-              borderRadius:'50%', border:'2px solid var(--brand)', background:'var(--brand)',
-              display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <Check size={10} color="#fff" strokeWidth={3}/>
-            </div>
-            <div style={{ fontSize:'1.2rem', marginBottom:6 }}>🆓</div>
-            <div style={{ fontWeight:700, fontSize:'.95rem', marginBottom:2 }}>
-              {plans.base?.name || 'Vault'}
-            </div>
-            <div style={{ fontSize:'.75rem', color:'var(--text-3)', marginBottom:10 }}>
-              {plans.base?.description || 'Dashboard + CSV Reconciliation'}
-            </div>
-            <div style={{ fontSize:'1.4rem', fontWeight:800, color:'var(--brand)', marginBottom:10 }}>
-              Free <span style={{ fontSize:'.78rem', fontWeight:400, color:'var(--text-3)' }}>· No card required</span>
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-              {(plans.base?.features || []).map((f,i) => (
-                <div key={i} style={{ display:'flex', gap:6, fontSize:'.73rem', alignItems:'flex-start' }}>
-                  <Check size={11} color="#38A169" style={{ flexShrink:0, marginTop:1 }}/>
-                  <span style={{ color:'var(--text-2)', lineHeight:1.4 }}>{f}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Individual module plans from API ── */}
-          {modPlans.length > 0 && (
-            <div style={{ marginBottom:12 }}>
-              <div style={{ fontSize:'.72rem', fontWeight:700, color:'var(--text-3)',
-                textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
-                Add modules individually
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(210px, 1fr))', gap:12 }}>
-                {modPlans.map(({ key, plan }) => {
-                  const sel  = selKeys.includes(key)
-                  const pRaw = billing === 'yearly' ? plan.price_yearly : plan.price_monthly
-                  const pYrEff = plan.price_yearly ? Math.round(plan.price_yearly / 12) : null
-                  const icon = ICONS[key] || ICONS[plan.name?.toLowerCase()] || '📦'
-                  return (
-                    <div key={key} onClick={() => toggleMod(key)} style={{
-                      border:`2px solid ${sel ? 'var(--brand)' : 'var(--border)'}`,
-                      borderRadius:'var(--r-lg)', padding:'16px', cursor:'pointer',
-                      background: sel ? 'var(--brand-light)' : 'var(--surface)',
-                      transition:'all .15s', position:'relative',
-                    }}>
-                      <div style={{ position:'absolute', top:12, right:12, width:18, height:18,
-                        borderRadius:'50%', border:`2px solid ${sel ? 'var(--brand)' : 'var(--border)'}`,
-                        background: sel ? 'var(--brand)' : 'transparent',
-                        display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        {sel && <Check size={10} color="#fff" strokeWidth={3}/>}
-                      </div>
-                      <div style={{ fontSize:'1.2rem', marginBottom:6 }}>{icon}</div>
-                      <div style={{ fontWeight:700, fontSize:'.92rem', marginBottom:2 }}>{plan.name}</div>
-                      <div style={{ fontSize:'.75rem', color:'var(--text-3)', marginBottom:10 }}>{plan.description}</div>
-                      <div style={{ marginBottom:10 }}>
-                        {pRaw ? (<>
-                          <span style={{ fontSize:'1.3rem', fontWeight:800, color:'var(--brand)' }}>
-                            ${pRaw/100}
-                          </span>
-                          <span style={{ fontSize:'.78rem', color:'var(--text-3)' }}>
-                            {billing==='yearly' ? '/yr' : '/mo'}
-                          </span>
-                          {billing==='yearly' && pYrEff && (
-                            <span style={{ fontSize:'.68rem', color:'#38A169', marginLeft:6, fontWeight:600 }}>
-                              (${pYrEff/100}/mo)
-                            </span>
-                          )}
-                        </>) : <span style={{ color:'var(--text-3)', fontSize:'.85rem' }}>Loading…</span>}
-                      </div>
-                      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                        {(plan.features || []).map((f,i) => (
-                          <div key={i} style={{ display:'flex', gap:6, fontSize:'.73rem', alignItems:'flex-start' }}>
-                            <Check size={11} color="#38A169" style={{ flexShrink:0, marginTop:1 }}/>
-                            <span style={{ color:'var(--text-2)', lineHeight:1.4 }}>{f}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+          {/* Current plan */}
+          {myPlan && (
+            <div style={{ marginTop:12, fontSize:'.82rem', color:'var(--text-3)' }}>
+              Current plan: <strong>{plans[myPlan.plan_id]?.name || myPlan.plan_id}</strong>
             </div>
           )}
+        </div>
 
-          {/* ── Bundle plans from API ── */}
-          {bndPlans.length > 0 && (
-            <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:'.72rem', fontWeight:700, color:'var(--text-3)',
-                textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
-                Or choose a bundle (best value)
-              </div>
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {bndPlans.map(({ key, plan }) => {
-                  const sel  = selBundle === key
-                  const pRaw = billing === 'yearly' ? plan.price_yearly : plan.price_monthly
-                  const pYrEff = plan.price_yearly ? Math.round(plan.price_yearly / 12) : null
-                  const icon = ICONS[key] || ICONS[plan.name?.toLowerCase()] || '⭐'
-                  return (
-                    <div key={key} onClick={() => selectBundle(key)} style={{
-                      border:`2px solid ${sel ? 'var(--brand)' : plan.highlight ? 'var(--brand)' : 'var(--border)'}`,
-                      borderRadius:'var(--r-md)', padding:'12px 16px', cursor:'pointer',
-                      background: sel ? 'var(--brand-light)' : plan.highlight ? 'var(--surface-2)' : 'var(--surface)',
-                      transition:'all .15s', display:'flex', alignItems:'center', gap:12, position:'relative',
-                    }}>
-                      {plan.badge && (
-                        <div style={{ position:'absolute', top:-10, right:12,
-                          background:'var(--brand)', color:'#fff', fontSize:'.65rem',
-                          fontWeight:700, padding:'2px 10px', borderRadius:100 }}>
-                          {plan.badge}
-                        </div>
-                      )}
-                      <div style={{ width:20, height:20, borderRadius:'50%', flexShrink:0,
-                        border:`2px solid ${sel ? 'var(--brand)' : 'var(--border)'}`,
-                        background: sel ? 'var(--brand)' : 'transparent',
-                        display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        {sel && <Check size={11} color="#fff" strokeWidth={3}/>}
-                      </div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:700, fontSize:'.92rem' }}>{icon} {plan.name}</div>
-                        <div style={{ fontSize:'.73rem', color:'var(--text-3)', marginTop:2 }}>{plan.description}</div>
-                        <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
-                          {(plan.features || []).slice(0,4).map((f,i) => (
-                            <span key={i} style={{ fontSize:'.68rem', padding:'2px 7px',
-                              borderRadius:100, background:'var(--surface-3)', color:'var(--text-2)' }}>
-                              {f}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div style={{ textAlign:'right', flexShrink:0 }}>
-                        {pRaw ? (<>
-                          <div style={{ fontWeight:800, fontSize:'1rem', color:'var(--brand)' }}>
-                            ${pRaw/100}{billing==='yearly' ? '/yr' : '/mo'}
+        {/* Free plan banner */}
+        <div style={{
+          display:'flex', alignItems:'center', justifyContent:'space-between',
+          padding:'14px 20px', marginBottom:32,
+          background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'var(--r-lg)',
+        }}>
+          <div>
+            <span style={{ fontWeight:700, marginRight:10 }}>🆓 Vault Plan — Free forever</span>
+            <span style={{ fontSize:'.82rem', color:'#166534' }}>
+              CSV Reconciliation (up to 1,000 txns/mo) · Accounting Dashboard · Basic Sales & Purchases
+            </span>
+          </div>
+          <button className="btn btn-outline btn-sm" onClick={() => navigate(user ? '/' : '/login')}
+            style={{ borderColor:'#16a34a', color:'#16a34a', whiteSpace:'nowrap' }}>
+            {user ? 'You have this' : 'Get started free'}
+          </button>
+        </div>
+
+        {/* Category sections */}
+        {loading ? (
+          <div style={{ textAlign:'center', padding:60, color:'var(--text-3)' }}>Loading plans…</div>
+        ) : (
+          CATEGORIES.map(cat => {
+            const catPlans = grouped[cat.key] || []
+            if (!catPlans.length) return null
+            return (
+              <div key={cat.key} style={{ marginBottom:40 }}>
+                {/* Category header */}
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+                  <div style={{
+                    width:38, height:38, borderRadius:'var(--r-md)',
+                    background:cat.bg, display:'flex', alignItems:'center',
+                    justifyContent:'center', fontSize:'1.2rem', flexShrink:0,
+                    border:`1px solid ${cat.color}22`,
+                  }}>{cat.emoji}</div>
+                  <div>
+                    <h2 style={{ margin:0, fontSize:'1.1rem', fontWeight:700, color:'var(--text-1)' }}>
+                      {cat.label}
+                    </h2>
+                    <div style={{ fontSize:'.78rem', color:'var(--text-3)', marginTop:2 }}>{cat.desc}</div>
+                  </div>
+                </div>
+
+                {/* Plan cards */}
+                <div style={{
+                  display:'grid',
+                  gridTemplateColumns:`repeat(${Math.min(catPlans.length, 3)}, 1fr)`,
+                  gap:16,
+                }}>
+                  {catPlans.map(({ key, plan }) => {
+                    const isSelected = selKey === key
+                    const isCurrent  = myPlan?.plan_id === key
+                    const mo = billing === 'yearly'
+                      ? Math.round(plan.price_yearly / 12 / 100)
+                      : plan.price_monthly / 100
+                    const yr = plan.price_yearly ? `$${plan.price_yearly / 100}/yr` : null
+
+                    return (
+                      <div key={key}
+                        onClick={() => setSelKey(isSelected ? null : key)}
+                        style={{
+                          border: `2px solid ${isSelected ? cat.color : isCurrent ? '#16a34a' : 'var(--border)'}`,
+                          borderRadius:'var(--r-xl,16px)', padding:'20px',
+                          background: isSelected ? cat.bg : 'var(--surface)',
+                          cursor:'pointer', position:'relative',
+                          transition:'border-color .15s, box-shadow .15s',
+                          boxShadow: isSelected ? `0 0 0 3px ${cat.color}22` : 'var(--sh-sm)',
+                        }}>
+
+                        {/* Badges */}
+                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                          <span style={{ fontWeight:800, fontSize:'.9rem', color:'var(--text-1)' }}>
+                            {plan.name}
+                          </span>
+                          <div style={{ display:'flex', gap:6 }}>
+                            {plan.highlight && (
+                              <span style={{ padding:'2px 8px', borderRadius:100, fontSize:'.65rem',
+                                fontWeight:700, background:cat.color, color:'#fff', whiteSpace:'nowrap' }}>
+                                <Star size={9}/> {plan.badge || 'Popular'}
+                              </span>
+                            )}
+                            {plan.badge && !plan.highlight && (
+                              <span style={{ padding:'2px 8px', borderRadius:100, fontSize:'.65rem',
+                                fontWeight:700, background:'#fef3c7', color:'#92400e', whiteSpace:'nowrap' }}>
+                                {plan.badge}
+                              </span>
+                            )}
+                            {isCurrent && (
+                              <span style={{ padding:'2px 8px', borderRadius:100, fontSize:'.65rem',
+                                fontWeight:700, background:'#dcfce7', color:'#166534' }}>
+                                ✓ Current
+                              </span>
+                            )}
                           </div>
-                          {billing==='yearly' && pYrEff && (
-                            <div style={{ fontSize:'.68rem', color:'var(--text-3)' }}>
-                              ${pYrEff/100}/mo effective
+                        </div>
+
+                        {/* Price */}
+                        <div style={{ marginBottom:12 }}>
+                          <span style={{
+                            fontFamily:'var(--font-mono)', fontWeight:800,
+                            fontSize:'1.6rem', color: cat.color,
+                          }}>
+                            {mo === 0 ? 'Free' : `$${mo}`}
+                          </span>
+                          {mo > 0 && <span style={{ fontSize:'.8rem', color:'var(--text-3)', marginLeft:4 }}>/mo</span>}
+                          {yr && billing === 'yearly' && (
+                            <div style={{ fontSize:'.72rem', color:'var(--text-3)', marginTop:2 }}>
+                              Billed {yr}
                             </div>
                           )}
-                        </>) : <span style={{ fontSize:'.85rem', color:'var(--text-3)' }}>Loading…</span>}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+                        </div>
 
-          {/* ── Price summary ── */}
-          <div style={{ background:'var(--surface-2)', borderRadius:'var(--r-md)',
-            padding:'14px 16px', marginBottom:16, border:'1px solid var(--border)' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <div>
-                <div style={{ fontWeight:600, fontSize:'.88rem' }}>{selectedLabel()}</div>
-                {(selKeys.length > 0 || selBundle) && (
-                  <div style={{ fontSize:'.72rem', color:'var(--text-3)', marginTop:2 }}>
-                    Includes Dashboard + CSV Reconciliation + Open Banking
-                  </div>
-                )}
-              </div>
-              <div style={{ textAlign:'right' }}>
-                <div style={{ fontWeight:800, fontSize:'1.3rem', color:'var(--brand)' }}>
-                  {(!selBundle && !selKeys.length) ? 'Free' : `$${totalPrice/100}/${billing==='yearly'?'yr':'mo'}`}
+                        {/* Description */}
+                        <div style={{ fontSize:'.78rem', color:'var(--text-3)', marginBottom:14, lineHeight:1.5 }}>
+                          {plan.description}
+                        </div>
+
+                        {/* Features */}
+                        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                          {(plan.features || []).map(f => (
+                            <div key={f} style={{ display:'flex', alignItems:'flex-start', gap:7, fontSize:'.78rem' }}>
+                              <Check size={12} color={cat.color} style={{ flexShrink:0, marginTop:2 }}/>
+                              <span style={{ color:'var(--text-2)' }}>{f}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Selected tick */}
+                        {isSelected && (
+                          <div style={{
+                            position:'absolute', top:12, right:12,
+                            width:22, height:22, borderRadius:'50%',
+                            background:cat.color, display:'flex',
+                            alignItems:'center', justifyContent:'center',
+                          }}>
+                            <Check size={13} color="#fff"/>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
+            )
+          })
+        )}
+
+        {/* Sticky checkout bar */}
+        {selKey && selected && (
+          <div style={{
+            position:'sticky', bottom:20, zIndex:50,
+            background:'var(--surface)', border:'2px solid var(--brand)',
+            borderRadius:'var(--r-xl)', padding:'16px 24px',
+            display:'flex', alignItems:'center', justifyContent:'space-between',
+            boxShadow:'0 8px 32px rgba(0,0,0,.15)', gap:16, flexWrap:'wrap',
+          }}>
+            <div>
+              <div style={{ fontWeight:700, fontSize:'.95rem' }}>
+                {selected.name}
+                {billing === 'yearly' && selected.price_yearly
+                  ? ` — $${selected.price_yearly/100}/yr`
+                  : selected.price_monthly
+                    ? ` — $${selected.price_monthly/100}/mo`
+                    : ''}
+              </div>
+              <div style={{ fontSize:'.75rem', color:'var(--text-3)', marginTop:2 }}>
+                {(selected.modules || []).join(' · ')}
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setSelKey(null)}>
+                Clear
+              </button>
+              <button className="btn btn-primary" onClick={handleCheckout} disabled={paying}
+                style={{ minWidth:160 }}>
+                {paying
+                  ? <><span className="spinner spinner-sm"/> Processing…</>
+                  : user ? <><Zap size={14}/> Subscribe Now</> : 'Sign in to subscribe'
+                }
+              </button>
             </div>
           </div>
+        )}
 
-          {/* ── CTA button ── */}
-          {(!selBundle && !selKeys.length) ? (
-            <button className="btn btn-primary btn-xl btn-full"
-              onClick={() => navigate(isLoggedIn ? '/' : '/login')}
-              style={{ fontSize:'.95rem', marginBottom:8 }}>
-              {isLoggedIn ? 'Continue with Vault →' : 'Sign In / Register →'}
-            </button>
-          ) : (
-            <button className="btn btn-primary btn-xl btn-full"
-              onClick={handleCheckout} disabled={paying}
-              style={{ fontSize:'.95rem', marginBottom:8 }}>
-              {paying
-                ? <><span className="spinner spinner-sm"/> Processing…</>
-                : isLoggedIn
-                  ? <>Pay ${totalPrice/100}/{billing==='yearly'?'yr':'mo'} with Stripe <ArrowRight size={15}/></>
-                  : <>Sign in to continue <ArrowRight size={15}/></>}
-            </button>
-          )}
-
-          <p style={{ textAlign:'center', fontSize:'.72rem', color:'var(--text-3)', marginTop:4 }}>
-            {(!selBundle && !selKeys.length)
-              ? 'No credit card required · Upgrade anytime'
-              : '🔒 Secured by Stripe · No card stored on our servers · Cancel anytime'}
-          </p>
-
-          </>)}
-
-          <p style={{ textAlign:'center', color:'var(--text-3)', fontSize:'.72rem', marginTop:20 }}>
-            © {new Date().getFullYear()} Headstart Finances Australia Pty Ltd · Trading as AccFino
-          </p>
+        {/* Footer note */}
+        <div style={{
+          textAlign:'center', marginTop:40, fontSize:'.75rem',
+          color:'var(--text-3)', lineHeight:1.7,
+        }}>
+          🔒 Secured by Stripe · Cancel anytime · All prices in AUD including GST<br/>
+          Need a custom plan? <a href="mailto:support@accfino.com" style={{ color:'var(--brand)' }}>Contact us</a>
         </div>
       </div>
     </div>

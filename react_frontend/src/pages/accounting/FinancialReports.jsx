@@ -482,11 +482,28 @@ function ComingSoon({ report }) {
   )
 }
 
-function ReportBody({ rkey, userId, dbStats }) {
+function ReportBody({ rkey, userId, dbStats, hasProReports }) {
+  const FREE_REPORTS = new Set(['pl', 'balance_sheet'])
   const allItems = MENU.flatMap(g=>g.items)
   const rep = allItems.find(i=>i.key===rkey)
   if (!rep) return null
   if (!rep.live) return <ComingSoon report={rep}/>
+  if (rep.live && !FREE_REPORTS.has(rkey) && !hasProReports) return (
+    <div style={{padding:56,textAlign:'center',color:'var(--text-3)'}}>
+      <div style={{fontSize:'2.5rem',marginBottom:12}}>🔒</div>
+      <div style={{fontWeight:700,fontSize:'1rem',color:'var(--text-1)',marginBottom:8}}>{rep.label}</div>
+      <div style={{maxWidth:380,margin:'0 auto',lineHeight:1.6,marginBottom:20}}>{rep.desc}</div>
+      <div style={{padding:'12px 20px',background:'#fef3c7',borderRadius:'var(--r-lg)',
+        display:'inline-block',fontSize:'.82rem',color:'#92400e',border:'1px solid #fde68a',marginBottom:16}}>
+        📊 Available on <strong>Accounting Pro</strong> and above
+      </div>
+      <br/>
+      <a href="/upgrade" className="btn btn-primary btn-sm"
+        style={{display:'inline-flex',alignItems:'center',gap:6,marginTop:8}}>
+        ⚡ Upgrade to Accounting Pro
+      </a>
+    </div>
+  )
   const bodies = {
     executive_summary:    <ExecutiveSummary db={dbStats}/>,
     pl:                   <PLReport/>,
@@ -520,14 +537,27 @@ function ReportBody({ rkey, userId, dbStats }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function FinancialReports({ userId }) {
-  const [sel,  setSel]  = useState('executive_summary')
-  const [dbSt, setDbSt] = useState(null)
-  const [exp,  setExp]  = useState({'📈 Financial Performance':true,'📋 Financial Statements':true})
+  const [sel,           setSel]           = useState('pl')
+  const [dbSt,          setDbSt]          = useState(null)
+  const [exp,           setExp]           = useState({'📈 Financial Performance':true,'📋 Financial Statements':true})
+  const [hasProReports, setHasProReports] = useState(false)
 
   useEffect(()=>{ if(userId) http.get(`/db/stats/${userId}`).then(r=>setDbSt(r.data)).catch(()=>{}) },[userId])
 
+  // Check plan — Vault gets P&L + Balance Sheet only; Pro+ gets all reports
+  useEffect(()=>{
+    if(!userId) return
+    http.get(`/payments/my-plan/${userId}`).then(r=>{
+      const planId = r.data?.plan_id || 'base'
+      const VAULT_PLANS = new Set(['base','accounting_starter',''])
+      setHasProReports(!VAULT_PLANS.has(planId))
+    }).catch(()=>{})
+  },[userId])
+
   const totalReports = MENU.flatMap(g=>g.items).length
   const liveReports  = MENU.flatMap(g=>g.items).filter(i=>i.live).length
+  const FREE_REPORTS = new Set(['pl', 'balance_sheet'])
+  const canViewReport = (key) => hasProReports || FREE_REPORTS.has(key)
 
   return (
     <div style={{padding:24}}>
@@ -557,23 +587,33 @@ export default function FinancialReports({ userId }) {
                   <span>{group.group}</span>
                   {open?<ChevronDown size={10}/>:<ChevronRight size={10}/>}
                 </button>
-                {open && group.items.map(item=>(
-                  <button key={item.key} onClick={()=>setSel(item.key)}
-                    style={{width:'100%',textAlign:'left',padding:'7px 14px',border:'none',
-                      cursor:item.live?'pointer':'default',fontFamily:'inherit',
-                      background:sel===item.key?'var(--brand)':'transparent',
-                      color:sel===item.key?'#fff':item.live?'var(--text-2)':'var(--text-3)',
-                      fontSize:'.81rem',fontWeight:sel===item.key?700:400,
-                      transition:'background .1s,color .1s',opacity:item.live?1:0.6,
-                      display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <span>{item.label}</span>
-                    {!item.live&&(
-                      <span style={{fontSize:'.6rem',padding:'1px 4px',borderRadius:3,
-                        background:sel===item.key?'rgba(255,255,255,.2)':'#fef3c7',
-                        color:sel===item.key?'#fff':'#92400e',fontWeight:700}}>Soon</span>
-                    )}
-                  </button>
-                ))}
+                {open && group.items.map(item=>{
+                  const locked = item.live && !canViewReport(item.key)
+                  return (
+                    <button key={item.key}
+                      onClick={()=>{ if(item.live && !locked) setSel(item.key) }}
+                      title={locked?'Upgrade to Accounting Pro':undefined}
+                      style={{width:'100%',textAlign:'left',padding:'7px 14px',border:'none',
+                        cursor:(item.live&&!locked)?'pointer':'default',fontFamily:'inherit',
+                        background:sel===item.key?'var(--brand)':'transparent',
+                        color:sel===item.key?'#fff':item.live?'var(--text-2)':'var(--text-3)',
+                        fontSize:'.81rem',fontWeight:sel===item.key?700:400,
+                        transition:'background .1s,color .1s',opacity:item.live?1:0.6,
+                        display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <span>{item.label}</span>
+                      {!item.live&&(
+                        <span style={{fontSize:'.6rem',padding:'1px 4px',borderRadius:3,
+                          background:sel===item.key?'rgba(255,255,255,.2)':'#fef3c7',
+                          color:sel===item.key?'#fff':'#92400e',fontWeight:700}}>Soon</span>
+                      )}
+                      {item.live&&locked&&(
+                        <span style={{fontSize:'.6rem',padding:'1px 4px',borderRadius:3,
+                          background:sel===item.key?'rgba(255,255,255,.2)':'#fee2e2',
+                          color:sel===item.key?'#fff':'#991b1b',fontWeight:700}}>Pro</span>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             )
           })}
@@ -582,7 +622,7 @@ export default function FinancialReports({ userId }) {
         {/* Report body */}
         <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--r-lg)',
           overflow:'hidden',boxShadow:'var(--sh-xs)',minHeight:500}}>
-          <ReportBody rkey={sel} userId={userId} dbStats={dbSt}/>
+          <ReportBody rkey={sel} userId={userId} dbStats={dbSt} hasProReports={hasProReports}/>
         </div>
       </div>
     </div>

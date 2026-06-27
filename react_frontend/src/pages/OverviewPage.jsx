@@ -22,11 +22,12 @@ const CATEGORIES = [
     bg:    'var(--brand-xlight,#eff6ff)',
     border:'#bfdbfe',
     modules: [
-      { key:'reconciliation', icon:'🔀', label:'Reconciliation',    desc:'Bank CSV · Open Banking · GL classification',  to:'/accounting' },
-      { key:'accounting',     icon:'💼', label:'Sale',              desc:'Quotes & Tax Invoices · Save to DB',            to:'/accounting' },
-      { key:'accounting',     icon:'🧾', label:'Purchase',          desc:'Bills · Receipts · Purchase Orders · OCR',      to:'/accounting' },
-      { key:'accounting',     icon:'📈', label:'Cash Flow',         desc:'ML forecast · 17 models · DB data',             to:'/accounting' },
-      { key:'accounting',     icon:'📊', label:'Financial Reports', desc:'P&L · Balance Sheet · Aged · BAS · 20+ reports',to:'/accounting' },
+      { key:'accounting', icon:'📊', label:'Dashboard',          desc:'KPI overview · sessions · income & expense totals',    to:'/accounting', tab:'dashboard'      },
+      { key:'accounting', icon:'🔀', label:'Reconciliation',     desc:'Bank CSV · Open Banking · GL & GST auto-classification', to:'/accounting', tab:'reconciliation' },
+      { key:'accounting', icon:'💼', label:'Sales',              desc:'Customers · Quotes · Tax Invoices · save to DB',        to:'/accounting', tab:'sales'          },
+      { key:'accounting', icon:'🧾', label:'Purchases',          desc:'Suppliers · Purchase Orders · Bills · Receipts · OCR',  to:'/accounting', tab:'purchases'      },
+      { key:'cash-flow',  icon:'📈', label:'Cash Flow',          desc:'ML forecast · 17 models · DB data source',              to:'/accounting', tab:'cashflow'       },
+      { key:'accounting', icon:'📋', label:'Financial Reports',  desc:'P&L · Balance Sheet · Aged Receivables · GST/BAS · 20+ reports', to:'/accounting', tab:'reports' },
     ],
   },
   {
@@ -93,13 +94,22 @@ export default function OverviewPage() {
     licenceMyModules(user.id).then(r => setModules(r.data.modules || [])).catch(() => setModules([]))
   }, [user?.id])
 
+  // Vault plan IDs that do NOT include cash-flow
+  const VAULT_PLANS = new Set(['base', 'accounting_starter', ''])
+
   const canAccess = (key) => {
     if (isAdmin || modules === 'all') return true
     if (!modules) return false
-    // Control Panel and Overview always accessible
-    if (key === 'setup' || key === 'dashboard') return true
-    // Vault/Base plan: reconciliation is always accessible
-    if (key === 'reconciliation') return modules.includes('reconciliation') || modules.includes('accounting') || true
+    // Always accessible to all users
+    if (key === 'setup' || key === 'dashboard' || key === 'accounting') return true
+    // Vault/Base plan: reconciliation always accessible
+    if (key === 'reconciliation') return true
+    // Cash Flow requires Accounting Pro or above — check plan_id, not just modules
+    // (modules may contain stale cash-flow from previous plan merges)
+    if (key === 'cash-flow') {
+      const planId = myPlan?.plan_id || 'base'
+      return !VAULT_PLANS.has(planId)
+    }
     return modules.includes(key)
   }
 
@@ -204,48 +214,51 @@ export default function OverviewPage() {
 
             {/* Module cards */}
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))',gap:10}}>
-              {cat.modules.map((mod, i) => (
+              {cat.modules.map((mod, i) => {
+                const modAccess = canAccess(mod.key)
+                return (
                 <button key={i}
-                  onClick={() => access && nav(mod.to)}
-                  disabled={!access}
+                  onClick={() => modAccess && nav(mod.to, mod.tab ? { state: { tab: mod.tab } } : undefined)}
+                  disabled={!modAccess}
                   style={{
                     display:'flex',alignItems:'flex-start',gap:12,
                     padding:'14px 16px',borderRadius:'var(--r-lg)',
-                    background: access ? 'var(--surface)' : 'var(--surface-2)',
-                    border:`1.5px solid ${access ? 'var(--border)' : 'var(--border)'}`,
-                    cursor: access ? 'pointer' : 'not-allowed',
+                    background: modAccess ? 'var(--surface)' : 'var(--surface-2)',
+                    border:`1.5px solid ${modAccess ? 'var(--border)' : 'var(--border)'}`,
+                    cursor: modAccess ? 'pointer' : 'not-allowed',
                     textAlign:'left',fontFamily:'inherit',
                     transition:'border-color .15s, box-shadow .15s, transform .15s',
                     boxShadow:'var(--sh-xs)',
-                    opacity: access ? 1 : 0.45,
+                    opacity: modAccess ? 1 : 0.45,
                   }}
-                  onMouseEnter={e=>{ if(access){
+                  onMouseEnter={e=>{ if(modAccess){
                     e.currentTarget.style.borderColor=cat.color
                     e.currentTarget.style.boxShadow='var(--sh-md)'
                     e.currentTarget.style.transform='translateY(-2px)'
                   }}}
-                  onMouseLeave={e=>{ if(access){
+                  onMouseLeave={e=>{ if(modAccess){
                     e.currentTarget.style.borderColor='var(--border)'
                     e.currentTarget.style.boxShadow='var(--sh-xs)'
                     e.currentTarget.style.transform='none'
                   }}}
                 >
                   <span style={{fontSize:'1.3rem',lineHeight:1,flexShrink:0,marginTop:2,
-                    filter:access?'none':'grayscale(1)'}}>{mod.icon}</span>
+                    filter:modAccess?'none':'grayscale(1)'}}>{mod.icon}</span>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:'.82rem',color:access?'var(--text-1)':'var(--text-3)',marginBottom:3}}>
+                    <div style={{fontWeight:700,fontSize:'.82rem',color:modAccess?'var(--text-1)':'var(--text-3)',marginBottom:3}}>
                       {mod.label}
                     </div>
                     <div style={{fontSize:'.72rem',color:'var(--text-3)',lineHeight:1.4}}>
                       {mod.desc}
                     </div>
                   </div>
-                  {access
+                  {modAccess
                     ? <ChevronRight size={14} color="var(--text-3)" style={{flexShrink:0,marginTop:2}}/>
                     : <Lock size={12} color="#9ca3af" style={{flexShrink:0,marginTop:2}}/>
                   }
                 </button>
-              ))}
+                )
+              })}
             </div>
           </div>
         )
