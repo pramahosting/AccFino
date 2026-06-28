@@ -47,8 +47,8 @@
     "lending_basic": {
         "name": "Smart Lending",
         "description": "Australian responsible lending assessment \u2014 bank statement analysis, expense classification & lending metrics",
-        "price_monthly": 000,
-        "price_yearly": 0000,
+        "price_monthly": 0,
+        "price_yearly": 0,
         "badge": "",
         "highlight": false,
         "category": "lending",
