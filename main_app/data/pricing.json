@@ -78,8 +78,8 @@
     "payroll_business": {
         "name": "Payroll Business",
         "description": "Full Australian payroll with STP Phase 2, unlimited employees & ATO compliance",
-        "price_monthly": 4900,
-        "price_yearly": 49000,
+        "price_monthly": 3900,
+        "price_yearly": 39000,
         "badge": "Popular",
         "highlight": true,
         "category": "payroll",
@@ -96,8 +96,8 @@
     "premium": {
         "name": "Ultra Plan",
         "description": "All modules \u2014 Accounting, Taxation & Payroll + Smart Lending \u2014 best value complete suite",
-        "price_monthly": 7900,
-        "price_yearly": 79000,
+        "price_monthly": 6900,
+        "price_yearly": 69000,
         "badge": "Best Value",
         "highlight": true,
         "category": "bundle",
