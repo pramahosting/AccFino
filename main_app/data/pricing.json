@@ -14,18 +14,14 @@
             "Purchases \u2014 Suppliers, POs, Bills & Receipts",
             "Excel export"
         ],
-        "modules": [
-            "dashboard",
-            "accounting",
-            "reconciliation"
-        ],
+        "modules": ["dashboard", "accounting", "reconciliation"],
         "price_effective_from": "2026-06-27"
     },
     "accounting_pro": {
         "name": "Accounting Pro",
         "description": "Full accounting suite with Open Banking, Cash Flow & 20+ financial reports",
-        "price_monthly": 1900,
-        "price_yearly": 19000,
+        "price_monthly": 2900,
+        "price_yearly": 29000,
         "badge": "Popular",
         "highlight": true,
         "category": "accounting",
@@ -36,20 +32,15 @@
             "ML Cash Flow forecasting",
             "20+ Financial Reports (P&L, Balance Sheet, BAS, Aged)"
         ],
-        "modules": [
-            "dashboard",
-            "accounting",
-            "reconciliation",
-            "cash-flow"
-        ],
+        "modules": ["dashboard", "accounting", "reconciliation", "cash-flow"],
         "price_effective_from": "2026-06-27"
     },
     "lending_basic": {
         "name": "Smart Lending",
         "description": "Australian responsible lending assessment \u2014 bank statement analysis, expense classification & lending metrics",
-        "price_monthly": 0,
-        "price_yearly": 0,
-        "badge": "",
+        "price_monthly": 500,
+        "price_yearly": 5000,
+        "badge": "New",
         "highlight": false,
         "category": "lending",
         "features": [
@@ -63,14 +54,9 @@
             "Max borrowing capacity calculation",
             "APRA 3% serviceability buffer assessment"
         ],
-        "modules": [
-            "dashboard",
-            "lending"
-        ],
+        "modules": ["dashboard", "lending"],
         "price_effective_from": "2026-06-27"
-    }
-}, 
-
+    },
     "taxation_complete": {
         "name": "Taxation Complete",
         "description": "Complete Australian tax \u2014 CGT (Crypto, Shares, Property) + full ITR data",
@@ -86,10 +72,7 @@
             "All income, deductions & offsets",
             "HELP/HECS repayment estimate"
         ],
-        "modules": [
-            "dashboard",
-            "trading"
-        ],
+        "modules": ["dashboard", "trading"],
         "price_effective_from": "2026-06-27"
     },
     "payroll_business": {
@@ -107,10 +90,7 @@
             "Annual payment summaries",
             "Priority support"
         ],
-        "modules": [
-            "dashboard",
-            "payroll"
-        ],
+        "modules": ["dashboard", "payroll"],
         "price_effective_from": "2026-06-27"
     },
     "premium": {
@@ -128,13 +108,7 @@
             "Open Banking included",
             "Priority support + early access features"
         ],
-        "modules": [
-            "dashboard",
-            "accounting",
-            "reconciliation",
-            "trading",
-            "cash-flow",
-            "payroll"
-        ],
+        "modules": ["dashboard", "accounting", "reconciliation", "trading", "cash-flow", "payroll"],
         "price_effective_from": "2026-06-27"
     }
+}
