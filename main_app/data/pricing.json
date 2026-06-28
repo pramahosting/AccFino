@@ -95,7 +95,7 @@
     },
     "premium": {
         "name": "Ultra Plan",
-        "description": "All modules \u2014 Accounting, Taxation & Payroll \u2014 best value complete suite",
+        "description": "All modules \u2014 Accounting, Taxation & Payroll + Smart Lending \u2014 best value complete suite",
         "price_monthly": 7900,
         "price_yearly": 79000,
         "badge": "Best Value",
@@ -105,10 +105,11 @@
             "Everything in Accounting Pro",
             "Everything in Taxation Complete",
             "Full Payroll Business",
+            "Smart Lending included",
             "Open Banking included",
             "Priority support + early access features"
         ],
-        "modules": ["dashboard", "accounting", "reconciliation", "trading", "cash-flow", "payroll"],
+        "modules": ["dashboard", "accounting", "reconciliation", "trading", "cash-flow", "payroll", "lending"],
         "price_effective_from": "2026-06-27"
     }
 }
