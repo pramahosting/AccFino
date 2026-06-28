@@ -35,6 +35,14 @@ const CATEGORIES = [
     desc:  'PAYG · Superannuation · Payslips · STP Phase 2',
   },
   {
+    key:   'lending',
+    emoji: '🏦',
+    label: 'Smart Lending',
+    color: '#0891b2',
+    bg:    '#ecfeff',
+    desc:  'Bank statement analysis · AU responsible lending · ASIC RG 209 · APRA',
+  },
+  {
     key:   'bundle',
     emoji: '⭐',
     label: 'Bundles',
