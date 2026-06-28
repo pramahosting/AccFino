@@ -20,8 +20,8 @@
     "accounting_pro": {
         "name": "Accounting Pro",
         "description": "Full accounting suite with Open Banking, Cash Flow & 20+ financial reports",
-        "price_monthly": 2900,
-        "price_yearly": 29000,
+        "price_monthly": 1900,
+        "price_yearly": 19000,
         "badge": "Popular",
         "highlight": true,
         "category": "accounting",
